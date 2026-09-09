@@ -30,6 +30,8 @@ pub struct FrameReceipt {
     pub gpu_time_ns: u64,
     pub gpu_resource_bytes: u64,
     pub presented: bool,
+    /// The encoded frame included the same-scene magnifier pass.
+    pub magnifier_rendered: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

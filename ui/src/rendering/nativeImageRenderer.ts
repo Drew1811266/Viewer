@@ -13,6 +13,8 @@ import type {
 export class NativeImageRenderer implements ImageRendererPort {
   readonly backend = 'native' as const
   private readonly activeGenerations = new Map<string, number>()
+  private readonly activeSessions = new Map<string, ImageRendererSession>()
+  private readonly pendingOpens = new Map<string, Promise<ImageRendererSession>>()
   private readonly bridge: ImageRendererBridge
 
   constructor(bridge: ImageRendererBridge) {
@@ -21,23 +23,42 @@ export class NativeImageRenderer implements ImageRendererPort {
 
   async open(request: OpenImageRendererRequest): Promise<ImageRendererSession> {
     numericSessionId(request.sessionId)
+    const key = openRequestKey(request)
+    const active = this.activeSessions.get(key)
+    if (active !== undefined) return active
+    const pending = this.pendingOpens.get(key)
+    if (pending !== undefined) return pending
     const previousGeneration = this.activeGenerations.get(request.sessionId)
     this.activeGenerations.set(request.sessionId, request.assetGeneration)
-    const session = new NativeImageRendererSession(this.bridge, request, () => {
-      if (this.activeGenerations.get(request.sessionId) === request.assetGeneration) {
-        this.activeGenerations.delete(request.sessionId)
+    const opening = (async () => {
+      const session = new NativeImageRendererSession(this.bridge, request, () => {
+        if (this.activeGenerations.get(request.sessionId) === request.assetGeneration) {
+          this.activeGenerations.delete(request.sessionId)
+        }
+        this.activeSessions.delete(key)
+      })
+      try {
+        await session.open()
+        this.activeSessions.set(key, session)
+        return session
+      } catch (error) {
+        if (this.activeGenerations.get(request.sessionId) === request.assetGeneration) {
+          if (previousGeneration === undefined) this.activeGenerations.delete(request.sessionId)
+          else this.activeGenerations.set(request.sessionId, previousGeneration)
+        }
+        throw error
       }
-    })
-    try {
-      await session.open()
-      return session
-    } catch (error) {
-      if (this.activeGenerations.get(request.sessionId) === request.assetGeneration) {
-        if (previousGeneration === undefined) this.activeGenerations.delete(request.sessionId)
-        else this.activeGenerations.set(request.sessionId, previousGeneration)
-      }
-      throw error
-    }
+    })()
+    this.pendingOpens.set(key, opening)
+    opening.then(
+      () => {
+        if (this.pendingOpens.get(key) === opening) this.pendingOpens.delete(key)
+      },
+      () => {
+        if (this.pendingOpens.get(key) === opening) this.pendingOpens.delete(key)
+      },
+    )
+    return opening
   }
 
   async listen(handler: (event: ImageRendererEvent) => void): Promise<() => void> {
@@ -45,6 +66,10 @@ export class NativeImageRenderer implements ImageRendererPort {
       if (this.activeGenerations.get(event.sessionId) === event.assetGeneration) handler(event)
     })
   }
+}
+
+function openRequestKey(request: OpenImageRendererRequest): string {
+  return JSON.stringify([request.sessionId, request.assetGeneration, request.entityId])
 }
 
 class NativeImageRendererSession implements ImageRendererSession {
@@ -94,11 +119,11 @@ class NativeImageRendererSession implements ImageRendererSession {
     if (this.closePromise !== undefined) return this.closePromise
     this.closing = true
     this.closePromise = this.lane.enqueue(async () => {
-      try {
-        await this.send(this.acceptedRevision, { type: 'close' })
-      } finally {
-        this.onClose()
-      }
+      await this.send(this.acceptedRevision, { type: 'close' })
+      this.onClose()
+    })
+    void this.closePromise.catch(() => {
+      this.closePromise = undefined
     })
     return this.closePromise
   }

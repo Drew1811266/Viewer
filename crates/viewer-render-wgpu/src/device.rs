@@ -1,3 +1,4 @@
+use crate::gpu_memory::GpuMemory;
 use std::{
     future::Future,
     marker::PhantomData,
@@ -8,6 +9,7 @@ use std::{
     thread::{self, Thread, ThreadId},
     time::{Duration, Instant},
 };
+use viewer_render_core::{AllocationClass, MemoryAdmissionError};
 
 #[cfg(target_os = "macos")]
 use std::{ffi::c_void, ptr::NonNull};
@@ -23,6 +25,7 @@ use crate::{
     OrdinalGlyphAtlas, ResourceHandle, ResourceRegistry, RetainedSceneResources,
     SurfaceAcquireFailure, SurfaceRecovery, UploadError,
     diagnostics::{GpuFault, GpuFaultState},
+    gpu_timing::GpuTimer,
     surface_recovery,
 };
 
@@ -68,6 +71,9 @@ struct SurfaceLifetime {
 }
 
 pub struct RendererDescriptor {
+    retirement: Option<crate::GpuRetirementService>,
+    timestamp_queries: bool,
+    memory: viewer_render_core::ImageMemoryCoordinator,
     surface: Option<SurfaceHandles>,
     logical_size: LogicalSize,
     physical_size: PhysicalSize,
@@ -83,6 +89,11 @@ impl RendererDescriptor {
         Self::validate(logical_size, physical_size, scale_factor)?;
         Ok(Self {
             surface: None,
+            retirement: None,
+            timestamp_queries: true,
+            memory: viewer_render_core::ImageMemoryCoordinator::new(
+                viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+            ),
             logical_size,
             physical_size,
             scale_factor,
@@ -98,10 +109,31 @@ impl RendererDescriptor {
         Self::validate(logical_size, physical_size, scale_factor)?;
         Ok(Self {
             surface: Some(handles),
+            retirement: None,
+            timestamp_queries: true,
+            memory: viewer_render_core::ImageMemoryCoordinator::new(
+                viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+            ),
             logical_size,
             physical_size,
             scale_factor,
         })
+    }
+
+    /// Diagnostic seam for proving completion ownership without query support.
+    pub fn without_timestamp_queries(mut self) -> Self {
+        self.timestamp_queries = false;
+        self
+    }
+
+    pub fn with_memory(mut self, memory: viewer_render_core::ImageMemoryCoordinator) -> Self {
+        self.memory = memory;
+        self
+    }
+
+    pub fn with_retirement_service(mut self, retirement: crate::GpuRetirementService) -> Self {
+        self.retirement = Some(retirement);
+        self
     }
 
     fn validate(
@@ -124,6 +156,9 @@ impl RendererDescriptor {
 }
 
 pub struct WgpuImageRenderer {
+    gpu_memory: GpuMemory,
+    headless_target: Option<crate::gpu_memory::GpuTexture>,
+    memory: viewer_render_core::ImageMemoryCoordinator,
     _instance: wgpu::Instance,
     adapter: wgpu::Adapter,
     device: wgpu::Device,
@@ -147,10 +182,15 @@ pub struct WgpuImageRenderer {
     transform: Option<TransformSnapshot>,
     owner: ThreadId,
     gpu_faults: GpuFaultState,
+    gpu_timer: GpuTimer,
     _not_send_sync: PhantomData<Rc<()>>,
 }
 
 impl WgpuImageRenderer {
+    /// Shared admission boundary. GPU allocation/retirement charging is stage 2B.
+    pub fn memory(&self) -> &viewer_render_core::ImageMemoryCoordinator {
+        &self.memory
+    }
     pub fn new(descriptor: RendererDescriptor) -> Result<Self, RendererInitError> {
         #[cfg(not(target_os = "macos"))]
         {
@@ -160,6 +200,8 @@ impl WgpuImageRenderer {
 
         #[cfg(target_os = "macos")]
         {
+            let retirement = descriptor.retirement.unwrap_or_default();
+            let permit = retirement.acquire()?;
             let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
                 backends: wgpu::Backends::METAL,
                 ..wgpu::InstanceDescriptor::new_without_display_handle()
@@ -205,7 +247,11 @@ impl WgpuImageRenderer {
             let required_limits = adapter.limits();
             let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor {
                 label: Some("Viewer image renderer"),
-                required_features: wgpu::Features::empty(),
+                required_features: if descriptor.timestamp_queries {
+                    adapter.features() & wgpu::Features::TIMESTAMP_QUERY
+                } else {
+                    wgpu::Features::empty()
+                },
                 required_limits,
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 memory_hints: wgpu::MemoryHints::Performance,
@@ -215,6 +261,8 @@ impl WgpuImageRenderer {
             let gpu_faults = GpuFaultState::default();
             let callback_faults = gpu_faults.clone();
             device.on_uncaptured_error(Arc::new(move |error| callback_faults.record(error)));
+            let gpu_memory = GpuMemory::new(&device, &queue, descriptor.memory.clone(), permit);
+            let gpu_timer = GpuTimer::new(&device, &queue, &gpu_memory)?;
 
             let surface_config = surface
                 .as_ref()
@@ -234,22 +282,27 @@ impl WgpuImageRenderer {
             let target_format = surface_config
                 .as_ref()
                 .map_or(wgpu::TextureFormat::Bgra8UnormSrgb, |config| config.format);
-            let image_pass = ImagePass::new(&device, target_format);
-            let annotation_pass = AnnotationPass::new(&device, target_format);
+            let image_pass = ImagePass::new(&device, target_format, &gpu_memory)?;
+            let annotation_pass = AnnotationPass::new(&device, target_format, &gpu_memory)?;
             let magnifier_pass = MagnifierPass::new(
                 &device,
                 target_format,
                 image_pass.texture_layout(),
                 annotation_pass.glyph_layout(),
-            );
+                &gpu_memory,
+            )?;
             let resources = ResourceRegistry::new(
                 &device,
-                &queue,
+                &gpu_memory,
                 image_pass.texture_layout(),
                 AssetGeneration(0),
-            );
+            )
+            .map_err(RendererInitError::Upload)?;
 
             Ok(Self {
+                gpu_memory,
+                headless_target: None,
+                memory: descriptor.memory,
                 _instance: instance,
                 adapter,
                 device,
@@ -271,6 +324,7 @@ impl WgpuImageRenderer {
                 transform: None,
                 owner: thread::current().id(),
                 gpu_faults,
+                gpu_timer,
                 _not_send_sync: PhantomData,
             })
         }
@@ -280,12 +334,76 @@ impl WgpuImageRenderer {
         self.adapter.get_info().backend
     }
 
+    /// Distinguishes frame indices across renderer recreation/recovery.
+    pub fn renderer_id(&self) -> u64 {
+        self.gpu_timer.renderer_id()
+    }
+
+    pub fn gpu_timing_support(&self) -> crate::GpuTimingSupport {
+        self.gpu_timer.support()
+    }
+
+    /// Polls once without waiting for GPU completion and drains at most three
+    /// completed pass measurements. The first completion starts the asynchronous
+    /// resolve/readback; a later poll delivers its measurement. Call on display
+    /// ticks, including idle ticks.
+    /// These are render-pass durations, not presentation/scanout timestamps.
+    pub fn poll_gpu_timings(&mut self) -> Result<Vec<crate::GpuFrameTiming>, RenderError> {
+        self.ensure_owner()?;
+        self.gpu_memory.flush();
+        self.device
+            .poll(wgpu::PollType::Poll)
+            .map_err(|error| RenderError::GpuPoll(error.to_string()))?;
+        if self.resources.progress_upload()? {
+            self.frame_scheduler.frame_state().invalidate_resource();
+        }
+        let samples = self
+            .gpu_timer
+            .drain_completed(&self.device, &self.gpu_memory);
+        self.check_gpu_faults()?;
+        Ok(samples)
+    }
+
+    pub fn cancel_pending_upload(&mut self) {
+        self.resources.cancel_pending_upload();
+    }
+    pub fn has_pending_upload(&self) -> bool {
+        self.resources.has_pending_upload()
+    }
+    pub fn resource_is_ready(&self, handle: ResourceHandle) -> bool {
+        self.resources.is_ready(handle)
+    }
+    pub fn resource_key_is_ready(&self, key: crate::ResourceKey) -> bool {
+        self.resources.contains_key(key)
+    }
+
     pub fn frame_state(&mut self) -> &mut FrameState {
         self.frame_scheduler.frame_state()
     }
 
     pub fn on_display_tick(&mut self, timestamp_ns: u64) -> Option<FrameRequest> {
         self.frame_scheduler.on_display_tick(timestamp_ns)
+    }
+
+    pub fn recover_surface(&mut self, recovery: SurfaceRecovery) -> bool {
+        if self.ensure_owner().is_err() {
+            return false;
+        }
+        match recovery {
+            SurfaceRecovery::RetryNextFrame | SurfaceRecovery::WaitUntilVisible => {
+                self.frame_scheduler.frame_state().invalidate_surface();
+                true
+            }
+            SurfaceRecovery::Reconfigure | SurfaceRecovery::RecreateSurface => {
+                let (Some(surface), Some(config)) = (&self.surface, &self.surface_config) else {
+                    return false;
+                };
+                surface.configure(&self.device, config);
+                self.frame_scheduler.frame_state().invalidate_surface();
+                true
+            }
+            SurfaceRecovery::ReportValidation | SurfaceRecovery::Terminate => false,
+        }
     }
 
     pub fn resize(
@@ -311,12 +429,14 @@ impl WgpuImageRenderer {
 
     pub fn apply_scene(&mut self, scene: &SceneSnapshot) -> Result<(), RenderError> {
         self.ensure_owner()?;
-        self.annotation_pass
-            .prepare_scene(&self.device, &self.queue, scene)?;
+        let result = self
+            .annotation_pass
+            .prepare_scene(&self.device, &self.queue, scene)
+            .map(|_| ());
         self.frame_scheduler
             .frame_state()
             .invalidate_scene(scene.revision());
-        Ok(())
+        result.map_err(RenderError::from)
     }
 
     /// Applies renderer-owned interaction feedback without advancing or
@@ -324,24 +444,28 @@ impl WgpuImageRenderer {
     /// always rebuilt, even when it has the same revision as this projection.
     pub fn apply_transient_scene(&mut self, scene: &SceneSnapshot) -> Result<(), RenderError> {
         self.ensure_owner()?;
-        self.annotation_pass
-            .prepare_transient_scene(&self.device, &self.queue, scene)?;
+        let result = self
+            .annotation_pass
+            .prepare_transient_scene(&self.device, &self.queue, scene)
+            .map(|_| ());
         self.frame_scheduler
             .frame_state()
             .invalidate_scene(scene.revision());
-        Ok(())
+        result.map_err(RenderError::from)
     }
 
     /// Updates the small renderer-owned draft layer independently from the
     /// authoritative annotation buffers.
     pub fn apply_draft_overlay(&mut self, scene: &SceneSnapshot) -> Result<(), RenderError> {
         self.ensure_owner()?;
-        self.annotation_pass
-            .prepare_draft_overlay(&self.device, &self.queue, scene)?;
+        let result = self
+            .annotation_pass
+            .prepare_draft_overlay(&self.device, &self.queue, scene)
+            .map(|_| ());
         self.frame_scheduler
             .frame_state()
             .invalidate_scene(scene.revision());
-        Ok(())
+        result.map_err(RenderError::from)
     }
 
     pub fn clear_draft_overlay(&mut self) -> Result<(), RenderError> {
@@ -392,6 +516,44 @@ impl WgpuImageRenderer {
         Ok(handle)
     }
 
+    pub fn max_texture_dimension_2d(&self) -> u32 {
+        self.device.limits().max_texture_dimension_2d
+    }
+
+    pub fn retain_resources(&mut self, keys: &[crate::ResourceKey]) {
+        self.resources.retain(keys);
+        self.frame_scheduler.frame_state().invalidate_resource();
+    }
+
+    pub fn touch_resources(&mut self, keys: &[crate::ResourceKey]) {
+        self.resources.touch(keys);
+    }
+
+    pub fn reclaim_resources(
+        &mut self,
+        visible: &[crate::ResourceKey],
+        preview: Option<crate::ResourceKey>,
+        prefetch: &[crate::ResourceKey],
+        texture_budget: u64,
+    ) {
+        self.resources
+            .reclaim(visible, preview, prefetch, texture_budget);
+        self.frame_scheduler.frame_state().invalidate_resource();
+    }
+
+    pub fn image_texture_bytes(&self) -> u64 {
+        self.resources.gpu_bytes()
+    }
+
+    /// Arms at most one completion-driven wake on the existing retirement
+    /// service. No display tick, GPU wait or permanently running timer required.
+    pub fn wake_when_gpu_progress(&self, wake: std::sync::Arc<dyn Fn() + Send + Sync>) {
+        self.gpu_memory.set_completion_wake(wake.clone());
+        if self.resources.has_pending_upload() || self.gpu_memory.has_retirement_work() {
+            self.gpu_memory.wake_when_progress(wake);
+        }
+    }
+
     pub fn set_ordinal_glyph_atlas(
         &mut self,
         atlas: &OrdinalGlyphAtlas,
@@ -421,6 +583,13 @@ impl WgpuImageRenderer {
         )
     }
 
+    /// Whether the latest annotation scene or draft is waiting for a
+    /// temporary memory admission retry. The actor uses this to keep hit
+    /// testing aligned with the scene actually resident on the GPU.
+    pub fn annotation_scene_upload_pending(&self) -> bool {
+        self.annotation_pass.scene_upload_pending()
+    }
+
     pub fn render(&mut self, request: FrameRequest) -> Result<FrameReceipt, RenderError> {
         self.ensure_owner()?;
         self.check_gpu_faults()?;
@@ -428,6 +597,12 @@ impl WgpuImageRenderer {
         let started = Instant::now();
         let result = self.render_owned(request, started);
         self.frame_ring.complete(slot);
+        if result.as_ref().err().is_some_and(is_temporary_memory_error) {
+            // A temporary admission refusal is a deferred frame, not a
+            // renderer failure. Keep the retained scene dirty so the next
+            // display tick retries after GPU retirement or pressure relief.
+            self.frame_scheduler.frame_state().invalidate_resource();
+        }
         result
     }
 
@@ -454,20 +629,24 @@ impl WgpuImageRenderer {
     ) -> Result<(FrameReceipt, Vec<u8>), RenderError> {
         let width = self.physical_size.width;
         let height = self.physical_size.height;
-        let target = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Viewer visual fixture target"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
+        let target = self.gpu_memory.texture(
+            &wgpu::TextureDescriptor {
+                label: Some("Viewer visual fixture target"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
             },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
+            u64::from(width) * u64::from(height) * 4,
+            AssetGeneration(0),
+        )?;
         let view = target.create_view(&wgpu::TextureViewDescriptor::default());
         let unpadded_row = width
             .checked_mul(4)
@@ -479,18 +658,21 @@ impl WgpuImageRenderer {
         let buffer_size = u64::from(padded_row)
             .checked_mul(u64::from(height))
             .ok_or(RenderError::CaptureSizeOverflow)?;
-        let readback = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Viewer visual fixture readback"),
-            size: buffer_size,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+        let readback = self.gpu_memory.buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Viewer visual fixture readback"),
+                size: buffer_size,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            },
+            AllocationClass::RendererBuffers,
+        )?;
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Viewer visual fixture encoder"),
             });
-        self.encode_target(&mut encoder, &view);
+        self.encode_target(&mut encoder, &view, request)?;
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
                 texture: &target,
@@ -512,7 +694,7 @@ impl WgpuImageRenderer {
                 depth_or_array_layers: 1,
             },
         );
-        let submission = self.queue.submit([encoder.finish()]);
+        let submission = self.gpu_memory.submit([encoder.finish()]);
         let slice = readback.slice(..);
         let (sender, receiver) = mpsc::sync_channel(1);
         slice.map_async(wgpu::MapMode::Read, move |result| {
@@ -579,47 +761,78 @@ impl WgpuImageRenderer {
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("Viewer image frame"),
                 });
-            self.encode_target(&mut encoder, &view);
-            self.queue.submit([encoder.finish()]);
+            self.encode_target(&mut encoder, &view, request)?;
+            self.gpu_memory.submit([encoder.finish()]);
             self.queue.present(texture);
             true
         } else {
-            let target = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("Viewer headless render target"),
-                size: wgpu::Extent3d {
-                    width: self.physical_size.width,
-                    height: self.physical_size.height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Bgra8UnormSrgb,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            });
+            if self.headless_target.as_ref().is_none_or(|target| {
+                target.width() != self.physical_size.width
+                    || target.height() != self.physical_size.height
+            }) {
+                let target = self.gpu_memory.texture(
+                    &wgpu::TextureDescriptor {
+                        label: Some("Viewer headless render target"),
+                        size: wgpu::Extent3d {
+                            width: self.physical_size.width,
+                            height: self.physical_size.height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                        view_formats: &[],
+                    },
+                    u64::from(self.physical_size.width) * u64::from(self.physical_size.height) * 4,
+                    AssetGeneration(0),
+                )?;
+                self.headless_target = Some(target);
+            }
+            let target = self.headless_target.as_ref().unwrap();
+
             let view = target.create_view(&wgpu::TextureViewDescriptor::default());
             let mut encoder = self
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("Viewer headless frame"),
                 });
-            self.encode_target(&mut encoder, &view);
-            self.queue.submit([encoder.finish()]);
+            self.encode_target(&mut encoder, &view, request)?;
+            self.gpu_memory.submit([encoder.finish()]);
             false
         };
 
         Ok(self.finish_receipt(request, started, presented))
     }
 
-    fn encode_target(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+    fn encode_target(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        request: FrameRequest,
+    ) -> Result<(), RenderError> {
+        self.annotation_pass
+            .retry_pending(&self.device, &self.queue)?;
+        if self.annotation_pass.upload_failed() {
+            return Err(MemoryAdmissionError::ExceedsPolicy.into());
+        }
         if let Some(transform) = &self.transform {
-            self.image_pass.prepare_camera(&self.queue, transform);
-            self.annotation_pass.prepare_camera(&self.queue, transform);
+            self.image_pass.prepare_camera(&self.queue, transform)?;
+            self.annotation_pass
+                .prepare_camera(&self.queue, transform)?;
             if let Some(config) = self.magnifier {
-                self.magnifier_pass.prepare(&self.queue, transform, config);
+                self.magnifier_pass
+                    .prepare(&self.queue, transform, config)?;
+                self.annotation_pass
+                    .prepare_magnifier_controls(&self.queue, transform, config)?;
             }
         }
+        let timing_slot = self.gpu_timer.begin(
+            self.next_frame_index,
+            self.resources.generation(),
+            request.scene_revision,
+        );
         let visible = self.resources.visible_all();
         let color_attachments = [Some(wgpu::RenderPassColorAttachment {
             view,
@@ -639,7 +852,7 @@ impl WgpuImageRenderer {
             label: Some("Viewer image render pass"),
             color_attachments: &color_attachments,
             depth_stencil_attachment: None,
-            timestamp_writes: None,
+            timestamp_writes: self.gpu_timer.writes(timing_slot),
             occlusion_query_set: None,
             multiview_mask: None,
         });
@@ -655,6 +868,9 @@ impl WgpuImageRenderer {
                 );
             }
         }
+        drop(pass);
+        self.gpu_timer.on_render_submitted(encoder, timing_slot);
+        Ok(())
     }
 
     fn ensure_owner(&self) -> Result<(), RenderError> {
@@ -686,15 +902,40 @@ impl WgpuImageRenderer {
             frame_index,
             scene_revision: request.scene_revision,
             cpu_time_ns: u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX),
+            // Submission has not completed. Actual GPU duration arrives only
+            // through poll_gpu_timings(), identified by this frame index.
             gpu_time_ns: 0,
             gpu_resource_bytes: self.gpu_resource_bytes(),
             presented,
+            magnifier_rendered: self.transform.is_some() && self.magnifier.is_some(),
         }
     }
 }
 
+fn is_temporary_memory_error(error: &RenderError) -> bool {
+    matches!(
+        error,
+        RenderError::Memory(MemoryAdmissionError::TemporarilyBlocked)
+            | RenderError::AnnotationMesh(MeshError::Memory(
+                MemoryAdmissionError::TemporarilyBlocked,
+            ))
+            | RenderError::GlyphAtlas(GlyphAtlasError::Memory(
+                MemoryAdmissionError::TemporarilyBlocked,
+            ))
+            | RenderError::Upload(UploadError::Memory(
+                MemoryAdmissionError::TemporarilyBlocked,
+            ))
+    )
+}
+
 #[derive(Debug, Error)]
 pub enum RendererInitError {
+    #[error("GPU allocation admission failed: {0}")]
+    Memory(#[from] MemoryAdmissionError),
+    #[error("GPU upload pool initialization failed: {0}")]
+    Upload(UploadError),
+    #[error("GPU device retirement backlog defers renderer initialization")]
+    RetirementBacklog,
     #[error("native image rendering is only supported on macOS")]
     UnsupportedPlatform,
     #[error("invalid renderer descriptor: {0}")]
@@ -713,6 +954,8 @@ pub enum RendererInitError {
 
 #[derive(Debug, Error)]
 pub enum RenderError {
+    #[error("GPU allocation admission failed: {0}")]
+    Memory(#[from] MemoryAdmissionError),
     #[error("renderer resources may only be accessed from their owner thread")]
     WrongThread,
     #[error("all frame ring slots are busy")]
@@ -737,7 +980,7 @@ pub enum RenderError {
     CaptureRequiresHeadlessRenderer,
     #[error("offscreen capture dimensions overflowed")]
     CaptureSizeOverflow,
-    #[error("GPU polling failed during offscreen capture: {0}")]
+    #[error("GPU polling failed: {0}")]
     GpuPoll(String),
     #[error("GPU readback mapping failed during offscreen capture: {0}")]
     GpuMap(String),
@@ -748,7 +991,8 @@ impl RenderError {
         match self {
             Self::Surface(failure) => Some(surface_recovery(*failure)),
             Self::OutOfMemory => Some(SurfaceRecovery::Terminate),
-            Self::WrongThread
+            Self::Memory(_)
+            | Self::WrongThread
             | Self::FramesBusy
             | Self::InvalidResize(_)
             | Self::Upload(_)

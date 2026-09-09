@@ -28,6 +28,14 @@ pnpm start:viewer
 
 如果窗口没有出现或出现多个旧进程，请参阅[开发版无法启动](TROUBLESHOOTING.md#开发版无法启动)。
 
+原生验收可以使用受管控入口：
+
+```bash
+pnpm accept:native:managed -- --smoke --viewport 1024x720
+```
+
+它会自行启动并关闭当前工作树实例，验收期间只连接该实例的 PID，不通过应用名称选择窗口。
+
 ## 2. 打开项目
 
 ### 2.1 选择文件夹

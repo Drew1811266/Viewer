@@ -49,6 +49,7 @@ fn vs_main(input: VertexInput) -> VertexOutput {
         let normal = vec2<f32>(-tangent.y, tangent.x);
         offset_px = normal * input.screen_offset_px.x + tangent * input.screen_offset_px.y;
     }
+    offset_px *= max(camera.viewport_physical.z, 1.0);
     let clip_offset = vec2<f32>(
         offset_px.x * 2.0 / camera.viewport_physical.x,
         -offset_px.y * 2.0 / camera.viewport_physical.y,

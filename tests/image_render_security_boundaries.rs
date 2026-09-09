@@ -223,6 +223,7 @@ async fn stale_generation_is_ignored_and_revision_gaps_require_a_snapshot() {
                 scene: ImageRenderSceneDto {
                     annotations: vec![],
                     draft: None,
+                    annotations_editable: true,
                 },
             },
         ))

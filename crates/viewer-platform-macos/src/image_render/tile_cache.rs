@@ -13,9 +13,9 @@ use super::{
     DecodedResource, DecodedResourceKind, ImageResourceError, PixelFormat, SourceFingerprint,
 };
 
-// Version 2 fixes the canonical scanline orientation. Keeping it in the cache
-// key prevents version-1 bottom-up previews from surviving the decoder change.
-pub const CACHE_SCHEMA_VERSION: u32 = 2;
+// Version 3 adds the one-pixel tiled sampling border. Keeping it in the cache
+// key prevents version-2 unpadded tiles from surviving the decoder change.
+pub const CACHE_SCHEMA_VERSION: u32 = 3;
 const CACHE_MAGIC: &[u8; 8] = b"VWBGRA01";
 const CACHE_HEADER_BYTES: usize = 28;
 
@@ -117,6 +117,7 @@ pub struct CacheReclaimReport {
 
 #[derive(Clone)]
 pub struct MacImageTileCache {
+    memory: viewer_render_core::ImageMemoryCoordinator,
     root: Arc<PathBuf>,
     budget: MemoryBudget,
     ledger: Arc<Mutex<BudgetedLru<DerivedCacheKey>>>,
@@ -124,6 +125,20 @@ pub struct MacImageTileCache {
 
 impl MacImageTileCache {
     pub fn new(root: &Path, budget: MemoryBudget) -> Result<Self, ImageResourceError> {
+        Self::with_memory(
+            root,
+            budget,
+            viewer_render_core::ImageMemoryCoordinator::new(
+                viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+            ),
+        )
+    }
+
+    pub fn with_memory(
+        root: &Path,
+        budget: MemoryBudget,
+        memory: viewer_render_core::ImageMemoryCoordinator,
+    ) -> Result<Self, ImageResourceError> {
         if root.exists() {
             let metadata = fs::symlink_metadata(root).map_err(ImageResourceError::io)?;
             if metadata.file_type().is_symlink() || !metadata.is_dir() {
@@ -134,6 +149,7 @@ impl MacImageTileCache {
         }
         let root = fs::canonicalize(root).map_err(ImageResourceError::io)?;
         Ok(Self {
+            memory,
             root: Arc::new(root),
             budget,
             ledger: Arc::new(Mutex::new(BudgetedLru::new(budget))),
@@ -151,8 +167,19 @@ impl MacImageTileCache {
         kind: DecodedResourceKind,
         priority: ResourcePriority,
     ) -> Result<Option<DecodedResource>, ImageResourceError> {
+        self.load_expected(key, generation, kind, priority, None)
+    }
+
+    pub fn load_expected(
+        &self,
+        key: &DerivedCacheKey,
+        generation: AssetGeneration,
+        kind: DecodedResourceKind,
+        priority: ResourcePriority,
+        dimensions: Option<(u32, u32)>,
+    ) -> Result<Option<DecodedResource>, ImageResourceError> {
         let path = self.entry_path(key);
-        let metadata = match fs::metadata(&path) {
+        let metadata = match fs::symlink_metadata(&path) {
             Ok(metadata) => metadata,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 self.remove_ledger_entry(key)?;
@@ -160,13 +187,24 @@ impl MacImageTileCache {
             }
             Err(error) => return Err(ImageResourceError::io(error)),
         };
-        if metadata.len() > self.budget.disk_cache_bytes {
+        if !metadata.is_file() || metadata.len() > self.budget.disk_cache_bytes {
             let _ = fs::remove_file(&path);
             self.remove_ledger_entry(key)?;
             return Ok(None);
         }
-        let decoded = match read_entry(&path, key.clone(), generation, kind) {
+        let decoded = match read_entry(
+            &path,
+            key.clone(),
+            generation,
+            kind,
+            self.budget,
+            &self.memory,
+            dimensions,
+        ) {
             Ok(decoded) => decoded,
+            // Resource pressure is not file corruption. Keep the warm entry
+            // and preserve the caller's temporary/permanent admission outcome.
+            Err(error @ ImageResourceError::MemoryAdmission(_)) => return Err(error),
             Err(_) => {
                 let _ = fs::remove_file(&path);
                 self.remove_ledger_entry(key)?;
@@ -304,7 +342,7 @@ fn validate_resource(resource: &DecodedResource) -> Result<(), ImageResourceErro
     if resource.pixel_format != PixelFormat::Bgra8PremultipliedSrgb
         || resource.width == 0
         || resource.height == 0
-        || resource.bytes_per_row != resource.width.saturating_mul(4)
+        || Some(resource.bytes_per_row) != resource.width.checked_mul(4)
         || u64::try_from(resource.pixels.len()).ok()
             != Some(u64::from(resource.bytes_per_row) * u64::from(resource.height))
     {
@@ -350,11 +388,24 @@ fn read_entry(
     key: DerivedCacheKey,
     generation: AssetGeneration,
     kind: DecodedResourceKind,
+    budget: MemoryBudget,
+    memory: &viewer_render_core::ImageMemoryCoordinator,
+    dimensions: Option<(u32, u32)>,
 ) -> Result<DecodedResource, ImageResourceError> {
-    let mut file = OpenOptions::new()
-        .read(true)
-        .open(path)
-        .map_err(ImageResourceError::io)?;
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Recheck the opened file below; do not block on a FIFO or follow a
+        // symlink swapped in after the initial directory-entry check.
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    let mut file = options.open(path).map_err(ImageResourceError::io)?;
+    let metadata = file.metadata().map_err(ImageResourceError::io)?;
+    if !metadata.is_file() || metadata.len() < CACHE_HEADER_BYTES as u64 {
+        return Err(ImageResourceError::InvalidResource);
+    }
     let mut header = [0_u8; CACHE_HEADER_BYTES];
     file.read_exact(&mut header)
         .map_err(ImageResourceError::io)?;
@@ -370,15 +421,43 @@ fn read_entry(
         .ok_or(ImageResourceError::InvalidResource)?;
     if width == 0
         || height == 0
-        || bytes_per_row != width.saturating_mul(4)
+        || Some(bytes_per_row) != width.checked_mul(4)
         || payload_len != expected
     {
         return Err(ImageResourceError::InvalidResource);
     }
-    let mut pixels =
-        vec![0; usize::try_from(payload_len).map_err(|_| ImageResourceError::LimitExceeded)?];
-    file.read_exact(&mut pixels)
-        .map_err(ImageResourceError::io)?;
+    let matching_region = match (key.region(), kind) {
+        (
+            DerivedRegion::Preview {
+                width: expected_width,
+                height: expected_height,
+            },
+            DecodedResourceKind::Preview { level },
+        ) => width == *expected_width && height == *expected_height && level == key.level(),
+        (DerivedRegion::Tile(expected_tile), DecodedResourceKind::Tile(tile)) => {
+            *expected_tile == tile && tile.level == key.level()
+        }
+        _ => false,
+    };
+    let entry_bytes = (CACHE_HEADER_BYTES as u64)
+        .checked_add(payload_len)
+        .ok_or(ImageResourceError::InvalidResource)?;
+    if !matching_region
+        || dimensions.is_some_and(|expected| expected != (width, height))
+        || entry_bytes != metadata.len()
+    {
+        return Err(ImageResourceError::InvalidResource);
+    }
+    if payload_len > budget.cpu_staging_bytes || entry_bytes > budget.disk_cache_bytes {
+        return Err(ImageResourceError::LimitExceeded);
+    }
+    let mut pixels = viewer_render_core::SharedPixels::try_zeroed(memory, generation, payload_len)?;
+    file.read_exact(
+        pixels
+            .get_mut()
+            .expect("new cache storage is uniquely owned"),
+    )
+    .map_err(ImageResourceError::io)?;
     let mut trailing = [0_u8; 1];
     if file.read(&mut trailing).map_err(ImageResourceError::io)? != 0 {
         return Err(ImageResourceError::InvalidResource);
@@ -391,6 +470,10 @@ fn read_entry(
         height,
         bytes_per_row,
         pixel_format: PixelFormat::Bgra8PremultipliedSrgb,
-        pixels: pixels.into(),
+        sample_border: match kind {
+            DecodedResourceKind::Preview { .. } => 0,
+            DecodedResourceKind::Tile(_) => viewer_render_core::DEFAULT_TILE_BORDER,
+        },
+        pixels,
     })
 }

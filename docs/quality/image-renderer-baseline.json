@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "renderer": "native-wgpu-metal",
+  "workload": {
+    "sourceWidth": 7680,
+    "sourceHeight": 4320,
+    "annotationCount": 500,
+    "displayHz": 60,
+    "frameSamples": 240,
+    "saveSamples": 30
+  },
+  "budgets": {
+    "frameP95Ms": 16.7,
+    "minimumPresentedFps": 60,
+    "coldFirstInteractiveMs": 300,
+    "warmFirstInteractiveMs": 100,
+    "gpuTextureBytesPeak": 268435456,
+    "droppedInputSamples": 0,
+    "saveP95Ms": 100,
+    "saveP99Ms": 300
+  },
+  "measurement": {
+    "frameSource": "display-link-driven surface submission cadence in a real native window; not scanout or end-to-end input latency",
+    "surfaceCoverage": "performance uses the production AppKit/CAMetalLayer actor; selected native acceptance states independently verify UI behavior",
+    "gpuTimestampPolicy": "report unavailable explicitly when the selected adapter does not expose timestamp queries; frame gates still apply"
+  },
+  "nativeAcceptanceIds": [
+    "PRE-08",
+    "RVW-16",
+    "RVW-17",
+    "RVW-18",
+    "RVW-19",
+    "RVW-20",
+    "RVW-24",
+    "RVW-33",
+    "RVW-34",
+    "RVW-35",
+    "RVW-36",
+    "RVW-37"
+  ]
+}

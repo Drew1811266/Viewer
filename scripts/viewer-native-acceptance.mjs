@@ -145,6 +145,29 @@ export const NATIVE_SMOKE_IDS = Object.freeze([
   'close-project-native',
 ])
 
+export const IMAGE_RENDER_ACCEPTANCE_IDS = Object.freeze([
+  'PRE-08',
+  'RVW-16',
+  'RVW-17',
+  'RVW-18',
+  'RVW-19',
+  'RVW-20',
+  'RVW-24',
+  'RVW-33',
+  'RVW-34',
+  'RVW-35',
+  'RVW-36',
+  'RVW-37',
+])
+
+export function buildNativeImageRenderAcceptancePlan() {
+  return Object.freeze({
+    renderer: 'native-wgpu-metal',
+    nativeSmokeIds: Object.freeze(['preview-native']),
+    visualStateIds: IMAGE_RENDER_ACCEPTANCE_IDS,
+  })
+}
+
 export const NATIVE_SMOKE_TARGETS = Object.freeze({
   renameDialogHeading: Object.freeze({ role: 'AXHeading', name: '重命名文件' }),
 })
@@ -1484,6 +1507,48 @@ export async function discoverNativeWindows({ helperPath, pid, protocolTest = fa
   })
 }
 
+/**
+ * The Tauri process can become observable a short time before AppKit publishes
+ * its main window. Keep preflight deterministic by waiting for that bounded
+ * readiness gap instead of failing immediately with a misleading zero-window
+ * error. Duplicate windows still fail immediately because they indicate a
+ * real ownership violation, not startup latency.
+ */
+export async function waitForNativeWindow({
+  helperPath,
+  pid,
+  protocolTest = false,
+  viewport,
+  timeoutMs = 10_000,
+  intervalMs = 100,
+  discover = discoverNativeWindows,
+}) {
+  return waitFor(
+    async () => {
+      const windows = await discover({ helperPath, pid, protocolTest })
+      if (windows.length === 0) return false
+      if (windows.length > 1) {
+        throw new AcceptanceError(
+          'PRECONDITION_WINDOW_COUNT',
+          `Expected exactly one Viewer main window, found ${windows.length}`,
+          { windowIds: windows.map((window) => window.windowId) },
+        )
+      }
+      if (
+        viewport &&
+        (windows[0].width !== viewport.width || windows[0].height !== viewport.height)
+      ) {
+        // AppKit may publish the window once with its restored frame and then
+        // apply the requested acceptance size. Wait for the exact stable
+        // dimensions instead of validating that transient frame.
+        return false
+      }
+      return windows
+    },
+    { timeoutMs, intervalMs },
+  )
+}
+
 function commandExecutable(command) {
   return command.trim().split(/\s+/, 1)[0]
 }
@@ -2288,9 +2353,13 @@ export async function collectNativePreflight({ repoRoot, options }) {
     new URL('./viewer-native-acceptance.swift', import.meta.url),
   )
   const helper = await buildNativeHelper({ repoRoot, sourcePath })
-  const windows = await discoverNativeWindows({
+  const viewportMatch = options.viewport.match(/^(\d+)x(\d+)$/)
+  const windows = await waitForNativeWindow({
     helperPath: helper.executablePath,
     pid: viewer.pid,
+    viewport: viewportMatch
+      ? { width: Number(viewportMatch[1]), height: Number(viewportMatch[2]) }
+      : undefined,
   })
   const preflight = validateCapturePreflight({
     options,

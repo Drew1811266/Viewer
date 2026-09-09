@@ -46,6 +46,46 @@ pub enum ImageRenderRuntimeError {
     DriverFailed,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeRecoveryDecision {
+    RecoverNative,
+    Escalate,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct NativeRecoveryTracker {
+    consecutive_failures: u8,
+    recovery_count: u64,
+}
+
+impl NativeRecoveryTracker {
+    pub fn record_retryable_failure(&mut self) -> NativeRecoveryDecision {
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        self.recovery_count = self.recovery_count.saturating_add(1);
+        if self.consecutive_failures >= 2 {
+            NativeRecoveryDecision::Escalate
+        } else {
+            NativeRecoveryDecision::RecoverNative
+        }
+    }
+
+    pub fn record_presented_frame(&mut self) {
+        self.consecutive_failures = 0;
+    }
+
+    pub fn record_terminal_failure(&mut self) {
+        self.consecutive_failures = 0;
+    }
+
+    pub const fn consecutive_failures(&self) -> u8 {
+        self.consecutive_failures
+    }
+
+    pub const fn recovery_count(&self) -> u64 {
+        self.recovery_count
+    }
+}
+
 #[async_trait]
 pub trait ImageSourceAuthorizer: Send + Sync {
     async fn authorize_image(
@@ -572,6 +612,7 @@ fn scene_snapshot(
             .collect::<Result<Vec<_>, _>>()?,
         dto.draft.as_ref().map(annotation_node).transpose()?,
     )
+    .map(|scene| scene.with_annotations_editable(dto.annotations_editable))
     .map_err(|_| ImageRenderRuntimeError::InvalidCommand)
 }
 

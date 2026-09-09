@@ -1,15 +1,15 @@
-use std::{collections::BTreeMap, error::Error, f64::consts::TAU, fmt};
+use std::{collections::BTreeMap, error::Error, f64::consts::TAU, fmt, ops::Range};
 
 use viewer_render_core::{
-    AnnotationGeometry, AnnotationNode, AnnotationStyle, NormalizedPoint, NormalizedRect,
-    SceneRevision, SceneSnapshot,
+    AnnotationGeometry, AnnotationHandle, AnnotationNode, AnnotationStyle, HANDLE_RADIUS_PX,
+    NormalizedPoint, NormalizedRect, ORDINAL_RADIUS_PX, SceneRevision, SceneSnapshot,
+    TransformSnapshot, annotation_handles, annotation_ordinal_position,
 };
 
 const ELLIPSE_SEGMENTS: usize = 48;
 const CIRCLE_SEGMENTS: usize = 16;
-const BADGE_RADIUS_PX: f32 = 11.0;
+const BADGE_RADIUS_PX: f32 = ORDINAL_RADIUS_PX as f32;
 const POINT_RADIUS_PX: f32 = 7.0;
-const HANDLE_RADIUS_PX: f32 = 4.0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VertexKind {
@@ -33,6 +33,16 @@ pub struct AnnotationVertex {
 pub struct OrdinalLabel {
     pub anchor: NormalizedPoint,
     pub text: String,
+    pub geometry: AnnotationGeometry,
+    pub badge_vertices: Range<usize>,
+    pub badge_indices: Range<usize>,
+}
+
+impl OrdinalLabel {
+    pub fn layout_anchor(&self, transform: &TransformSnapshot) -> Option<NormalizedPoint> {
+        annotation_ordinal_position(&self.geometry, transform)
+            .map(|position| transform.view_to_image_unclamped(position))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -42,9 +52,13 @@ pub struct AnnotationMesh {
     indices: Vec<u32>,
     ordinal_labels: Vec<OrdinalLabel>,
     selection_handle_count: usize,
+    geometry_index_ranges: Vec<Range<u32>>,
 }
 
 impl AnnotationMesh {
+    pub fn geometry_index_ranges(&self) -> &[Range<u32>] {
+        &self.geometry_index_ranges
+    }
     pub const fn revision(&self) -> SceneRevision {
         self.revision
     }
@@ -105,9 +119,18 @@ impl AnnotationMeshBuilder {
             indices: Vec::new(),
             ordinal_labels: Vec::new(),
             selection_handle_count: 0,
+            geometry_index_ranges: Vec::new(),
         };
-        for node in scene.annotations().iter().filter(|node| node.visible) {
-            self.append_node(&mut mesh, node, true)?;
+        // Selected controls visually precede overlapping unselected geometry,
+        // matching the selected-handle priority in native hit testing.
+        for selected in [false, true] {
+            for node in scene
+                .annotations()
+                .iter()
+                .filter(|node| node.visible && node.selected == selected)
+            {
+                self.append_node(&mut mesh, node, true)?;
+            }
         }
         if let Some(draft) = scene.draft().filter(|node| node.visible) {
             self.append_node(&mut mesh, draft, false)?;
@@ -196,12 +219,46 @@ impl AnnotationMeshBuilder {
         include_badge: bool,
     ) -> Result<(), MeshError> {
         let fragment = self.tessellate_geometry(&node.geometry, node.style)?;
+        let geometry_start = mesh.indices.len() as u32;
         append_fragment(mesh, fragment)?;
+        mesh.geometry_index_ranges
+            .push(geometry_start..mesh.indices.len() as u32);
 
         if node.selected {
-            for handle in geometry_bounds_corners(&node.geometry) {
+            for (_, handle) in annotation_handles(&node.geometry)
+                .into_iter()
+                .filter(|(kind, _)| *kind != AnnotationHandle::Point)
+            {
                 let mut fragment = AnnotationMeshFragment::default();
-                push_screen_square(&mut fragment, handle, HANDLE_RADIUS_PX, node.style.color)?;
+                if matches!(node.geometry, AnnotationGeometry::Arrow { .. }) {
+                    push_screen_circle(
+                        &mut fragment,
+                        handle,
+                        HANDLE_RADIUS_PX as f32,
+                        node.style.color,
+                        self.circle_segments,
+                    )?;
+                    push_screen_circle(
+                        &mut fragment,
+                        handle,
+                        (HANDLE_RADIUS_PX - 2.0) as f32,
+                        [1.0; 4],
+                        self.circle_segments,
+                    )?;
+                } else {
+                    push_screen_square(
+                        &mut fragment,
+                        handle,
+                        HANDLE_RADIUS_PX as f32,
+                        node.style.color,
+                    )?;
+                    push_screen_square(
+                        &mut fragment,
+                        handle,
+                        (HANDLE_RADIUS_PX - 2.0) as f32,
+                        [1.0; 4],
+                    )?;
+                }
                 append_fragment(mesh, fragment)?;
                 mesh.selection_handle_count += 1;
             }
@@ -209,6 +266,8 @@ impl AnnotationMeshBuilder {
 
         if include_badge {
             let anchor = geometry_anchor(&node.geometry);
+            let badge_start = mesh.vertices.len();
+            let badge_index_start = mesh.indices.len();
             let mut badge = AnnotationMeshFragment::default();
             push_screen_circle(
                 &mut badge,
@@ -221,6 +280,9 @@ impl AnnotationMeshBuilder {
             mesh.ordinal_labels.push(OrdinalLabel {
                 anchor,
                 text: node.ordinal.to_string(),
+                geometry: node.geometry.clone(),
+                badge_vertices: badge_start..mesh.vertices.len(),
+                badge_indices: badge_index_start..mesh.indices.len(),
             });
         }
         Ok(())
@@ -407,43 +469,6 @@ fn geometry_anchor(geometry: &AnnotationGeometry) -> NormalizedPoint {
     }
 }
 
-fn geometry_bounds_corners(geometry: &AnnotationGeometry) -> [NormalizedPoint; 4] {
-    let rect = geometry_bounds(geometry);
-    rect_corners(rect)
-}
-
-fn geometry_bounds(geometry: &AnnotationGeometry) -> NormalizedRect {
-    let (min_x, min_y, max_x, max_y) = match geometry {
-        AnnotationGeometry::Point { position } => (position.x, position.y, position.x, position.y),
-        AnnotationGeometry::Arrow { tail, head } => (
-            tail.x.min(head.x),
-            tail.y.min(head.y),
-            tail.x.max(head.x),
-            tail.y.max(head.y),
-        ),
-        AnnotationGeometry::Rectangle { rect } | AnnotationGeometry::Ellipse { rect } => {
-            (rect.x, rect.y, rect.x + rect.width, rect.y + rect.height)
-        }
-        AnnotationGeometry::Stroke { points } => points.iter().fold(
-            (1.0_f64, 1.0_f64, 0.0_f64, 0.0_f64),
-            |(min_x, min_y, max_x, max_y), point| {
-                (
-                    min_x.min(point.x),
-                    min_y.min(point.y),
-                    max_x.max(point.x),
-                    max_y.max(point.y),
-                )
-            },
-        ),
-    };
-    NormalizedRect {
-        x: min_x,
-        y: min_y,
-        width: max_x - min_x,
-        height: max_y - min_y,
-    }
-}
-
 fn rect_corners(rect: NormalizedRect) -> [NormalizedPoint; 4] {
     [
         NormalizedPoint {
@@ -583,7 +608,7 @@ pub struct GlyphMetrics {
 pub struct OrdinalGlyphAtlas {
     width: u32,
     height: u32,
-    pixels: Vec<u8>,
+    pixels: viewer_render_core::SharedPixels,
     metrics: BTreeMap<char, GlyphMetrics>,
 }
 
@@ -592,6 +617,38 @@ impl OrdinalGlyphAtlas {
         width: u32,
         height: u32,
         pixels: Vec<u8>,
+        metrics: BTreeMap<char, GlyphMetrics>,
+    ) -> Result<Self, GlyphAtlasError> {
+        if width == 0 || height == 0 {
+            return Err(GlyphAtlasError::EmptyDimensions);
+        }
+        let expected = usize::try_from(u64::from(width) * u64::from(height))
+            .map_err(|_| GlyphAtlasError::SizeOverflow)?;
+        if pixels.len() != expected {
+            return Err(GlyphAtlasError::PixelLength {
+                expected,
+                actual: pixels.len(),
+            });
+        }
+        let memory = viewer_render_core::ImageMemoryCoordinator::new(
+            viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+        );
+        Self::from_shared(
+            width,
+            height,
+            viewer_render_core::SharedPixels::try_copy_from_slice(
+                &memory,
+                viewer_render_core::AssetGeneration(0),
+                &pixels,
+            )?,
+            metrics,
+        )
+    }
+
+    pub fn from_shared(
+        width: u32,
+        height: u32,
+        pixels: viewer_render_core::SharedPixels,
         metrics: BTreeMap<char, GlyphMetrics>,
     ) -> Result<Self, GlyphAtlasError> {
         if width == 0 || height == 0 {
@@ -630,6 +687,20 @@ impl OrdinalGlyphAtlas {
         &self.pixels
     }
 
+    pub(crate) fn accounted(
+        &self,
+        memory: &viewer_render_core::ImageMemoryCoordinator,
+    ) -> Result<Self, GlyphAtlasError> {
+        if self.pixels.is_accounted_by(memory) {
+            return Ok(self.clone());
+        }
+        let pixels = viewer_render_core::SharedPixels::try_copy_from_slice(
+            memory,
+            viewer_render_core::AssetGeneration(0),
+            &self.pixels,
+        )?;
+        Self::from_shared(self.width, self.height, pixels, self.metrics.clone())
+    }
     pub fn metrics(&self, glyph: char) -> Option<&GlyphMetrics> {
         self.metrics.get(&glyph)
     }
@@ -637,6 +708,7 @@ impl OrdinalGlyphAtlas {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GlyphAtlasError {
+    Memory(viewer_render_core::MemoryAdmissionError),
     EmptyDimensions,
     SizeOverflow,
     PixelLength { expected: usize, actual: usize },
@@ -653,6 +725,7 @@ impl Error for GlyphAtlasError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MeshError {
+    Memory(viewer_render_core::MemoryAdmissionError),
     DegenerateSegment,
     InvalidTessellation,
     MeshTooLarge,
@@ -665,3 +738,14 @@ impl fmt::Display for MeshError {
 }
 
 impl Error for MeshError {}
+
+impl From<viewer_render_core::MemoryAdmissionError> for MeshError {
+    fn from(error: viewer_render_core::MemoryAdmissionError) -> Self {
+        Self::Memory(error)
+    }
+}
+impl From<viewer_render_core::MemoryAdmissionError> for GlyphAtlasError {
+    fn from(error: viewer_render_core::MemoryAdmissionError) -> Self {
+        Self::Memory(error)
+    }
+}

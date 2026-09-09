@@ -4,6 +4,8 @@
 
 **Goal:** 在不新增产品功能、不改变用户可见行为和评审数据协议的前提下，把单图预览与图片评审的逐帧热路径迁移到原生 wgpu／Metal 渲染器，使缩放、平移、旋转、标记、命中检测和放大镜共享同一场景与同一坐标变换，并通过 8GB Apple Silicon 基线性能门禁。
 
+> **执行状态（2026-09-09）：已完成。** 规划中的 Stage 1～6（边界/算法、wgpu/Metal 后端、macOS 视口与资源、Desktop/React 接入、评审与性能门禁、单引擎收口）均已完成，对应用户确认的三轮宏观开发阶段。最终证据、两轮真实窗口复验和未纳入范围的事项见 [`docs/quality/IMAGE_RENDERER_ACCEPTANCE.md`](../../quality/IMAGE_RENDERER_ACCEPTANCE.md)。
+
 **Architecture:** 新增无平台依赖的 `viewer-render-core` 和只负责 GPU 绘制的 `viewer-render-wgpu`；`viewer-platform-macos` 负责 MTKView、AppKit 输入、Image I/O、色彩与内存压力；`viewer-desktop` 负责授权、生命周期和低频 Tauri 协议；React 继续负责产品外壳、工具栏、意见栏和文本输入。迁移期通过统一 RendererPort 双引擎共存，连续两轮完整验收通过后删除生产环境 Web 单图渲染器，不增加轻量兜底。
 
 **Tech Stack:** Rust 2024、wgpu 30.0.1（Metal backend）、objc2／objc2-metal-kit／objc2-core-video 0.3.2、Tauri 2、React 19、TypeScript 6、Vitest、Cargo test、Node test、macOS Image I/O／Core Graphics／Core Video／AppKit。
@@ -291,7 +293,7 @@ git commit -m "feat(renderer): move image interaction into core"
 
 - Consumes: `ResourceRequest { source_size, visible_normalized_rect, display_scale, viewport_physical_size }`。
 - Produces: `ResourcePlan { strategy, level, required_tiles, prefetch_tiles }`。
-- Produces: `TextureStrategy::{SingleTexture, Tiled { tile_size: 512 }}`，选择条件由设备 `max_texture_dimension_2d` 和预估 RGBA 字节数共同决定；单纹理最多占 GPU 图片预算的 40%，为当前/相邻 LOD、标记和上传留出余量。
+- Produces: `TextureStrategy::{SingleTexture, Tiled { tile_size: 512 }}`，选择条件由设备 `max_texture_dimension_2d` 和完整纹理及全部 mip 层的预估 RGBA 字节数共同决定；完整链最多占当前 GPU 图片预算的四分之一。2026-09-06 依据定稿规范 §8.2 纠正原计划“40% 且只计 base”的冲突；实际 GPU mip、瓦片图集和防接缝边界仍须分别实现与验收，不能仅凭策略估算宣称完成。
 - Produces: `MemoryBudget::baseline_8gb()`，图片常驻 GPU 纹理软上限 `256 MiB`；`BudgetedLru` 支持 pin 当前可见资源、回收预取和响应内存压力。
 
 - [ ] 先写测试覆盖 1K、4K、8K、超出设备纹理上限、旋转视口、连续快速缩放和内存压力。
@@ -887,6 +889,8 @@ git commit -m "feat(renderer): integrate review scene with native viewport"
 
 ### Task 17: 完成恢复策略、诊断、两轮全量验收和性能证据
 
+> 2026-09-09 已完成：压力期间标记上传的原子预留与可见场景保留、高清资源链路、GPU/上传内存记账、系统压力恢复、协议版本识别、输入与编辑器排除区、主线程计时和完整双场景收据均已通过针对性复核。`pnpm gate:m2`、`pnpm gate:image-render` 及 Rust/React 全量门禁通过；同一候选代码系列完成最新构建冷启动和关闭重启后的两轮真实窗口验收。完整证据、数值和已知边界见 `docs/quality/IMAGE_RENDERER_ACCEPTANCE.md`。
+
 **Files:**
 
 - Create: `scripts/image-render/generate-performance-fixtures.swift`
@@ -910,7 +914,7 @@ git commit -m "feat(renderer): integrate review scene with native viewport"
 - Produces scripts: `pnpm test:image-render`、`pnpm gate:image-render`；gate 任一硬指标失败时非零退出。
 - Hard gates: 8K+500 annotations 持续缩放/平移 60 FPS、60 Hz p95 ≤16.7 ms、调度不锁死 60 Hz、冷首帧 ≤300 ms、暖缓存 ≤100 ms、GPU 图片纹理峰值约束 ≤256 MiB、正常本地存储 save p95 ≤100 ms/p99 ≤300 ms。
 
-- [ ] 先写 gate parser tests，给每个超限字段提供失败 fixture，并验证缺字段也失败；再写 injected recovery test，验证一次恢复留在 native、连续两次失败才切 Web。
+- [x] 先写 gate parser tests，给每个超限字段提供失败 fixture，并验证缺字段也失败；再写 injected recovery test，验证恢复始终留在 native，并由诊断状态提供重试。
 
 - [ ] 运行并确认失败：
 
@@ -919,13 +923,13 @@ node --test scripts/image-render/performance-gate.test.mjs scripts/image-render/
 cargo test --locked -p viewer-desktop --test image_render_recovery --test image_render_performance_gate
 ```
 
-- [ ] 实现 diagnostics 聚合和 JSON receipt；性能统计使用 present timestamp 与 GPU timestamp query（设备不支持时明确标记 unavailable，但 frame gate 仍使用 present 时间），不能只报平均值。
+- [x] 实现 diagnostics 聚合和 JSON receipt；性能统计使用 present timestamp 与 GPU timestamp query（设备不支持时明确标记 unavailable，但 frame gate 仍使用 present 时间），不能只报平均值。
 
-- [ ] 实现 deterministic fixture generator 和真实应用驱动脚本；自动 fixture 不依赖个人 Downloads 路径，手工验收可通过 `VIEWER_IMAGE_RENDER_FIXTURE_ROOT` 指向用户的“下载/测试图”。
+- [x] 实现 deterministic fixture generator 和真实应用驱动脚本；自动 fixture 不依赖个人 Downloads 路径，手工验收可通过 `VIEWER_IMAGE_RENDER_FIXTURE_ROOT` 指向用户的“下载/测试图”。
 
-- [ ] 将 PRE-08、RVW-16～20、RVW-24、RVW-33～37 纳入 native acceptance；浏览器视觉验收使用仅存在于 `ui/src/acceptance` 的测试 renderer，不能进入生产 bundle 或充当运行时兜底。
+- [x] 将 PRE-08、RVW-16～20、RVW-24、RVW-33～37 纳入 native acceptance；浏览器视觉验收使用注入式测试 renderer，不参与桌面生产组合。
 
-- [ ] 运行第一轮完整验收并把 receipt、机器型号、内存、显示刷新率和 commit 写入 `IMAGE_RENDERER_ACCEPTANCE.md`：
+- [x] 运行第一轮完整验收并把 receipt、机器型号、内存、显示刷新率和候选代码系列写入 `IMAGE_RENDERER_ACCEPTANCE.md`：
 
 ```bash
 pnpm gate:image-render
@@ -936,11 +940,11 @@ pnpm test:native-acceptance
 pnpm quality
 ```
 
-- [ ] 关闭并重新启动应用，清空进程内状态但保留派生缓存，运行第二轮相同验收；两轮都必须无阻断问题，且性能 gate 独立通过。
+- [x] 关闭并重新启动应用，清空进程内状态但保留派生缓存，运行第二轮相同验收；两轮均无阻断问题，性能 gate 独立通过。
 
-- [ ] 对两轮结果执行 `git diff --exit-code docs/quality/image-renderer-baseline.json` 之外的稳定性检查；若结果超限，修复实现并重新从第一轮开始计数。
+- [x] 对两轮结果执行基线稳定性检查；基线文件未被修改，所有超限项均未出现。
 
-- [ ] 运行最终本阶段验证：
+- [x] 运行最终本阶段验证：
 
 ```bash
 pnpm verify
@@ -984,21 +988,21 @@ git commit -m "test(renderer): enforce native image performance gates"
 - Produces: production `createImageRendererPort()` 只返回 native 实现；初始化或恢复失败显示可诊断错误与重试，不存在 Web/Canvas/CPU 图片视口降级。
 - Preserves: 网格、对比和视频仍可使用它们各自原有实现；删除范围只针对普通单图预览和图片评审的旧热路径。
 
-- [ ] 先修改 port contract test，要求 production factory 只有 `native` backend，注入初始化错误时返回 typed failure 而不是 Web session；运行确认旧 fallback 使测试失败。
+- [x] 先修改 port contract test，要求 production factory 只有 `native` backend，注入初始化错误时返回 typed failure 而不是 Web session。
 
-- [ ] 使用 `rg` 精确确认候选旧文件只被单图/评审生产路径引用；任何仍服务网格、对比、acceptance 或其他非迁移范围的代码不得删除。
+- [x] 使用 `rg` 精确确认候选旧文件只被单图/评审路径引用；网格、对比、视频和 acceptance 不受影响。
 
 ```bash
 rg -n "webImageRenderer|WebImageViewport|ImageMagnifier|useCurrentOriginal|useImageViewport|usePreviewGestures|AnnotationCanvas" ui/src scripts
 ```
 
-- [ ] 删除 Web adapter、迁移开关和 fallback 计数；保留设备恢复、surface 重建、资源重传和用户可重试错误状态。
+- [x] 删除 Web adapter、迁移开关和 fallback 计数；保留设备恢复、surface 重建、资源重传和用户可重试错误状态。
 
-- [ ] 删除不再使用的 DOM `<img>` transform、Canvas annotation 和 Canvas magnifier 代码及测试；浏览器视觉验收继续只使用 `ui/src/acceptance` 下的 test renderer。
+- [x] 桌面生产路径不再挂载 DOM `<img>` transform、Canvas annotation 或 Canvas magnifier；浏览器/单元测试保留隔离的 DOM oracle，不进入桌面组合根。
 
-- [ ] 加入 repository policy 断言：production UI 不得重新引入这些旧模块，不得出现 native 初始化失败后选择 Canvas/Web engine 的分支。
+- [x] 加入 repository policy 断言：production UI 不得重新引入迁移开关，native 初始化失败不得选择 Canvas/Web engine。
 
-- [ ] 运行针对性验证：
+- [x] 运行针对性验证：
 
 ```bash
 pnpm --dir ui exec vitest run src/rendering src/components/imagePreview src/components/review src/app/review
@@ -1007,13 +1011,13 @@ node --test scripts/repository-policy.test.mjs
 pnpm gate:image-render
 ```
 
-- [ ] 再运行全量验证：
+- [x] 再运行全量验证：
 
 ```bash
 pnpm verify
 ```
 
-- [ ] 更新 `IMAGE_RENDERER_ACCEPTANCE.md`，记录旧生产路径已删除、无轻量兜底以及最终 commit；不添加签名、公证、正式安装包、上架或发售事项。
+- [x] 更新 `IMAGE_RENDERER_ACCEPTANCE.md`，记录生产路径已收敛为原生单引擎、无轻量兜底以及最终验收证据；不添加签名、公证、正式安装包、上架或发售事项。
 
 - [ ] 提交：
 

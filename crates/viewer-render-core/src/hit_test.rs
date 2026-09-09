@@ -1,11 +1,27 @@
+use crate::BOX_ORDINAL_CLEARANCE_PX;
 use std::collections::BTreeSet;
 
 use crate::{
-    AnnotationGeometry, AnnotationId, AnnotationNode, LogicalPoint, NormalizedPoint, SceneSnapshot,
-    TransformSnapshot,
+    AnnotationGeometry, AnnotationHandle, AnnotationId, AnnotationNode, HANDLE_RADIUS_PX,
+    LogicalPoint, NormalizedPoint, ORDINAL_CLEARANCE_PX, ORDINAL_RADIUS_PX, SceneSnapshot,
+    TransformSnapshot, annotation_handles, annotation_ordinal_position,
 };
 
 const GRID_SIDE: usize = 32;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AnnotationHitPart {
+    Handle(AnnotationHandle),
+    Ordinal,
+    Outline,
+    Interior,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AnnotationHit {
+    pub annotation_id: AnnotationId,
+    pub part: AnnotationHitPart,
+}
 
 #[derive(Clone, Debug)]
 pub struct HitIndex {
@@ -41,15 +57,87 @@ impl HitIndex {
         tolerance_px: f64,
         transform: &TransformSnapshot,
     ) -> Option<AnnotationId> {
+        self.hit_test_part(point, tolerance_px, transform)
+            .map(|hit| hit.annotation_id)
+    }
+
+    /// Handles precede selected geometry, ordinals, outlines, then interiors.
+    /// Equal candidates use screen distance then the visually topmost node.
+    pub fn hit_test_part(
+        &self,
+        point: LogicalPoint,
+        tolerance_px: f64,
+        transform: &TransformSnapshot,
+    ) -> Option<AnnotationHit> {
         if !tolerance_px.is_finite() || tolerance_px < 0.0 {
             return None;
         }
-        let mut candidates = self.candidate_indices(point, tolerance_px, transform);
-        candidates.sort_unstable_by(|left, right| right.cmp(left));
-        candidates.into_iter().find_map(|index| {
+        let mut hits = Vec::new();
+        let ordinal_radius = tolerance_px.max(ORDINAL_RADIUS_PX);
+        // Offset ordinals sit outside the indexed geometry bounds.
+        for index in self.candidate_indices(
+            point,
+            ordinal_radius + ORDINAL_CLEARANCE_PX.max(BOX_ORDINAL_CLEARANCE_PX),
+            transform,
+        ) {
             let node = &self.nodes[index];
-            (node.visible && geometry_hits(&node.geometry, point, tolerance_px, transform))
-                .then(|| node.id.clone())
+            if !node.visible {
+                continue;
+            }
+            for (handle, position) in annotation_handles(&node.geometry)
+                .into_iter()
+                .filter(|_| node.selected)
+            {
+                let position = transform.image_to_view(position);
+                let distance = distance(point, position);
+                let hit_distance = if matches!(
+                    node.geometry,
+                    AnnotationGeometry::Rectangle { .. } | AnnotationGeometry::Ellipse { .. }
+                ) {
+                    (point.x - position.x)
+                        .abs()
+                        .max((point.y - position.y).abs())
+                } else {
+                    distance
+                };
+                if hit_distance <= tolerance_px.max(HANDLE_RADIUS_PX) {
+                    hits.push((0, distance, index, AnnotationHitPart::Handle(handle)));
+                }
+            }
+            if let Some((part, distance)) =
+                geometry_hit(&node.geometry, point, tolerance_px, transform)
+            {
+                let priority = if node.selected {
+                    1
+                } else if part == AnnotationHitPart::Outline {
+                    3
+                } else {
+                    4
+                };
+                hits.push((priority, distance, index, part));
+            }
+            let Some(ordinal) = annotation_ordinal_position(&node.geometry, transform) else {
+                continue;
+            };
+            let distance = distance(point, ordinal);
+            if distance <= ordinal_radius {
+                hits.push((
+                    if node.selected { 1 } else { 2 },
+                    distance,
+                    index,
+                    AnnotationHitPart::Ordinal,
+                ));
+            }
+        }
+        hits.sort_by(|left, right| {
+            left.0
+                .cmp(&right.0)
+                .then(left.1.total_cmp(&right.1))
+                .then(right.2.cmp(&left.2))
+        });
+        hits.first().map(|(_, _, index, part)| AnnotationHit {
+            annotation_id: self.nodes[*index].id.clone(),
+            part: *part,
         })
     }
 
@@ -157,62 +245,66 @@ fn geometry_bounds(geometry: &AnnotationGeometry) -> Bounds {
     }
 }
 
-fn geometry_hits(
+fn geometry_hit(
     geometry: &AnnotationGeometry,
     point: LogicalPoint,
     tolerance: f64,
     transform: &TransformSnapshot,
-) -> bool {
-    match geometry {
-        AnnotationGeometry::Point { position } => {
-            distance(transform.image_to_view(*position), point) <= tolerance
-        }
-        AnnotationGeometry::Arrow { tail, head } => {
-            distance_to_segment(
-                point,
-                transform.image_to_view(*tail),
-                transform.image_to_view(*head),
-            ) <= tolerance
-        }
-        AnnotationGeometry::Rectangle { rect } => {
+) -> Option<(AnnotationHitPart, f64)> {
+    use AnnotationHitPart::{Interior, Outline};
+    let distance = match geometry {
+        AnnotationGeometry::Rectangle { rect } | AnnotationGeometry::Ellipse { rect } => {
+            let source = transform.view_to_image_unclamped(point);
             let corners = rect_corners(*rect).map(|corner| transform.image_to_view(corner));
-            corners
-                .into_iter()
-                .zip(corners.into_iter().cycle().skip(1))
-                .take(4)
-                .any(|(start, end)| distance_to_segment(point, start, end) <= tolerance)
-        }
-        AnnotationGeometry::Ellipse { rect } => {
-            let top_left = transform.image_to_view(NormalizedPoint {
-                x: rect.x,
-                y: rect.y,
-            });
-            let bottom_right = transform.image_to_view(NormalizedPoint {
-                x: rect.x + rect.width,
-                y: rect.y + rect.height,
-            });
-            let radius_x = (bottom_right.x - top_left.x).abs() / 2.0;
-            let radius_y = (bottom_right.y - top_left.y).abs() / 2.0;
-            if radius_x == 0.0 || radius_y == 0.0 {
-                return false;
-            }
-            let center = LogicalPoint {
-                x: (top_left.x + bottom_right.x) / 2.0,
-                y: (top_left.y + bottom_right.y) / 2.0,
+            let distance = if matches!(geometry, AnnotationGeometry::Ellipse { .. }) {
+                let radial = (((source.x - rect.x - rect.width / 2.0) / (rect.width / 2.0))
+                    .powi(2)
+                    + ((source.y - rect.y - rect.height / 2.0) / (rect.height / 2.0)).powi(2))
+                .sqrt();
+                let radius =
+                    distance(corners[0], corners[1]).min(distance(corners[1], corners[2])) / 2.0;
+                let boundary = (radial - 1.0).abs() * radius;
+                if boundary <= tolerance {
+                    return Some((Outline, boundary));
+                }
+                return (radial < 1.0).then_some((Interior, boundary));
+            } else {
+                corners
+                    .into_iter()
+                    .zip(corners.into_iter().cycle().skip(1))
+                    .take(4)
+                    .map(|(start, end)| distance_to_segment(point, start, end))
+                    .fold(f64::INFINITY, f64::min)
             };
-            let radial = (((point.x - center.x) / radius_x).powi(2)
-                + ((point.y - center.y) / radius_y).powi(2))
-            .sqrt();
-            (radial - 1.0).abs() * radius_x.min(radius_y) <= tolerance
+            if distance <= tolerance {
+                return Some((Outline, distance));
+            }
+            return (source.x >= rect.x
+                && source.x <= rect.x + rect.width
+                && source.y >= rect.y
+                && source.y <= rect.y + rect.height)
+                .then_some((Interior, distance));
         }
-        AnnotationGeometry::Stroke { points } => points.windows(2).any(|segment| {
-            distance_to_segment(
-                point,
-                transform.image_to_view(segment[0]),
-                transform.image_to_view(segment[1]),
-            ) <= tolerance
-        }),
-    }
+        AnnotationGeometry::Point { position } => {
+            distance(transform.image_to_view(*position), point)
+        }
+        AnnotationGeometry::Arrow { tail, head } => distance_to_segment(
+            point,
+            transform.image_to_view(*tail),
+            transform.image_to_view(*head),
+        ),
+        AnnotationGeometry::Stroke { points } => points
+            .windows(2)
+            .map(|segment| {
+                distance_to_segment(
+                    point,
+                    transform.image_to_view(segment[0]),
+                    transform.image_to_view(segment[1]),
+                )
+            })
+            .fold(f64::INFINITY, f64::min),
+    };
+    (distance <= tolerance).then_some((Outline, distance))
 }
 
 fn rect_corners(rect: crate::NormalizedRect) -> [NormalizedPoint; 4] {

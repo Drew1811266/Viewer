@@ -44,6 +44,7 @@ objc2.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 viewer-test-support = { path = "../crates/viewer-test-support" }
+wgpu.workspace = true
 
 [[test]]
 name = "security_boundaries"
@@ -100,3 +101,11 @@ path = "../tests/image_render_runtime.rs"
 [[test]]
 name = "image_render_security_boundaries"
 path = "../tests/image_render_security_boundaries.rs"
+
+[[test]]
+name = "image_render_recovery"
+path = "../tests/image_render_recovery.rs"
+
+[[test]]
+name = "image_render_performance_gate"
+path = "../tests/image_render_performance_gate.rs"

@@ -5,6 +5,7 @@ use objc2_core_graphics::{
 };
 
 use super::ImageResourceError;
+use viewer_render_core::{AssetGeneration, ImageMemoryCoordinator, SharedPixels};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PixelFormat {
@@ -17,14 +18,42 @@ pub struct DecodedPixels {
     pub height: u32,
     pub bytes_per_row: u32,
     pub pixel_format: PixelFormat,
-    pub pixels: Vec<u8>,
+    pub pixels: SharedPixels,
 }
 
-pub(super) fn normalize_to_bgra_srgb(image: &CGImage) -> Result<DecodedPixels, ImageResourceError> {
+pub(super) fn normalize_to_bgra_srgb(
+    image: &CGImage,
+    memory: &ImageMemoryCoordinator,
+    generation: AssetGeneration,
+) -> Result<DecodedPixels, ImageResourceError> {
     let width = u32::try_from(CGImage::width(Some(image)))
         .map_err(|_| ImageResourceError::LimitExceeded)?;
     let height = u32::try_from(CGImage::height(Some(image)))
         .map_err(|_| ImageResourceError::LimitExceeded)?;
+    normalize_to_bgra_srgb_in_rect(
+        image,
+        (width, height),
+        CGRect::new(
+            CGPoint::ZERO,
+            CGSize::new(f64::from(width), f64::from(height)),
+        ),
+        memory,
+        generation,
+    )
+}
+
+// Draw directly into the final preview/tile allocation. Image I/O rounds the
+// short edge of a thumbnail independently of our integer mip dimensions.
+// A shared full-image transform keeps neighboring tile samples aligned without
+// allocating a second full mip to reconcile that rounding.
+pub(super) fn normalize_to_bgra_srgb_in_rect(
+    image: &CGImage,
+    output_size: (u32, u32),
+    image_bounds: CGRect,
+    memory: &ImageMemoryCoordinator,
+    generation: AssetGeneration,
+) -> Result<DecodedPixels, ImageResourceError> {
+    let (width, height) = output_size;
     let bytes_per_row = width
         .checked_mul(4)
         .ok_or(ImageResourceError::LimitExceeded)?;
@@ -38,7 +67,7 @@ pub(super) fn normalize_to_bgra_srgb(image: &CGImage) -> Result<DecodedPixels, I
         return Err(ImageResourceError::InvalidRequest);
     }
 
-    let mut pixels = vec![0_u8; byte_len];
+    let mut pixels = SharedPixels::try_zeroed(memory, generation, byte_len as u64)?;
     // SAFETY: `kCGColorSpaceSRGB` is an immutable Core Graphics constant.
     let color_space = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))
         .ok_or(ImageResourceError::ColorConversion)?;
@@ -49,7 +78,11 @@ pub(super) fn normalize_to_bgra_srgb(image: &CGImage) -> Result<DecodedPixels, I
     // premultiplied-first layout produce BGRA bytes on Apple silicon and Intel.
     let context = unsafe {
         CGBitmapContextCreate(
-            pixels.as_mut_ptr().cast(),
+            pixels
+                .get_mut()
+                .expect("conversion storage is uniquely owned")
+                .as_mut_ptr()
+                .cast(),
             width as usize,
             height as usize,
             8,
@@ -59,11 +92,7 @@ pub(super) fn normalize_to_bgra_srgb(image: &CGImage) -> Result<DecodedPixels, I
         )
     }
     .ok_or(ImageResourceError::ColorConversion)?;
-    let bounds = CGRect::new(
-        CGPoint::ZERO,
-        CGSize::new(f64::from(width), f64::from(height)),
-    );
-    CGContext::draw_image(Some(&context), bounds, Some(image));
+    CGContext::draw_image(Some(&context), image_bounds, Some(image));
     drop(context);
 
     Ok(DecodedPixels {
@@ -115,9 +144,30 @@ mod tests {
         }
         .unwrap();
 
-        let decoded = normalize_to_bgra_srgb(&image).unwrap();
+        let memory = viewer_render_core::ImageMemoryCoordinator::new(
+            viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+        );
+        let decoded =
+            normalize_to_bgra_srgb(&image, &memory, viewer_render_core::AssetGeneration(1))
+                .unwrap();
 
         assert_eq!(&decoded.pixels[..4], &[0, 0, 255, 255]);
         assert_eq!(&decoded.pixels[4..8], &[255, 0, 0, 255]);
+        // Region offsets use top-to-bottom image coordinates, just like native
+        // CGImage crops. A wrong Y transform would exchange these two rows.
+        for (top, expected) in [(0.0, [0, 0, 255, 255]), (1.0, [255, 0, 0, 255])] {
+            let region = super::normalize_to_bgra_srgb_in_rect(
+                &image,
+                (1, 1),
+                objc2_core_foundation::CGRect::new(
+                    objc2_core_foundation::CGPoint::new(0.0, -(2.0 - top - 1.0)),
+                    objc2_core_foundation::CGSize::new(1.0, 2.0),
+                ),
+                &memory,
+                viewer_render_core::AssetGeneration(1),
+            )
+            .unwrap();
+            assert_eq!(&region.pixels[..], &expected);
+        }
     }
 }

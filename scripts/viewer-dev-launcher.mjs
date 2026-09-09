@@ -120,12 +120,41 @@ export function isViewerExecutable(command, repoRoot) {
   const scopeRoot = viewerProcessScopeRoot(repoRoot)
   const repositoryViewer =
     executable.startsWith(`${scopeRoot}${path.sep}`) &&
-    executable.endsWith(`${path.sep}viewer-desktop`)
-  const packagedViewer = executable.endsWith(
-    `${path.sep}Viewer.app${path.sep}Contents${path.sep}MacOS${path.sep}viewer-desktop`,
-  )
+    executable.endsWith(`${path.sep}viewer-desktop`) &&
+    !isPackagedViewerExecutable(executable)
+  const packagedViewer = isPackagedViewerExecutable(executable)
 
   return repositoryViewer || packagedViewer
+}
+
+/**
+ * @param {string} executable
+ * @returns {boolean}
+ */
+function isPackagedViewerExecutable(executable) {
+  return executable.endsWith(
+    `${path.sep}Viewer.app${path.sep}Contents${path.sep}MacOS${path.sep}viewer-desktop`,
+  )
+}
+
+/**
+ * Only repository development binaries may be stopped by the launcher. A
+ * packaged Viewer is still an eligible conflicting process (so acceptance
+ * cannot accidentally bind to it), but it is user-owned and must never be
+ * terminated as part of starting a development session.
+ *
+ * @param {string} command
+ * @param {string} repoRoot
+ * @returns {boolean}
+ */
+export function isRepositoryViewerExecutable(command, repoRoot) {
+  const executable = commandExecutable(command)
+  const scopeRoot = viewerProcessScopeRoot(repoRoot)
+  return (
+    executable.startsWith(`${scopeRoot}${path.sep}`) &&
+    executable.endsWith(`${path.sep}viewer-desktop`) &&
+    !isPackagedViewerExecutable(executable)
+  )
 }
 
 /**
@@ -144,6 +173,65 @@ export function isTauriDevProcess(command, repoRoot) {
 }
 
 /**
+ * A Vite child can outlive its Tauri parent when a development session is
+ * interrupted.  Leaving that orphan on the fixed dev port lets a later
+ * Tauri process render the old frontend.  Only Vite executables rooted in the
+ * repository scope are eligible; an unrelated user's Vite server is never
+ * selected.
+ *
+ * @param {string} command
+ * @param {string} repoRoot
+ * @returns {boolean}
+ */
+export function isScopedViteProcess(command, repoRoot) {
+  const scopeRoot = viewerProcessScopeRoot(repoRoot)
+  const scopePrefix = `${scopeRoot}${path.sep}`
+
+  // Vite can be launched directly through the bin shim or as
+  // `node .../vite/bin/vite.js`. Inspect every command token so both forms are
+  // treated consistently, while still requiring the path to live in this
+  // repository/worktree scope.
+  return command.trim().split(/\s+/).some((token) => {
+    const candidate = token.replace(/^['"]|['"]$/g, '')
+    return (
+      candidate.startsWith(scopePrefix) &&
+      (candidate.endsWith(`${path.sep}vite`) || candidate.endsWith(`${path.sep}vite.js`))
+    )
+  })
+}
+
+/**
+ * @param {ProcessInfo[]} processes
+ * @param {string} repoRoot
+ * @returns {StopTarget[]}
+ */
+export function selectStaleViteTargets(processes, repoRoot) {
+  const byPid = new Map(processes.map((item) => [item.pid, item]))
+  const targets = []
+  const seen = new Set()
+  for (const vite of processes.filter((item) => isScopedViteProcess(item.command, repoRoot))) {
+    let ancestor = vite
+    let tauriAncestor
+    while (ancestor) {
+      if (isTauriDevProcess(ancestor.command, repoRoot)) {
+        tauriAncestor = ancestor
+        break
+      }
+      ancestor = byPid.get(ancestor.ppid)
+    }
+    const target = tauriAncestor && vite.pgid > 1
+      ? { kind: 'group', id: vite.pgid, viewerPid: vite.pid }
+      : { kind: 'process', id: vite.pid, viewerPid: vite.pid }
+    const key = `${target.kind}:${target.id}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      targets.push(target)
+    }
+  }
+  return targets
+}
+
+/**
  * @param {ProcessInfo[]} processes
  * @param {string} repoRoot
  * @param {number} [currentPid]
@@ -157,7 +245,7 @@ export function selectStopTargets(processes, repoRoot, currentPid = process.pid)
   const seen = new Set()
 
   for (const viewer of processes.filter((item) =>
-    isViewerExecutable(item.command, repoRoot),
+    isRepositoryViewerExecutable(item.command, repoRoot),
   )) {
     let ancestor = viewer
     let hasTauriAncestor = false
@@ -446,7 +534,16 @@ export async function restartDevelopmentViewer({
     await runtime.clearSession()
   }
 
-  for (const target of selectStopTargets(initial, paths.repoRoot)) {
+  const targets = [...selectStopTargets(initial, paths.repoRoot)]
+  const seenTargets = new Set(targets.map((target) => `${target.kind}:${target.id}`))
+  for (const target of selectStaleViteTargets(initial, paths.repoRoot)) {
+    const key = `${target.kind}:${target.id}`
+    if (seenTargets.has(key)) continue
+    seenTargets.add(key)
+    targets.push(target)
+  }
+
+  for (const target of targets) {
     const alreadyStoppedStoredGroup =
       stored?.pgid === target.id && target.kind === 'group'
     if (!alreadyStoppedStoredGroup) {
@@ -457,6 +554,9 @@ export async function restartDevelopmentViewer({
   const remaining = await runtime.listProcesses()
   if (remaining.some((item) => isViewerExecutable(item.command, paths.repoRoot))) {
     throw new Error('Existing Viewer process did not stop')
+  }
+  if (remaining.some((item) => isScopedViteProcess(item.command, paths.repoRoot))) {
+    throw new Error('Existing repository Vite process did not stop')
   }
 
   const child = await runtime.spawn()

@@ -19,7 +19,10 @@ fn pointer(phase: PointerPhase, x: f64, y: f64, space: bool) -> NativeInput {
         location: LogicalPoint::new(x, y).unwrap(),
         button: PointerButton::Primary,
         pressure: 0.0,
-        modifiers: Modifiers { space },
+        modifiers: Modifiers {
+            space,
+            ..Modifiers::default()
+        },
         timestamp_ns: 1,
     })
 }
@@ -145,5 +148,40 @@ fn cancelling_a_pan_does_not_report_a_draft_cancellation() {
         controller
             .handle_input(NativeInput::Cancel, &transform(), &scene)
             .is_empty()
+    );
+}
+
+#[test]
+fn selected_point_drag_starts_geometry_edit_instead_of_panning() {
+    let mut point = viewer_render_core::AnnotationNode::new(
+        viewer_render_core::AnnotationId::new("point").unwrap(),
+        1,
+        AnnotationGeometry::Point {
+            position: viewer_render_core::NormalizedPoint::new(0.2, 0.3).unwrap(),
+        },
+    )
+    .unwrap();
+    point.selected = true;
+    let scene = SceneSnapshot::new(SceneRevision(1), vec![point], None).unwrap();
+    let mut controller = InteractionController::new(InteractionMode::Browse);
+    let started = controller.handle_input(
+        pointer(PointerPhase::Down, 200.0, 300.0, false),
+        &transform(),
+        &scene,
+    );
+    assert_eq!(
+        started.len(),
+        1,
+        "selected geometry must start an edit capture"
+    );
+    let moved = controller.handle_input(
+        pointer(PointerPhase::Move, 300.0, 400.0, false),
+        &transform(),
+        &scene,
+    );
+    assert!(
+        !moved
+            .iter()
+            .any(|event| matches!(event, InteractionEvent::CameraChanged(_)))
     );
 }

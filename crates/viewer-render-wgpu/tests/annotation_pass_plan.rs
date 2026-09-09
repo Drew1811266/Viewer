@@ -183,20 +183,20 @@ fn retained_annotation_gpu_pass_smoke_test_is_explicitly_opt_in() {
     if std::env::var_os("VIEWER_RUN_METAL_TESTS").is_none() || !cfg!(target_os = "macos") {
         return;
     }
-    let logical = LogicalSize::new(64.0, 64.0).unwrap();
+    let logical = LogicalSize::new(128.0, 128.0).unwrap();
     let mut renderer = WgpuImageRenderer::new(
         RendererDescriptor::headless(
             logical,
             viewer_render_core::PhysicalSize {
-                width: 64,
-                height: 64,
+                width: 128,
+                height: 128,
             },
             1.0,
         )
         .unwrap(),
     )
     .unwrap();
-    let source = SourceSize::new(64, 64).unwrap();
+    let source = SourceSize::new(128, 128).unwrap();
     renderer
         .set_transform(
             TransformSnapshot::new(
@@ -236,6 +236,198 @@ fn retained_annotation_gpu_pass_smoke_test_is_explicitly_opt_in() {
 
     assert!(receipt.gpu_resource_bytes > 0);
     assert!((200..800).contains(&red_pixels));
-    let center = &pixels[((32 * 64 + 32) * 4)..((32 * 64 + 32) * 4 + 4)];
+    let center = &pixels[((44 * 128 + 84) * 4)..((44 * 128 + 84) * 4 + 4)];
     assert!(center[0] > 240 && center[1] > 240 && center[2] > 240);
+}
+
+#[test]
+fn temporary_annotation_memory_block_does_not_poison_a_later_scene_upload() {
+    if std::env::var_os("VIEWER_RUN_METAL_TESTS").is_none() || !cfg!(target_os = "macos") {
+        return;
+    }
+    use viewer_render_core::{
+        AllocationClass, AssetGeneration, ImageMemoryCoordinator, ImageMemoryPolicy,
+    };
+    use viewer_render_wgpu::RenderError;
+
+    let memory = ImageMemoryCoordinator::new(ImageMemoryPolicy::baseline_8gb());
+    let mut renderer = WgpuImageRenderer::new(
+        RendererDescriptor::headless(
+            LogicalSize::new(256.0, 256.0).unwrap(),
+            viewer_render_core::PhysicalSize {
+                width: 256,
+                height: 256,
+            },
+            1.0,
+        )
+        .unwrap()
+        .with_memory(memory.clone()),
+    )
+    .unwrap();
+
+    let scene = SceneSnapshot::new(
+        SceneRevision(1),
+        (0..500)
+            .map(|ordinal| {
+                AnnotationNode::new(
+                    AnnotationId::new(format!("memory-marker-{ordinal}")).unwrap(),
+                    ordinal + 1,
+                    AnnotationGeometry::Point {
+                        position: NormalizedPoint::new(
+                            f64::from(ordinal % 25) / 24.0,
+                            f64::from(ordinal / 25) / 19.0,
+                        )
+                        .unwrap(),
+                    },
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap(),
+        None,
+    )
+    .unwrap();
+
+    let available = memory
+        .snapshot()
+        .limits
+        .gpu_bytes
+        .saturating_sub(memory.snapshot().gpu_bytes);
+    assert!(
+        available > 1,
+        "renderer must leave room for the injected blocker"
+    );
+    let blocker = memory
+        .try_reserve(
+            AllocationClass::GpuTexture,
+            available - 1,
+            AssetGeneration(99),
+        )
+        .unwrap();
+    assert!(matches!(
+        renderer.apply_scene(&scene),
+        Err(RenderError::AnnotationMesh(
+            viewer_render_wgpu::MeshError::Memory(
+                viewer_render_core::MemoryAdmissionError::TemporarilyBlocked
+            )
+        ))
+    ));
+
+    renderer
+        .set_transform(
+            TransformSnapshot::new(
+                SourceSize::new(256, 256).unwrap(),
+                ViewportLayout::new(LogicalSize::new(256.0, 256.0).unwrap(), 1.0, 1.0).unwrap(),
+                CameraState::fit(Rotation::Deg0),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    drop(blocker);
+    let request = renderer
+        .frame_state()
+        .take_request()
+        .expect("the refused scene must keep a frame dirty");
+    assert!(renderer.render(request).is_ok());
+}
+
+#[test]
+fn metal_capture_keeps_ordinals_clear_of_visible_handles_at_retina_scale_and_rotation() {
+    if std::env::var_os("VIEWER_RUN_METAL_TESTS").is_none() || !cfg!(target_os = "macos") {
+        return;
+    }
+    for scale in [1.0, 2.0] {
+        let logical = LogicalSize::new(256.0, 256.0).unwrap();
+        let physical = viewer_render_core::PhysicalSize {
+            width: (256.0 * scale) as u32,
+            height: (256.0 * scale) as u32,
+        };
+        let mut renderer =
+            WgpuImageRenderer::new(RendererDescriptor::headless(logical, physical, scale).unwrap())
+                .unwrap();
+        let mut selected = AnnotationNode::new(
+            AnnotationId::new("selected").unwrap(),
+            1,
+            AnnotationGeometry::Rectangle {
+                rect: viewer_render_core::NormalizedRect::new(0.25, 0.25, 0.5, 0.5).unwrap(),
+            },
+        )
+        .unwrap();
+        selected.selected = true;
+        let overlap = AnnotationNode::new(
+            AnnotationId::new("overlap").unwrap(),
+            2,
+            AnnotationGeometry::Point {
+                position: NormalizedPoint::new(0.75, 0.25).unwrap(),
+            },
+        )
+        .unwrap();
+        let scene = SceneSnapshot::new(SceneRevision(1), vec![selected, overlap], None).unwrap();
+        renderer.apply_scene(&scene).unwrap();
+        let retained = renderer.retained_scene_resources();
+        for rotation in [
+            Rotation::Deg0,
+            Rotation::Deg90,
+            Rotation::Deg180,
+            Rotation::Deg270,
+        ] {
+            renderer
+                .set_transform(
+                    TransformSnapshot::new(
+                        SourceSize::new(256, 256).unwrap(),
+                        ViewportLayout::new(logical, scale, 1.0).unwrap(),
+                        CameraState::fit(rotation),
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            let request = renderer.frame_state().take_request().unwrap();
+            let (_, pixels) = renderer.render_headless_capture(request).unwrap();
+            let pixel = |x: f64, y: f64| {
+                let index =
+                    (((y * scale) as u32 * physical.width + (x * scale) as u32) * 4) as usize;
+                &pixels[index..index + 4]
+            };
+            let red = |pixel: &[u8]| {
+                pixel[2] > pixel[1].saturating_add(30) && pixel[2] > pixel[0].saturating_add(30)
+            };
+            let white = pixel(192.0, 64.0);
+            assert!(
+                white[0] > 245 && white[1] > 245 && white[2] > 245,
+                "selected corner stays visible over overlapping geometry: scale={scale} rotation={rotation:?}"
+            );
+            assert!(
+                red(pixel(203.0, 64.0)),
+                "24 logical px handle rim: scale={scale}"
+            );
+            assert!(
+                red(pixel(216.0, 40.0)),
+                "offset ordinal uses same core position: scale={scale}"
+            );
+            assert!(
+                !red(pixel(212.0, 64.0)),
+                "badge does not cover the gap beside the handle"
+            );
+            assert_eq!(
+                renderer.retained_scene_resources(),
+                retained,
+                "camera layout must retain base buffers"
+            );
+        }
+        // Isolate the box's own badge; a different annotation's ordinal is
+        // intentionally allowed to overlap in the dense scene above.
+        renderer
+            .apply_scene(
+                &SceneSnapshot::new(SceneRevision(2), vec![scene.annotations()[0].clone()], None)
+                    .unwrap(),
+            )
+            .unwrap();
+        let request = renderer.frame_state().take_request().unwrap();
+        let (_, pixels) = renderer.render_headless_capture(request).unwrap();
+        let index =
+            (((51.0 * scale) as u32 * physical.width + (205.0 * scale) as u32) * 4) as usize;
+        assert!(
+            pixels[index + 2] <= pixels[index + 1].saturating_add(30),
+            "box corner and its own badge need a visible diagonal gap"
+        );
+    }
 }

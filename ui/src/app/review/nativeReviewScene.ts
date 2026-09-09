@@ -13,6 +13,7 @@ const REVIEW_COLOR: [number, number, number, number] = [0.7, 0.13, 0.09, 1]
 export interface NativeReviewSceneVersion {
   revision: number
   clientMutationId: string | null
+  annotationsEditable?: boolean
 }
 
 export function toNativeScene(
@@ -27,9 +28,8 @@ export function toNativeScene(
       if (geometry === null || item.ordinal === null) return []
       const replacingGeometry =
         phase.status !== 'idle' &&
-        phase.status !== 'drawing' &&
         phase.sourceItemId === item.itemId &&
-        phase.operation === 'geometry'
+        (phase.status === 'drawing' || phase.operation === 'geometry')
       const replacement = replacingGeometry ? reviewAnchorToNativeGeometry(phase.draftAnchor) : null
       return [
         annotationNode({
@@ -62,6 +62,7 @@ export function toNativeScene(
 
   const draftGeometry =
     phase.status === 'idle' ||
+    (phase.status === 'drawing' && phase.sourceItemId !== undefined) ||
     (phase.status === 'saving' && phase.sourceItemId === null) ||
     (phase.status !== 'drawing' && phase.sourceItemId !== null)
       ? null
@@ -69,6 +70,7 @@ export function toNativeScene(
 
   return {
     annotations,
+    annotationsEditable: version.annotationsEditable !== false && phase.status === 'idle',
     draft:
       draftGeometry === null
         ? null
@@ -139,7 +141,12 @@ export function toAnnotationAction(event: ImageRendererEvent): AnnotationEditorA
     case 'selection_changed':
       return { type: 'select_feedback', itemId: event.annotationId }
     case 'ready':
+    case 'geometry_edit_started':
+    case 'geometry_edit_changed':
+    case 'geometry_edit_completed':
+    case 'geometry_edit_cancelled':
     case 'frame_presented':
+    case 'detail_availability_changed':
     case 'camera_changed':
     case 'editor_placement_changed':
     case 'recovering':

@@ -312,8 +312,11 @@ describe('ImageReviewWorkspace', () => {
       'true',
     )
     fireEvent.click(screen.getByRole('button', { name: '调整意见 1 区域' }))
-    expect(controller.beginRedraw).toHaveBeenCalledWith('feedback-1')
-    expect(controller.setTool).not.toHaveBeenCalledWith('rectangle')
+    expect(controller.selectFeedback).toHaveBeenCalledExactlyOnceWith('feedback-1')
+    expect(controller.setTool).toHaveBeenCalledExactlyOnceWith('browse')
+    expect(controller.beginRedraw).not.toHaveBeenCalled()
+    expect(controller.beginDrawing).not.toHaveBeenCalled()
+    expect(controller.beginAnnotation).not.toHaveBeenCalled()
   })
 
   it('routes tool shortcuts, suppresses them in text input, and keeps completion separate', () => {

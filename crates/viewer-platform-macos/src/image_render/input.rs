@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex};
 use block2::RcBlock;
 use objc2::{MainThreadMarker, rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{
-    NSEvent, NSEventMask, NSEventType, NSView, NSWindow, NSWindowDidBecomeKeyNotification,
-    NSWindowDidResignKeyNotification,
+    NSEvent, NSEventMask, NSEventModifierFlags, NSEventType, NSView, NSWindow,
+    NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification,
 };
 use objc2_foundation::{NSNotification, NSNotificationCenter, NSOperationQueue, NSPoint};
 use thiserror::Error;
@@ -89,6 +89,7 @@ pub enum WindowInput {
         location: LogicalPoint,
         button: PointerButton,
         pressure: f64,
+        shift: bool,
         timestamp_ns: u64,
     },
     Scroll {
@@ -168,8 +169,9 @@ impl MacInputRouter {
                 location,
                 button,
                 pressure,
+                shift,
                 timestamp_ns,
-            } => self.pointer(phase, location, button, pressure, timestamp_ns),
+            } => self.pointer(phase, location, button, pressure, shift, timestamp_ns),
             WindowInput::Scroll {
                 location,
                 delta,
@@ -186,6 +188,7 @@ impl MacInputRouter {
                         delta,
                         modifiers: Modifiers {
                             space: self.space_held,
+                            ..Modifiers::default()
                         },
                         timestamp_ns,
                     }),
@@ -250,6 +253,7 @@ impl MacInputRouter {
         location: LogicalPoint,
         button: PointerButton,
         pressure: f64,
+        shift: bool,
         timestamp_ns: u64,
     ) -> RouteDecision {
         if phase == PointerPhase::Cancel {
@@ -281,6 +285,7 @@ impl MacInputRouter {
             },
             modifiers: Modifiers {
                 space: self.space_held,
+                shift,
             },
             timestamp_ns,
         });
@@ -540,6 +545,7 @@ impl Drop for MacInputMonitor {
 
 fn window_input_from_event(event: &NSEvent, webview: &NSView) -> Option<WindowInput> {
     let timestamp_ns = seconds_to_nanoseconds(event.timestamp());
+    let shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
     let webview_location = webview.convertPoint_fromView(event.locationInWindow(), None);
     let safe_area = webview.safeAreaInsets();
     let location = top_left_webview_location(
@@ -555,6 +561,7 @@ fn window_input_from_event(event: &NSEvent, webview: &NSView) -> Option<WindowIn
             location,
             button: PointerButton::Primary,
             pressure: f64::from(event.pressure()),
+            shift,
             timestamp_ns,
         }),
         NSEventType::LeftMouseDragged | NSEventType::MouseMoved => Some(WindowInput::Pointer {
@@ -566,6 +573,7 @@ fn window_input_from_event(event: &NSEvent, webview: &NSView) -> Option<WindowIn
                 PointerButton::None
             },
             pressure: f64::from(event.pressure()),
+            shift,
             timestamp_ns,
         }),
         NSEventType::LeftMouseUp => Some(WindowInput::Pointer {
@@ -573,6 +581,7 @@ fn window_input_from_event(event: &NSEvent, webview: &NSView) -> Option<WindowIn
             location,
             button: PointerButton::Primary,
             pressure: f64::from(event.pressure()),
+            shift,
             timestamp_ns,
         }),
         NSEventType::MouseCancelled => Some(WindowInput::Pointer {
@@ -580,14 +589,12 @@ fn window_input_from_event(event: &NSEvent, webview: &NSView) -> Option<WindowIn
             location,
             button: PointerButton::None,
             pressure: 0.0,
+            shift,
             timestamp_ns,
         }),
         NSEventType::ScrollWheel => Some(WindowInput::Scroll {
             location,
-            delta: LogicalPoint {
-                x: -event.scrollingDeltaX(),
-                y: event.scrollingDeltaY(),
-            },
+            delta: scroll_delta_from_appkit(event.scrollingDeltaX(), event.scrollingDeltaY()),
             timestamp_ns,
         }),
         NSEventType::Magnify => Some(WindowInput::Magnify {
@@ -604,6 +611,10 @@ fn window_input_from_event(event: &NSEvent, webview: &NSView) -> Option<WindowIn
         NSEventType::KeyDown if event.keyCode() == ESCAPE_KEY_CODE => Some(WindowInput::Escape),
         _ => None,
     }
+}
+
+fn scroll_delta_from_appkit(x: f64, y: f64) -> LogicalPoint {
+    LogicalPoint { x, y }
 }
 
 fn top_left_webview_location(
@@ -651,7 +662,15 @@ mod tests {
     use objc2_foundation::NSPoint;
     use viewer_render_core::LogicalPoint;
 
-    use super::top_left_webview_location;
+    use super::{scroll_delta_from_appkit, top_left_webview_location};
+
+    #[test]
+    fn preserves_appkit_horizontal_scroll_direction_for_canvas_pan() {
+        assert_eq!(
+            scroll_delta_from_appkit(12.0, -8.0),
+            LogicalPoint { x: 12.0, y: -8.0 }
+        );
+    }
 
     #[test]
     fn maps_flipped_and_unflipped_webview_points_to_the_same_dom_coordinates() {

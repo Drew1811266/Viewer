@@ -142,6 +142,13 @@ impl TransformSnapshot {
         })
     }
 
+    /// Preserves drag displacement outside the image before geometry is constrained.
+    pub fn view_to_image_unclamped(self, point: LogicalPoint) -> NormalizedPoint {
+        self.camera
+            .rotation
+            .unorient(self.view_to_oriented_unclamped(point))
+    }
+
     pub fn zoom_at(self, factor: f64, anchor: LogicalPoint) -> Result<CameraState, GeometryError> {
         if !factor.is_finite() || factor <= 0.0 {
             return Err(GeometryError::NonPositive("zoom factor"));

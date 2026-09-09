@@ -96,7 +96,7 @@ export interface WorkspaceProjectViewProps {
   reviewToolbarAction: ReactNode
   reviewLayer: ReactNode
   onReselectProject(): void
-  imageRenderer: ImageRendererPort
+  imageRenderer: ImageRendererPort | null
 }
 
 export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {

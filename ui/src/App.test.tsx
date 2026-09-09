@@ -7,7 +7,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
-import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import App from './App'
 import type {
   ReviewHistorySelector,
@@ -253,6 +253,12 @@ describe('App-local session coordinator contracts', () => {
 })
 
 describe('Viewer empty state', () => {
+  beforeEach(() => {
+    // App tests cover review/navigation control flow; canvas painting has dedicated tests.
+    const context = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    return () => context.mockRestore()
+  })
+
   it('asks the user to import one project folder', () => {
     render(<App />)
     expect(screen.getByRole('heading', { name: 'Viewer' })).toBeVisible()

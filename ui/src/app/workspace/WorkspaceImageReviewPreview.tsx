@@ -77,7 +77,7 @@ export interface WorkspaceImageReviewPreviewProps {
   review: WorkspaceReviewPresentation
   emitIntent: WorkspaceIntentSink
   activeControllerRef: MutableRefObject<ImageReviewWorkbenchController | null>
-  imageRenderer: ImageRendererPort
+  imageRenderer: ImageRendererPort | null
 }
 
 export default function WorkspaceImageReviewPreview(props: WorkspaceImageReviewPreviewProps) {
@@ -114,7 +114,7 @@ function OrdinaryImagePreview(props: WorkspaceImageReviewPreviewProps) {
       onNavigate={props.onNavigate}
       onClose={props.onClose}
       onDimensions={props.onDimensions}
-      renderer={props.imageRenderer}
+      renderer={props.imageRenderer ?? undefined}
     />
   )
 }
@@ -197,7 +197,7 @@ function ImageReviewOverlay({
         requestImage={requestImage}
         onDimensions={onDimensions}
         controller={controller}
-        renderer={imageRenderer}
+        renderer={imageRenderer ?? undefined}
       />
       {controller.leaveConfirmation !== null && (
         <ModalSheet

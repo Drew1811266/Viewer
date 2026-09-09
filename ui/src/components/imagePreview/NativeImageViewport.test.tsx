@@ -13,16 +13,18 @@ import NativeImageViewport, { nativeFittedImageRect } from './NativeImageViewpor
 
 const callbacks = new Map<Element, ResizeObserverCallback>()
 let stageRect = rect(120, 84, 960, 600)
+let editorRect = rect(360, 240, 288, 176)
 
 beforeEach(() => {
   callbacks.clear()
   stageRect = rect(120, 84, 960, 600)
+  editorRect = rect(360, 240, 288, 176)
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
     this: HTMLElement,
   ) {
     if (this.classList.contains('image-preview-stage')) return stageRect
     if (this.classList.contains('preview-navigation-float')) return rect(520, 620, 160, 48)
-    if (this.dataset.nativeInputExclusion === 'true') return rect(360, 240, 288, 176)
+    if (this.dataset.nativeInputExclusion === 'true') return editorRect
     return rect(0, 0, this.clientWidth, this.clientHeight)
   })
   vi.stubGlobal('devicePixelRatio', 2)
@@ -42,6 +44,291 @@ beforeEach(() => {
 })
 
 describe('NativeImageViewport', () => {
+  it('keeps detail unavailability across preview frames until the latest demand recovers', async () => {
+    const harness = rendererHarness()
+    renderPreview(harness.port)
+    await waitFor(() => expect(harness.request).not.toBeNull())
+    if (harness.request === null) throw new Error('native session did not open')
+    const request = { ...harness.request }
+    const unavailable = {
+      type: 'detail_availability_changed' as const,
+      ...request,
+      resourceRevision: 4,
+      available: false,
+    }
+    act(() => harness.publish(unavailable))
+    expect(screen.getByText('高清细节暂不可用')).toBeInTheDocument()
+    act(() => {
+      harness.publish({ type: 'ready', ...request, width: 600, height: 400 })
+      harness.publish({ type: 'frame_presented', ...request, sceneRevision: 0, frameIndex: 1 })
+      harness.publish({ ...unavailable, resourceRevision: 3, available: true })
+      harness.publish({
+        ...unavailable,
+        assetGeneration: request.assetGeneration - 1,
+        available: true,
+      })
+    })
+    expect(screen.getByText('高清细节暂不可用')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重试预览' })).not.toBeInTheDocument()
+    act(() => harness.publish({ ...unavailable, available: true }))
+    expect(screen.queryByText('高清细节暂不可用')).not.toBeInTheDocument()
+  })
+
+  it('does not let detail recovery clear a terminal error or leak status into a new asset', async () => {
+    const harness = rendererHarness()
+    const preview = renderPreview(harness.port)
+    await waitFor(() => expect(harness.request).not.toBeNull())
+    if (harness.request === null) throw new Error('native session did not open')
+    const request = { ...harness.request }
+    const detail = {
+      type: 'detail_availability_changed' as const,
+      ...request,
+      resourceRevision: 2,
+      available: false,
+    }
+    act(() => harness.publish(detail))
+    expect(screen.getByText('高清细节暂不可用')).toBeInTheDocument()
+    act(() => {
+      harness.publish({ type: 'failed', ...request, code: 'device_lost', retryable: false })
+      harness.publish({ ...detail, available: true })
+    })
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    preview.updateFile({ modifiedNs: '2' })
+    await waitFor(() => expect(harness.request?.assetGeneration).toBe(request.assetGeneration + 1))
+    act(() => harness.publish(detail))
+    expect(screen.queryByText('高清细节暂不可用')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it.each(['close', 'camera'] as const)(
+    'retains zoom, rotation and magnifier intent while retry %s is pending',
+    async (pending) => {
+      const harness = rendererHarness()
+      renderPreview(harness.port, reviewBinding())
+      await waitFor(() => expect(sceneCommands(harness.commands)).toHaveLength(1))
+      if (harness.request === null) throw new Error('native session did not open')
+      const previous = { ...harness.request }
+      act(() => screen.getByRole('button', { name: '放大镜' }).click())
+      harness.holdClose = pending === 'close'
+      harness.holdCamera = pending === 'camera'
+      act(() =>
+        harness.publish({ type: 'failed', ...previous, code: 'device_lost', retryable: true }),
+      )
+      act(() => screen.getByRole('button', { name: '重试预览' }).click())
+      await waitFor(() =>
+        expect(pending === 'close' ? harness.pendingCloses : harness.pendingCameras).toHaveLength(
+          1,
+        ),
+      )
+      act(() => screen.getByRole('button', { name: '放大' }).click())
+      act(() => screen.getByRole('button', { name: '顺时针旋转' }).click())
+      act(() => screen.getByRole('button', { name: '放大镜' }).click())
+      harness.holdCamera = false
+      await act(async () => {
+        for (const settle of [
+          ...harness.pendingCloses.splice(0),
+          ...harness.pendingCameras.splice(0),
+        ])
+          settle()
+      })
+      await waitFor(() => expect(sceneCommands(harness.commands)).toHaveLength(2))
+      const camera = harness.commands
+        .flatMap(({ command }) => (command.type === 'camera' ? [command.camera] : []))
+        .at(-1)
+      expect(camera).toMatchObject({ mode: 'free', zoom: 1.25, rotation: 'deg90' })
+      expect(magnifierCommands(harness.commands).at(-1)?.magnifier).toBeNull()
+    },
+  )
+
+  it('retries failed teardown without allowing later retry generations to bypass it', async () => {
+    const harness = rendererHarness()
+    renderPreview(harness.port)
+    await waitFor(() => expect(surfaceCommands(harness.commands)).toHaveLength(1))
+    if (harness.request === null) throw new Error('native session did not open')
+    const previous = { ...harness.request }
+    harness.failClose = true
+    act(() =>
+      harness.publish({ type: 'failed', ...previous, code: 'device_lost', retryable: true }),
+    )
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      act(() => screen.getByRole('button', { name: '重试预览' }).click())
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+      expect(harness.request?.assetGeneration).toBe(previous.assetGeneration)
+    }
+    harness.failClose = false
+    act(() => screen.getByRole('button', { name: '重试预览' }).click())
+    await waitFor(() =>
+      expect(harness.request?.assetGeneration).toBeGreaterThan(previous.assetGeneration),
+    )
+  })
+
+  it('does not reopen the same image when decoded metadata is enriched', async () => {
+    const harness = rendererHarness()
+    const preview = renderPreview(harness.port)
+    await waitFor(() => expect(harness.request).not.toBeNull())
+    const generation = harness.request?.assetGeneration
+    preview.updateFile({ imageMetadata: { width: 600, height: 400 } })
+    await act(async () => {})
+    expect(harness.request?.assetGeneration).toBe(generation)
+  })
+
+  it('opens a new generation when the same entity contains a changed source file', async () => {
+    const harness = rendererHarness()
+    const preview = renderPreview(harness.port)
+    await waitFor(() => expect(harness.request).not.toBeNull())
+    const generation = harness.request?.assetGeneration ?? 0
+    preview.updateFile({ modifiedNs: '2' })
+    await waitFor(() => expect(harness.request?.assetGeneration).toBe(generation + 1))
+  })
+
+  it('does not expose the retry session until camera and magnifier hydration are complete', async () => {
+    const harness = rendererHarness()
+    const preview = renderPreview(harness.port, reviewBinding())
+    await waitFor(() => expect(sceneCommands(harness.commands)).toHaveLength(1))
+    if (harness.request === null) throw new Error('native session did not open')
+    const previous = { ...harness.request }
+    act(() => screen.getByRole('button', { name: '放大镜' }).click())
+    harness.holdCamera = true
+    act(() =>
+      harness.publish({ type: 'failed', ...previous, code: 'device_lost', retryable: true }),
+    )
+    act(() => screen.getByRole('button', { name: '重试预览' }).click())
+    await waitFor(() => expect(harness.pendingCameras).toHaveLength(1))
+    preview.updateBinding({ ...reviewBinding(), sceneRevision: 4 })
+    expect(sceneCommands(harness.commands)).toHaveLength(1)
+    await act(async () => {
+      harness.pendingCameras.shift()?.()
+    })
+    await waitFor(() => expect(sceneCommands(harness.commands)).toHaveLength(2))
+    const types = harness.commands.map(({ command }) => command.type)
+    expect(types.lastIndexOf('camera')).toBeLessThan(types.lastIndexOf('set_magnifier'))
+    expect(types.lastIndexOf('set_magnifier')).toBeLessThan(types.lastIndexOf('set_scene'))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('waits for the old native session to close before opening a retry generation', async () => {
+    const harness = rendererHarness()
+    renderPreview(harness.port)
+    await waitFor(() => expect(harness.request).not.toBeNull())
+    if (harness.request === null) throw new Error('native session did not open')
+    const previous = { ...harness.request }
+    harness.holdClose = true
+    act(() =>
+      harness.publish({ type: 'failed', ...previous, code: 'device_lost', retryable: true }),
+    )
+    act(() => screen.getByRole('button', { name: '重试预览' }).click())
+    await waitFor(() => expect(harness.pendingCloses).toHaveLength(1))
+    expect(harness.request.assetGeneration).toBe(previous.assetGeneration)
+    await act(async () => {
+      harness.pendingCloses.shift()?.()
+    })
+    await waitFor(() => expect(harness.request?.assetGeneration).toBe(previous.assetGeneration + 1))
+  })
+
+  it.each(['surface', 'exclusion'] as const)(
+    'enqueues the latest %s bounds when they return to A while B is awaiting acknowledgment',
+    async (kind) => {
+      const harness = rendererHarness()
+      renderPreview(harness.port, reviewBinding())
+      await waitFor(() => expect(inputExclusionCommands(harness.commands)).toHaveLength(1))
+      await waitFor(() => expect(surfaceCommands(harness.commands)).toHaveLength(1))
+      harness.holdLayoutCommands = true
+      const stage = screen.getByTestId('native-image-viewport')
+      const notifyLayout = () => callbacks.get(stage)?.([], {} as ResizeObserver)
+      const count = () =>
+        (kind === 'surface'
+          ? surfaceCommands(harness.commands)
+          : inputExclusionCommands(harness.commands)
+        ).length
+      if (kind === 'surface') stageRect = rect(120, 84, 800, 540)
+      else editorRect = rect(440, 310, 288, 176)
+      act(notifyLayout)
+      await waitFor(() => expect(count()).toBe(2))
+      stageRect = rect(120, 84, 960, 600)
+      editorRect = rect(360, 240, 288, 176)
+      act(notifyLayout)
+      await waitFor(() => expect(count()).toBe(3))
+      await act(async () => {
+        for (const settle of harness.pendingLayouts.splice(0)) settle()
+      })
+      act(notifyLayout)
+      expect(count()).toBe(3)
+    },
+  )
+
+  it('refreshes editor exclusions after camera movement without a resize or scene edit', async () => {
+    const harness = rendererHarness()
+    renderPreview(harness.port, reviewBinding())
+    await waitFor(() => expect(inputExclusionCommands(harness.commands)).toHaveLength(1))
+    editorRect = rect(440, 310, 288, 176)
+    act(() =>
+      harness.publish({
+        type: 'camera_changed',
+        sessionId: harness.request?.sessionId ?? '',
+        assetGeneration: harness.request?.assetGeneration ?? 0,
+        camera: { mode: 'free', zoom: 2, rotation: 'deg0', offset: { x: 80, y: 70 } },
+      }),
+    )
+    await waitFor(() =>
+      expect(inputExclusionCommands(harness.commands).at(-1)?.exclusions).toContainEqual({
+        left: 440,
+        top: 310,
+        width: 288,
+        height: 176,
+      }),
+    )
+    expect(surfaceCommands(harness.commands)).toHaveLength(1)
+    expect(sceneCommands(harness.commands)).toHaveLength(1)
+  })
+
+  it('offers an explicit native retry after failure and rejects events from the old generation', async () => {
+    const harness = rendererHarness()
+    renderPreview(harness.port, reviewBinding())
+    await waitFor(() => expect(harness.request).not.toBeNull())
+    if (harness.request === null) throw new Error('native session did not open')
+    const previous = { ...harness.request }
+    act(() =>
+      harness.publish({
+        type: 'camera_changed',
+        ...previous,
+        camera: { mode: 'free', zoom: 2, rotation: 'deg90', offset: { x: 80, y: 70 } },
+      }),
+    )
+    act(() =>
+      harness.publish({
+        type: 'failed',
+        ...previous,
+        code: 'resource_decode_failed',
+        retryable: true,
+      }),
+    )
+    const retry = await screen.findByRole('button', { name: '重试预览' })
+    expect(retry.closest('[data-native-input-exclusion="true"]')).not.toBeNull()
+    act(() => retry.click())
+    await waitFor(() => expect(harness.request?.assetGeneration).toBe(previous.assetGeneration + 1))
+    await waitFor(() =>
+      expect(harness.commands).toContainEqual({
+        sceneRevision: 0,
+        command: {
+          type: 'camera',
+          camera: { mode: 'free', zoom: 2, rotation: 'deg90', offset: { x: 80, y: 70 } },
+        },
+      }),
+    )
+    expect(screen.getByText('200%')).toBeInTheDocument()
+    act(() =>
+      harness.publish({
+        type: 'failed',
+        ...previous,
+        code: 'resource_decode_failed',
+        retryable: true,
+      }),
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText('原生编辑器')).toBeInTheDocument()
+    expect(screen.queryByText('Web 评审层')).not.toBeInTheDocument()
+  })
+
   it('sends the native surface once and ignores unchanged resize observations', async () => {
     const harness = rendererHarness()
     renderPreview(harness.port)
@@ -85,12 +372,30 @@ describe('NativeImageViewport', () => {
     expect(harness.commands[1]?.command.type).toBe('set_surface')
   })
 
+  it('refreshes exclusions when a fixed toolbar popover mounts over the native stage', async () => {
+    const harness = rendererHarness()
+    renderPreview(harness.port)
+
+    await waitFor(() => expect(inputExclusionCommands(harness.commands)).toHaveLength(1))
+    const popover = document.createElement('div')
+    popover.dataset.nativeInputExclusion = 'true'
+    document.querySelector('.image-preview')?.append(popover)
+
+    await waitFor(() =>
+      expect(inputExclusionCommands(harness.commands).at(-1)?.exclusions).toContainEqual({
+        left: 360,
+        top: 240,
+        width: 288,
+        height: 176,
+      }),
+    )
+  })
+
   it('retries the same surface after a failed dispatch instead of caching it as applied', async () => {
     const harness = rendererHarness()
     harness.failNextSurface = true
     renderPreview(harness.port)
 
-    await waitFor(() => expect(surfaceCommands(harness.commands)).toHaveLength(1))
     await screen.findByRole('alert')
     const stage = screen.getByTestId('native-image-viewport')
     act(() => {
@@ -171,7 +476,7 @@ describe('NativeImageViewport', () => {
     expect(screen.getByTestId('native-image-viewport')).toHaveAttribute('data-ready', 'false')
   })
 
-  it('switches to the complete Web viewport only after backend activation is published', async () => {
+  it('keeps the native viewport when a stale Web activation event is received', async () => {
     const harness = rendererHarness()
     renderPreview(harness.port, reviewBinding())
     expect(screen.getByText('原生编辑器')).toBeInTheDocument()
@@ -187,11 +492,9 @@ describe('NativeImageViewport', () => {
       }),
     )
 
-    await waitFor(() =>
-      expect(screen.queryByTestId('native-image-viewport')).not.toBeInTheDocument(),
-    )
-    expect(screen.getByText('Web 评审层')).toBeInTheDocument()
-    expect(screen.queryByText('原生编辑器')).not.toBeInTheDocument()
+    expect(screen.getByTestId('native-image-viewport')).toBeInTheDocument()
+    expect(screen.getByText('原生编辑器')).toBeInTheDocument()
+    expect(screen.queryByText('Web 评审层')).not.toBeInTheDocument()
   })
 
   it('sends only magnifier preferences and leaves pointer tracking to the native actor', async () => {
@@ -267,7 +570,7 @@ describe('NativeImageViewport', () => {
 })
 
 function renderPreview(renderer: ImageRendererPort, nativeBinding?: ImageRendererViewportBinding) {
-  const file: BrowserFile = {
+  let file: BrowserFile = {
     entityId: 'image-1',
     relativePath: 'images/one.jpg',
     name: 'one.jpg',
@@ -279,7 +582,7 @@ function renderPreview(renderer: ImageRendererPort, nativeBinding?: ImageRendere
     imageUrl: null,
     videoMetadata: null,
   }
-  return render(
+  const element = (binding?: ImageRendererViewportBinding) => (
     <NativeImageViewport
       renderer={renderer}
       file={file}
@@ -295,7 +598,7 @@ function renderPreview(renderer: ImageRendererPort, nativeBinding?: ImageRendere
       }))}
       onNavigate={vi.fn()}
       onEscape={vi.fn()}
-      nativeBinding={nativeBinding}
+      nativeBinding={binding}
       slots={{
         toolbarActions: <button type="button">返回网格</button>,
         stageOverlay: nativeBinding === undefined ? undefined : () => <section>Web 评审层</section>,
@@ -304,8 +607,17 @@ function renderPreview(renderer: ImageRendererPort, nativeBinding?: ImageRendere
             ? undefined
             : () => <section data-native-input-exclusion="true">原生编辑器</section>,
       }}
-    />,
+    />
   )
+  const preview = render(element(nativeBinding))
+  return {
+    ...preview,
+    updateBinding: (binding: ImageRendererViewportBinding) => preview.rerender(element(binding)),
+    updateFile: (patch: Partial<BrowserFile>) => {
+      file = { ...file, ...patch }
+      preview.rerender(element(nativeBinding))
+    },
+  }
 }
 
 function reviewBinding(): ImageRendererViewportBinding {
@@ -327,13 +639,26 @@ function rendererHarness() {
     assetGeneration: 1,
     async dispatch(command) {
       commands.push(command)
+      if (harness.holdCamera && command.command.type === 'camera') {
+        await new Promise<void>((resolve) => harness.pendingCameras.push(resolve))
+      }
+      if (
+        harness.holdLayoutCommands &&
+        ['set_surface', 'set_input_exclusions'].includes(command.command.type)
+      ) {
+        await new Promise<void>((resolve) => harness.pendingLayouts.push(resolve))
+      }
       if (harness.failNextSurface && command.command.type === 'set_surface') {
         harness.failNextSurface = false
         throw { code: 'image_render_driver_failed' }
       }
       return { disposition: 'applied', acceptedRevision: command.sceneRevision, backend: 'native' }
     },
-    async close() {},
+    async close() {
+      if (harness.failClose) throw { code: 'image_render_driver_failed' }
+      if (harness.holdClose)
+        await new Promise<void>((resolve) => harness.pendingCloses.push(resolve))
+    },
   }
   const port: ImageRendererPort = {
     backend: 'native',
@@ -353,12 +678,26 @@ function rendererHarness() {
     commands: ImageRendererCommand[]
     request: { sessionId: string; assetGeneration: number } | null
     failNextSurface: boolean
+    holdLayoutCommands: boolean
+    pendingLayouts: Array<() => void>
+    holdClose: boolean
+    failClose: boolean
+    pendingCloses: Array<() => void>
+    holdCamera: boolean
+    pendingCameras: Array<() => void>
     publish(event: ImageRendererEvent): void
   } = {
     port,
     commands,
     request: null,
     failNextSurface: false,
+    holdLayoutCommands: false,
+    pendingLayouts: [],
+    holdClose: false,
+    failClose: false,
+    pendingCloses: [],
+    holdCamera: false,
+    pendingCameras: [],
     publish(event: ImageRendererEvent) {
       handler?.(event)
     },

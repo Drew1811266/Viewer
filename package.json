@@ -9,6 +9,7 @@
     "start:viewer": "node scripts/start-viewer-dev.mjs",
     "test:native-acceptance": "node --test scripts/viewer-native-acceptance.test.mjs",
     "accept:native": "node scripts/viewer-native-acceptance.mjs",
+    "accept:native:managed": "node scripts/run-managed-native-acceptance.mjs",
     "accept:native-smoke": "node scripts/viewer-native-acceptance.mjs --smoke",
     "test:visual-acceptance": "node --test scripts/viewer-visual-acceptance.test.mjs",
     "accept:visual": "node scripts/viewer-visual-acceptance.mjs",
@@ -26,12 +27,14 @@
     "gate:m1": "./scripts/run-m1-browsing-gate.sh",
     "gate:m2": "./scripts/run-m2-review-gate.sh",
     "gate:m3": "./scripts/run-m3-organization-gate.sh",
+    "test:image-render": "node --test scripts/image-render/performance-gate.test.mjs scripts/image-render/native-acceptance.test.mjs && cargo test --locked -p viewer-desktop --test image_render_recovery --test image_render_performance_gate",
+    "gate:image-render": "./scripts/image-render/run-performance-gate.sh",
     "tauri": "tauri",
     "video:runtime:stage": "scripts/video/stage-tauri-resources.sh",
     "video:runtime:verify": "VIEWER_VIDEO_STAGE_DIR=target/viewer-video-runtime/universal-apple-darwin/ViewerVideoRuntime scripts/video/verify-runtime.sh",
     "video:licenses:verify": "scripts/video/verify-licenses.sh",
     "test:video:packaging": "node --test scripts/video/runtime-lock.test.mjs scripts/video/runtime-verifier.test.mjs scripts/video/release-packaging.test.mjs",
-    "test:dev-launcher": "node --test scripts/development-video-runtime.test.mjs scripts/viewer-dev-launcher.test.mjs",
+    "test:dev-launcher": "node --test scripts/development-video-runtime.test.mjs scripts/viewer-dev-launcher.test.mjs scripts/run-managed-native-acceptance.test.mjs",
     "test:policy": "node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs && node scripts/check-scope-coverage.mjs",
     "build:review-reader": "cargo build --locked --offline -p viewer-infrastructure --bin viewer-review-reader",
     "test:review-protocol": "pnpm build:review-reader && node --test scripts/review-protocol/blake3.test.mjs scripts/review-protocol/native-reader.test.mjs scripts/review-protocol/read-latest.test.mjs scripts/review-protocol/read-current.test.mjs scripts/review-protocol/read-history.test.mjs scripts/review-protocol/schema-contract.test.mjs",
@@ -44,5 +47,12 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",
     "playwright": "^1.62.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "nanoid": "3.3.18",
+      "postcss": "8.5.28",
+      "undici": "7.29.1"
+    }
   }
 }

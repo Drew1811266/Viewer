@@ -66,6 +66,7 @@ export interface ImageRendererAnnotation {
 export interface ImageRendererScene {
   annotations: ImageRendererAnnotation[]
   draft: ImageRendererAnnotation | null
+  annotationsEditable?: boolean
 }
 
 export interface ImageRendererViewportBinding {
@@ -128,10 +129,30 @@ export type ImageRendererEvent =
     })
   | (ImageRendererEventBase & { type: 'camera_changed'; camera: ImageRendererCamera })
   | (ImageRendererEventBase & {
+      type: 'detail_availability_changed'
+      resourceRevision: number
+      available: boolean
+    })
+  | (ImageRendererEventBase & {
       type: 'draft_started' | 'draft_changed' | 'draft_completed'
       geometry: ImageRendererAnnotationGeometry
     })
   | (ImageRendererEventBase & { type: 'draft_cancelled' })
+  | (ImageRendererEventBase & {
+      type: 'geometry_edit_started' | 'geometry_edit_changed' | 'geometry_edit_completed'
+      annotationId: string
+      geometry: ImageRendererAnnotationGeometry
+      handle?:
+        | 'point'
+        | 'tail'
+        | 'head'
+        | 'north_west'
+        | 'north_east'
+        | 'south_east'
+        | 'south_west'
+        | null
+    })
+  | (ImageRendererEventBase & { type: 'geometry_edit_cancelled'; annotationId: string })
   | (ImageRendererEventBase & { type: 'selection_changed'; annotationId: string | null })
   | (ImageRendererEventBase & {
       type: 'editor_placement_changed'

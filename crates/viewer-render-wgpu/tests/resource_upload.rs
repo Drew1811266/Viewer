@@ -37,6 +37,88 @@ fn upload_rejects_incomplete_bgra_pixels() {
 }
 
 #[test]
+fn refinement_preserves_alpha_and_retains_only_requested_resources() {
+    if std::env::var_os("VIEWER_RUN_METAL_TESTS").is_none() {
+        return;
+    }
+    let logical = LogicalSize::new(16.0, 16.0).unwrap();
+    let mut renderer = WgpuImageRenderer::new(
+        RendererDescriptor::headless(
+            logical,
+            PhysicalSize {
+                width: 16,
+                height: 16,
+            },
+            1.0,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let source_size = SourceSize::new(2, 2).unwrap();
+    renderer
+        .set_transform(
+            TransformSnapshot::new(
+                source_size,
+                ViewportLayout::new(logical, 1.0, 1.0).unwrap(),
+                CameraState::fit(Rotation::Deg0),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    renderer
+        .upload_resource(DecodedResource::WholeImage {
+            generation: AssetGeneration(1),
+            level: 1,
+            source_size,
+            width: 1,
+            height: 1,
+            pixels: viewer_render_core::SharedPixels::try_copy_from_slice(
+                &viewer_render_core::ImageMemoryCoordinator::new(
+                    viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+                ),
+                AssetGeneration(1),
+                &[0, 0, 128, 128],
+            )
+            .unwrap(),
+        })
+        .unwrap();
+    let request = renderer.on_display_tick(1).unwrap();
+    let (_, before) = renderer.render_headless_capture(request).unwrap();
+    renderer
+        .upload_resource(DecodedResource::Tile {
+            generation: AssetGeneration(1),
+            tile: viewer_render_core::TileCoordinate {
+                level: 0,
+                x: 0,
+                y: 0,
+            },
+            tile_size: 512,
+            sample_border: 0,
+            source_size,
+            width: 2,
+            height: 2,
+            pixels: viewer_render_core::SharedPixels::try_copy_from_slice(
+                &viewer_render_core::ImageMemoryCoordinator::new(
+                    viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+                ),
+                AssetGeneration(1),
+                &[0, 0, 128, 128].repeat(4),
+            )
+            .unwrap(),
+        })
+        .unwrap();
+    let request = renderer.on_display_tick(2).unwrap();
+    let (_, refined) = renderer.render_headless_capture(request).unwrap();
+    assert_eq!(
+        before, refined,
+        "a translucent refinement must replace its coverage without blending the same image twice"
+    );
+    renderer.retain_resources(&[viewer_render_wgpu::ResourceKey::WholeImage { level: 1 }]);
+    assert_eq!(renderer.retained_scene_resources().image_handles().len(), 1);
+    assert_eq!(renderer.gpu_resource_bytes(), 4);
+}
+
+#[test]
 fn old_generation_completion_is_discarded_without_reopening_it() {
     let mut gate = ResourceGenerationGate::new(AssetGeneration(7));
 
@@ -78,7 +160,14 @@ fn beginning_a_generation_drops_previous_image_resources_before_decode_completes
             source_size,
             width: 1,
             height: 1,
-            pixels: vec![0, 0, 255, 255],
+            pixels: viewer_render_core::SharedPixels::try_copy_from_slice(
+                &viewer_render_core::ImageMemoryCoordinator::new(
+                    viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+                ),
+                AssetGeneration(1),
+                &[0, 0, 255, 255],
+            )
+            .unwrap(),
         })
         .unwrap();
 
@@ -124,7 +213,14 @@ fn metal_upload_and_headless_draw_smoke_test_is_explicitly_opt_in() {
             source_size,
             width: 1,
             height: 1,
-            pixels: vec![0, 0, 255, 255],
+            pixels: viewer_render_core::SharedPixels::try_copy_from_slice(
+                &viewer_render_core::ImageMemoryCoordinator::new(
+                    viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+                ),
+                AssetGeneration(1),
+                &[0, 0, 255, 255],
+            )
+            .unwrap(),
         })
         .unwrap();
     let replacement_handle = renderer
@@ -134,10 +230,20 @@ fn metal_upload_and_headless_draw_smoke_test_is_explicitly_opt_in() {
             source_size,
             width: 1,
             height: 1,
-            pixels: vec![0, 255, 0, 255],
+            pixels: viewer_render_core::SharedPixels::try_copy_from_slice(
+                &viewer_render_core::ImageMemoryCoordinator::new(
+                    viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+                ),
+                AssetGeneration(1),
+                &[0, 255, 0, 255],
+            )
+            .unwrap(),
         })
         .unwrap();
-    assert_eq!(replacement_handle, first_handle);
+    assert_ne!(
+        replacement_handle, first_handle,
+        "replacement tickets must not report old content ready"
+    );
     assert_eq!(renderer.gpu_resource_bytes(), 4);
 
     renderer
@@ -147,7 +253,14 @@ fn metal_upload_and_headless_draw_smoke_test_is_explicitly_opt_in() {
             source_size,
             width: 1,
             height: 1,
-            pixels: vec![255, 0, 0, 255],
+            pixels: viewer_render_core::SharedPixels::try_copy_from_slice(
+                &viewer_render_core::ImageMemoryCoordinator::new(
+                    viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+                ),
+                AssetGeneration(1),
+                &[255, 0, 0, 255],
+            )
+            .unwrap(),
         })
         .unwrap();
     assert!(matches!(
@@ -157,7 +270,14 @@ fn metal_upload_and_headless_draw_smoke_test_is_explicitly_opt_in() {
             source_size,
             width: 1,
             height: 1,
-            pixels: vec![0, 0, 255, 255],
+            pixels: viewer_render_core::SharedPixels::try_copy_from_slice(
+                &viewer_render_core::ImageMemoryCoordinator::new(
+                    viewer_render_core::ImageMemoryPolicy::baseline_8gb()
+                ),
+                AssetGeneration(1),
+                &[0, 0, 255, 255]
+            )
+            .unwrap(),
         }),
         Err(viewer_render_wgpu::RenderError::Upload(
             UploadError::StaleGeneration
@@ -212,7 +332,14 @@ fn metal_draw_preserves_top_to_bottom_pixel_order() {
             width: 1,
             height: 2,
             // Decoded resources are top-row first: red above blue.
-            pixels: vec![0, 0, 255, 255, 255, 0, 0, 255],
+            pixels: viewer_render_core::SharedPixels::try_copy_from_slice(
+                &viewer_render_core::ImageMemoryCoordinator::new(
+                    viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+                ),
+                AssetGeneration(1),
+                &[0, 0, 255, 255, 255, 0, 0, 255],
+            )
+            .unwrap(),
         })
         .unwrap();
 

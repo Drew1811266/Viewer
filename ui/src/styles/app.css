@@ -19,6 +19,8 @@ html,
 body,
 #root {
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 * {
@@ -2442,7 +2444,6 @@ body:has(.viewer-dialog-backdrop) .task-bar {
 body:has(.native-image-viewport),
 #root:has(.native-image-viewport) {
   background: transparent;
-  overflow: hidden;
 }
 
 .viewer-shell:has(> .image-preview .native-image-viewport)

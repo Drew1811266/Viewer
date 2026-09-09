@@ -40,6 +40,67 @@ const STROKE: ReviewAnchor = {
 const IMAGE_ANCHORS = [POINT, ARROW, RECTANGLE, ELLIPSE, STROKE]
 
 describe('nativeReviewScene', () => {
+  it('does not turn resource-detail status into an annotation mutation', () => {
+    for (const available of [false, true]) {
+      expect(
+        toAnnotationAction({
+          type: 'detail_availability_changed',
+          sessionId: '1',
+          assetGeneration: 2,
+          resourceRevision: 3,
+          available,
+        }),
+      ).toBeNull()
+    }
+  })
+
+  it('disables new annotation gestures in readonly and non-idle editor phases', () => {
+    const version = { revision: 2, clientMutationId: null, annotationsEditable: true }
+    expect(toNativeScene([], idleEditor(), version).annotationsEditable).toBe(true)
+    expect(
+      toNativeScene([], idleEditor(), { ...version, annotationsEditable: false })
+        .annotationsEditable,
+    ).toBe(false)
+    for (const phase of [
+      { status: 'drawing' as const, draftAnchor: POINT, sourceItemId: 'first' },
+      { status: 'editing' as const, draftAnchor: POINT, sourceItemId: 'first', text: '文字' },
+      { status: 'saving' as const, draftAnchor: POINT, sourceItemId: 'first', text: '文字' },
+      {
+        status: 'save_error' as const,
+        draftAnchor: POINT,
+        sourceItemId: 'first',
+        text: '文字',
+        message: '保存失败',
+      },
+    ]) {
+      expect(toNativeScene([], { ...idleEditor(), phase }, version).annotationsEditable).toBe(false)
+    }
+  })
+
+  it('replaces the original node while staging an existing geometry edit', () => {
+    const scene = toNativeScene(
+      [item('first', 1, POINT)],
+      {
+        ...idleEditor(),
+        selectedItemId: 'first',
+        phase: {
+          status: 'drawing',
+          sourceItemId: 'first',
+          draftAnchor: { kind: 'image_point', x: 0.4, y: 0.5 },
+        },
+      },
+      { revision: 2, clientMutationId: null },
+    )
+    expect(scene.annotations).toHaveLength(1)
+    expect(scene.annotations[0]).toMatchObject({
+      id: 'first',
+      selected: true,
+      draft: true,
+      geometry: { type: 'point', position: { x: 0.4, y: 0.5 } },
+    })
+    expect(scene.draft).toBeNull()
+  })
+
   it('round-trips every image anchor without changing normalized coordinates or stroke order', () => {
     for (const anchor of IMAGE_ANCHORS) {
       const geometry = reviewAnchorToNativeGeometry(anchor)

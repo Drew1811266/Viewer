@@ -14,7 +14,7 @@ pub use decode::{
     MacImageResourceProvider, PreviewRequest, SourceFingerprint,
 };
 pub use display_link::{DisplayTickSignal, MacDisplayLink};
-pub use glyph_atlas::system_ordinal_glyph_atlas;
+pub use glyph_atlas::{system_ordinal_glyph_atlas, system_ordinal_glyph_atlas_with_memory};
 pub use host::{ImageRenderHostState, MacImageRenderHost};
 pub use input::{
     InputExclusionRect, InputRect, InputRoutingError, MacInputMonitor, MacInputRouter,

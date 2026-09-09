@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::io;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use objc2_core_foundation::{CGPoint, CGRect, CGSize};
+use objc2_core_graphics::CGImage;
 use thiserror::Error;
 use viewer_application::ImageError;
 use viewer_domain::image::ImageProbe;
@@ -18,7 +20,7 @@ use crate::image::image_io::{
     open_image_source, oriented_dimensions, probe_image_source, thumbnail_from_image_source,
 };
 
-use super::color::normalize_to_bgra_srgb;
+use super::color::{normalize_to_bgra_srgb, normalize_to_bgra_srgb_in_rect};
 use super::{
     CacheReclaimReport, DecodedPixels, DerivedCacheKey, DerivedRegion, MacImageTileCache,
     MemoryPressureSink, PixelFormat,
@@ -160,11 +162,17 @@ pub struct DecodedResource {
     pub height: u32,
     pub bytes_per_row: u32,
     pub pixel_format: PixelFormat,
-    pub pixels: Arc<[u8]>,
+    /// Number of duplicated pixels on each non-image edge of a tile texture.
+    /// Preview resources always use zero. The GPU uses this metadata to keep
+    /// linear filtering inside the tile's padded sample rectangle.
+    pub sample_border: u32,
+    pub pixels: viewer_render_core::SharedPixels,
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
 pub enum ImageResourceError {
+    #[error("image memory admission failed: {0}")]
+    MemoryAdmission(#[from] viewer_render_core::MemoryAdmissionError),
     #[error("image decode failed: {0}")]
     Image(String),
     #[error("image resource request was cancelled")]
@@ -209,7 +217,9 @@ impl From<ImageError> for ImageResourceError {
 
 #[derive(Clone)]
 pub struct MacImageResourceProvider {
+    memory: viewer_render_core::ImageMemoryCoordinator,
     cache: MacImageTileCache,
+    budget: MemoryBudget,
     schema_version: u32,
     cancelled_through: Arc<Mutex<Option<AssetGeneration>>>,
     current_generation: Arc<AtomicU64>,
@@ -226,13 +236,43 @@ impl MacImageResourceProvider {
         budget: MemoryBudget,
         schema_version: u32,
     ) -> Result<Self, ImageResourceError> {
+        Self::with_memory_and_schema(
+            cache_root,
+            budget,
+            viewer_render_core::ImageMemoryCoordinator::new(
+                viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+            ),
+            schema_version,
+        )
+    }
+
+    pub fn with_memory(
+        cache_root: &Path,
+        budget: MemoryBudget,
+        memory: viewer_render_core::ImageMemoryCoordinator,
+    ) -> Result<Self, ImageResourceError> {
+        Self::with_memory_and_schema(cache_root, budget, memory, super::CACHE_SCHEMA_VERSION)
+    }
+
+    fn with_memory_and_schema(
+        cache_root: &Path,
+        budget: MemoryBudget,
+        memory: viewer_render_core::ImageMemoryCoordinator,
+        schema_version: u32,
+    ) -> Result<Self, ImageResourceError> {
         Ok(Self {
-            cache: MacImageTileCache::new(cache_root, budget)?,
+            cache: MacImageTileCache::with_memory(cache_root, budget, memory.clone())?,
+            memory,
+            budget,
             schema_version,
             cancelled_through: Arc::new(Mutex::new(None)),
             current_generation: Arc::new(AtomicU64::new(0)),
             latest_pressure_report: Arc::new(Mutex::new(None)),
         })
+    }
+
+    pub fn memory(&self) -> &viewer_render_core::ImageMemoryCoordinator {
+        &self.memory
     }
 
     pub fn probe(&self, source: &AuthorizedImageSource) -> Result<ImageProbe, ImageResourceError> {
@@ -241,6 +281,10 @@ impl MacImageResourceProvider {
         let probe = probe_image_source(&image_source)?;
         source.verify_unchanged()?;
         Ok(probe)
+    }
+
+    pub const fn budget(&self) -> MemoryBudget {
+        self.budget
     }
 
     pub fn request_preview(
@@ -259,6 +303,19 @@ impl MacImageResourceProvider {
         generation: AssetGeneration,
         request: PreviewRequest,
     ) -> Result<(ImageProbe, DecodedResource), ImageResourceError> {
+        self.probe_and_request_preview_cancellable(source, generation, request, &|| false)
+    }
+
+    pub fn probe_and_request_preview_cancellable(
+        &self,
+        source: &AuthorizedImageSource,
+        generation: AssetGeneration,
+        request: PreviewRequest,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<(ImageProbe, DecodedResource), ImageResourceError> {
+        if cancelled() {
+            return Err(ImageResourceError::Cancelled);
+        }
         self.begin_request(generation)?;
         let probe = self.probe(source)?;
         let (source_width, source_height) = oriented_dimensions(&probe);
@@ -268,6 +325,14 @@ impl MacImageResourceProvider {
             request.max_width,
             request.max_height,
         )?;
+        // Image I/O's thumbnail and our normalized BGRA buffer coexist.
+        if u64::from(width)
+            .saturating_mul(u64::from(height))
+            .saturating_mul(8)
+            > self.budget.cpu_staging_bytes
+        {
+            return Err(ImageResourceError::LimitExceeded);
+        }
         let level = level_for_dimensions(source_width, source_height, width, height);
         let key = DerivedCacheKey::new(
             source.fingerprint.clone(),
@@ -281,14 +346,38 @@ impl MacImageResourceProvider {
             self.cache
                 .load(&key, generation, kind, ResourcePriority::Visible)?
         {
+            if cancelled() {
+                return Err(ImageResourceError::Cancelled);
+            }
             self.check_cancelled(generation)?;
             return Ok((probe, resource));
         }
 
+        if cancelled() {
+            return Err(ImageResourceError::Cancelled);
+        }
         self.check_cancelled(generation)?;
-        let image_source = open_image_source(source.path())?;
-        let image = thumbnail_from_image_source(&image_source, width.max(height))?;
-        let pixels = normalize_to_bgra_srgb(&image)?;
+        let image = AccountedNativeImage::decode(
+            source,
+            width,
+            height,
+            &self.memory,
+            generation,
+            u64::from(width) * u64::from(height) * 4,
+        )?;
+        if cancelled() {
+            return Err(ImageResourceError::Cancelled);
+        }
+        let pixels = normalize_to_bgra_srgb_in_rect(
+            &image.image,
+            (width, height),
+            CGRect::new(
+                CGPoint::ZERO,
+                CGSize::new(f64::from(width), f64::from(height)),
+            ),
+            &self.memory,
+            generation,
+        )?;
         if (pixels.width, pixels.height) != (width, height) {
             return Err(ImageResourceError::InvalidResource);
         }
@@ -296,7 +385,7 @@ impl MacImageResourceProvider {
         self.check_cancelled(generation)?;
         let resource = resource_from_pixels(generation, key, kind, pixels);
         self.cache.store(&resource, ResourcePriority::Visible)?;
-        if self.check_cancelled(generation).is_err() {
+        if cancelled() || self.check_cancelled(generation).is_err() {
             self.cache.remove(&resource.cache_key)?;
             return Err(ImageResourceError::Cancelled);
         }
@@ -309,8 +398,43 @@ impl MacImageResourceProvider {
         generation: AssetGeneration,
         plan: &ResourcePlan,
     ) -> Result<Vec<DecodedResource>, ImageResourceError> {
+        self.request_tiles_cancellable(source, generation, plan, &|| false)
+    }
+
+    pub fn request_tiles_cancellable(
+        &self,
+        source: &AuthorizedImageSource,
+        generation: AssetGeneration,
+        plan: &ResourcePlan,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Vec<DecodedResource>, ImageResourceError> {
+        let mut resources = Vec::new();
+        self.stream_tiles_cancellable(source, generation, plan, cancelled, &mut |resource| {
+            resources.push(resource);
+            Ok(())
+        })?;
+        Ok(resources)
+    }
+
+    /// Deliver each resource before producing the next. The sink can apply
+    /// byte backpressure; it must return Cancelled when superseded/shut down.
+    /// Memory admission never waits or retries a native decode internally.
+    pub fn stream_tiles_cancellable(
+        &self,
+        source: &AuthorizedImageSource,
+        generation: AssetGeneration,
+        plan: &ResourcePlan,
+        cancelled: &dyn Fn() -> bool,
+        deliver: &mut dyn FnMut(DecodedResource) -> Result<(), ImageResourceError>,
+    ) -> Result<(), ImageResourceError> {
+        if cancelled() {
+            return Err(ImageResourceError::Cancelled);
+        }
         self.begin_request(generation)?;
         validate_plan(plan)?;
+        if plan.required_tiles.is_empty() && plan.prefetch_tiles.is_empty() {
+            return Ok(());
+        }
         let probe = self.probe(source)?;
         let (source_width, source_height) = oriented_dimensions(&probe);
         let level_width = mip_dimension(source_width, plan.level);
@@ -320,71 +444,99 @@ impl MacImageResourceProvider {
             TextureStrategy::Tiled { tile_size } if tile_size > 0 => tile_size,
             TextureStrategy::Tiled { .. } => return Err(ImageResourceError::InvalidRequest),
         };
-
-        let mut ordered = Vec::new();
         let mut seen = BTreeSet::new();
-        for tile in plan.required_tiles.iter().copied() {
-            if seen.insert(tile) {
-                ordered.push((tile, ResourcePriority::Visible));
-            }
-        }
-        for tile in plan.prefetch_tiles.iter().copied() {
-            if seen.insert(tile) {
-                ordered.push((tile, ResourcePriority::Prefetch));
-            }
-        }
-
-        let mut resources = BTreeMap::new();
-        let mut missing = Vec::new();
-        for (tile, priority) in &ordered {
+        let ordered: Vec<_> = plan
+            .required_tiles
+            .iter()
+            .map(|tile| (*tile, ResourcePriority::Visible))
+            .chain(
+                plan.prefetch_tiles
+                    .iter()
+                    .map(|tile| (*tile, ResourcePriority::Prefetch)),
+            )
+            .filter(|(tile, _)| seen.insert(*tile))
+            .collect();
+        let mut largest_output = 0;
+        for (tile, _) in &ordered {
             validate_tile(*tile, plan.level, level_width, level_height, tile_size)?;
+            let (width, height) = tile_dimensions(
+                *tile,
+                level_width,
+                level_height,
+                tile_size,
+                viewer_render_core::DEFAULT_TILE_BORDER,
+            )?;
+            largest_output = largest_output.max(u64::from(width) * u64::from(height) * 4);
+        }
+        let mut native = None;
+        for (tile, priority) in ordered {
+            if cancelled() {
+                return Err(ImageResourceError::Cancelled);
+            }
+            self.check_cancelled(generation)?;
+            let expected_dimensions = tile_dimensions(
+                tile,
+                level_width,
+                level_height,
+                tile_size,
+                viewer_render_core::DEFAULT_TILE_BORDER,
+            )?;
             let key = DerivedCacheKey::new(
                 source.fingerprint.clone(),
                 &probe,
                 plan.level,
-                DerivedRegion::Tile(*tile),
+                DerivedRegion::Tile(tile),
                 self.schema_version,
             );
-            let kind = DecodedResourceKind::Tile(*tile);
-            if let Some(resource) = self.cache.load(&key, generation, kind, *priority)? {
-                resources.insert(*tile, resource);
+            let kind = DecodedResourceKind::Tile(tile);
+            let resource = if let Some(hit) = self.cache.load_expected(
+                &key,
+                generation,
+                kind,
+                priority,
+                Some(expected_dimensions),
+            )? {
+                hit
             } else {
-                missing.push((*tile, *priority, key));
-            }
-        }
-
-        if !missing.is_empty() {
-            self.check_cancelled(generation)?;
-            let image_source = open_image_source(source.path())?;
-            let image = thumbnail_from_image_source(&image_source, level_width.max(level_height))?;
-            let level_pixels = normalize_to_bgra_srgb(&image)?;
-            if (level_pixels.width, level_pixels.height) != (level_width, level_height) {
-                return Err(ImageResourceError::InvalidResource);
-            }
-            source.verify_unchanged()?;
-
-            for (tile, priority, key) in missing {
-                self.check_cancelled(generation)?;
-                let pixels = crop_tile(&level_pixels, tile, tile_size)?;
-                let resource =
-                    resource_from_pixels(generation, key, DecodedResourceKind::Tile(tile), pixels);
-                self.cache.store(&resource, priority)?;
-                if self.check_cancelled(generation).is_err() {
-                    self.cache.remove(&resource.cache_key)?;
+                if native.is_none() {
+                    let native_bytes = u64::from(level_width) * u64::from(level_height) * 4;
+                    if native_bytes
+                        .checked_add(largest_output)
+                        .is_none_or(|peak| peak > self.budget.cpu_staging_bytes)
+                    {
+                        return Err(ImageResourceError::LimitExceeded);
+                    }
+                    native = Some(AccountedNativeImage::decode(
+                        source,
+                        level_width,
+                        level_height,
+                        &self.memory,
+                        generation,
+                        largest_output,
+                    )?);
+                }
+                if cancelled() || self.check_cancelled(generation).is_err() {
                     return Err(ImageResourceError::Cancelled);
                 }
-                resources.insert(tile, resource);
+                let image = &native.as_ref().expect("native decode initialized").image;
+                let pixels = crop_tile(
+                    image,
+                    (level_width, level_height),
+                    tile,
+                    tile_size,
+                    &self.memory,
+                    generation,
+                )?;
+                let resource = resource_from_pixels(generation, key, kind, pixels);
+                self.cache.store(&resource, priority)?;
+                resource
+            };
+            if cancelled() || self.check_cancelled(generation).is_err() {
+                return Err(ImageResourceError::Cancelled);
             }
+            deliver(resource)?;
         }
-
-        ordered
-            .into_iter()
-            .map(|(tile, _)| {
-                resources
-                    .remove(&tile)
-                    .ok_or(ImageResourceError::InvalidResource)
-            })
-            .collect()
+        Ok(())
     }
 
     pub fn cancel_generation(&self, generation: AssetGeneration) {
@@ -468,7 +620,11 @@ fn resource_from_pixels(
         height: pixels.height,
         bytes_per_row: pixels.bytes_per_row,
         pixel_format: pixels.pixel_format,
-        pixels: pixels.pixels.into(),
+        sample_border: match kind {
+            DecodedResourceKind::Preview { .. } => 0,
+            DecodedResourceKind::Tile(_) => viewer_render_core::DEFAULT_TILE_BORDER,
+        },
+        pixels: pixels.pixels,
     }
 }
 
@@ -551,10 +707,40 @@ fn validate_tile(
     Ok(())
 }
 
+fn tile_dimensions(
+    tile: TileCoordinate,
+    level_width: u32,
+    level_height: u32,
+    tile_size: u32,
+    border: u32,
+) -> Result<(u32, u32), ImageResourceError> {
+    let x = tile
+        .x
+        .checked_mul(tile_size)
+        .ok_or(ImageResourceError::LimitExceeded)?;
+    let y = tile
+        .y
+        .checked_mul(tile_size)
+        .ok_or(ImageResourceError::LimitExceeded)?;
+    if x >= level_width || y >= level_height {
+        return Err(ImageResourceError::InvalidRequest);
+    }
+    let width = tile_size.min(level_width - x);
+    let height = tile_size.min(level_height - y);
+    let left = border.min(x);
+    let top = border.min(y);
+    let right = border.min(level_width.saturating_sub(x + width));
+    let bottom = border.min(level_height.saturating_sub(y + height));
+    Ok((width + left + right, height + top + bottom))
+}
+
 fn crop_tile(
-    level: &DecodedPixels,
+    level: &CGImage,
+    level_size: (u32, u32),
     tile: TileCoordinate,
     tile_size: u32,
+    memory: &viewer_render_core::ImageMemoryCoordinator,
+    generation: AssetGeneration,
 ) -> Result<DecodedPixels, ImageResourceError> {
     let x = tile
         .x
@@ -564,40 +750,150 @@ fn crop_tile(
         .y
         .checked_mul(tile_size)
         .ok_or(ImageResourceError::LimitExceeded)?;
-    if x >= level.width || y >= level.height {
+    let (level_width, level_height) = level_size;
+    if x >= level_width || y >= level_height {
         return Err(ImageResourceError::InvalidRequest);
     }
-    let width = tile_size.min(level.width - x);
-    let height = tile_size.min(level.height - y);
-    let bytes_per_row = width
-        .checked_mul(4)
-        .ok_or(ImageResourceError::LimitExceeded)?;
-    let length = usize::try_from(u64::from(bytes_per_row) * u64::from(height))
-        .map_err(|_| ImageResourceError::LimitExceeded)?;
-    let mut pixels = vec![0_u8; length];
-    let source_stride =
-        usize::try_from(level.bytes_per_row).map_err(|_| ImageResourceError::LimitExceeded)?;
-    let destination_stride =
-        usize::try_from(bytes_per_row).map_err(|_| ImageResourceError::LimitExceeded)?;
-    let source_x = usize::try_from(x)
-        .map_err(|_| ImageResourceError::LimitExceeded)?
-        .checked_mul(4)
-        .ok_or(ImageResourceError::LimitExceeded)?;
-    let source_y = usize::try_from(y).map_err(|_| ImageResourceError::LimitExceeded)?;
-    for row in 0..usize::try_from(height).map_err(|_| ImageResourceError::LimitExceeded)? {
-        let source_start = (source_y + row)
-            .checked_mul(source_stride)
-            .and_then(|offset| offset.checked_add(source_x))
-            .ok_or(ImageResourceError::LimitExceeded)?;
-        let destination_start = row * destination_stride;
-        pixels[destination_start..destination_start + destination_stride]
-            .copy_from_slice(&level.pixels[source_start..source_start + destination_stride]);
+    let width = tile_size.min(level_width - x);
+    let height = tile_size.min(level_height - y);
+    let border = viewer_render_core::DEFAULT_TILE_BORDER;
+    let left = border.min(x);
+    let top = border.min(y);
+    let right = border.min(level_width.saturating_sub(x + width));
+    let bottom = border.min(level_height.saturating_sub(y + height));
+    if (CGImage::width(Some(level)), CGImage::height(Some(level)))
+        != (level_width as usize, level_height as usize)
+    {
+        return normalize_to_bgra_srgb_in_rect(
+            level,
+            (width + left + right, height + top + bottom),
+            CGRect::new(
+                // Core Graphics draw bounds are bottom-up; tile coordinates
+                // and normalized pixel rows are top-down.
+                CGPoint::new(
+                    -f64::from(x - left),
+                    -f64::from(level_height - y - height - bottom),
+                ),
+                CGSize::new(f64::from(level_width), f64::from(level_height)),
+            ),
+            memory,
+            generation,
+        );
     }
-    Ok(DecodedPixels {
-        width,
-        height,
-        bytes_per_row,
-        pixel_format: level.pixel_format,
-        pixels,
+    let cropped = CGImage::with_image_in_rect(
+        Some(level),
+        CGRect::new(
+            CGPoint::new(f64::from(x - left), f64::from(y - top)),
+            CGSize::new(
+                f64::from(width + left + right),
+                f64::from(height + top + bottom),
+            ),
+        ),
+    )
+    .ok_or(ImageResourceError::InvalidResource)?;
+    normalize_to_bgra_srgb(&cropped, memory, generation)
+}
+
+// Field order releases the CGImage/source (including cropped backing) before
+// their reservations. Crops never escape the synchronous normalization call.
+struct AccountedNativeImage {
+    image: objc2_core_foundation::CFRetained<CGImage>,
+    _backing: NativeBacking,
+}
+
+struct NativeBacking {
+    _source: objc2_core_foundation::CFRetained<objc2_image_io::CGImageSource>,
+    _native: viewer_render_core::MemoryLease,
+    _opaque: viewer_render_core::MemoryLease,
+}
+
+impl AccountedNativeImage {
+    fn decode(
+        source: &AuthorizedImageSource,
+        width: u32,
+        height: u32,
+        memory: &viewer_render_core::ImageMemoryCoordinator,
+        generation: AssetGeneration,
+        largest_output: u64,
+    ) -> Result<Self, ImageResourceError> {
+        use viewer_render_core::AllocationClass;
+        // Metadata-only inspection precedes pixel admission. PNG can retain
+        // 16-bit components in Image I/O's thumbnail; BGRA8 is only our OUTPUT.
+        let image_source = open_image_source(source.path())?;
+        let component_bytes = native_component_bytes(&image_source)?;
+        // Reserve a one-pixel rounding envelope before Image I/O rasterizes.
+        // Only the final BGRA output is required to match our planned size.
+        let row = (u64::from(width) + 1)
+            .checked_mul(4 * component_bytes)
+            .and_then(|row| row.checked_add(255))
+            .map(|row| row / 256 * 256)
+            .ok_or(ImageResourceError::LimitExceeded)?;
+        let envelope = row
+            .checked_mul(u64::from(height) + 1)
+            .ok_or(ImageResourceError::LimitExceeded)?;
+        let minimum_peak = envelope
+            .checked_mul(2)
+            .and_then(|bytes| bytes.checked_add(largest_output))
+            .ok_or(ImageResourceError::LimitExceeded)?;
+        if minimum_peak > memory.normal_limits().combined_bytes {
+            return Err(viewer_render_core::MemoryAdmissionError::ExceedsPolicy.into());
+        }
+        let native = memory.try_reserve(AllocationClass::NativeDecode, envelope, generation)?;
+        // One additional aligned native output envelope is a separately labeled
+        // conservative decoder allowance, NOT measured Image I/O internal RAM.
+        let opaque = memory.try_reserve(AllocationClass::OpaqueAllowance, envelope, generation)?;
+        // Fail before calling Image I/O if this request cannot coexist with even
+        // one output. No wait ever retains a mip that prevents its own output.
+        drop(memory.try_reserve(AllocationClass::DecodedPixels, largest_output, generation)?);
+        // Own the metadata source and leases in drop order BEFORE rasterizing,
+        // so every decoder/validation error releases retained source backing
+        // before releasing its accounting (not just the successful return).
+        let backing = NativeBacking {
+            _source: image_source,
+            _native: native,
+            _opaque: opaque,
+        };
+        let image = thumbnail_from_image_source(&backing._source, width.max(height))?;
+        let actual_width = CGImage::width(Some(&image));
+        let actual_height = CGImage::height(Some(&image));
+        let actual_bytes = (CGImage::bytes_per_row(Some(&image)) as u64)
+            .checked_mul(actual_height as u64)
+            .ok_or(ImageResourceError::LimitExceeded)?;
+        if actual_width == 0
+            || actual_height == 0
+            || actual_width.abs_diff(width as usize) > 1
+            || actual_height.abs_diff(height as usize) > 1
+            || actual_bytes > envelope
+        {
+            return Err(ImageResourceError::InvalidResource);
+        }
+        backing._native.commit()?;
+        backing._opaque.commit()?;
+        source.verify_unchanged()?;
+        Ok(Self {
+            image,
+            _backing: backing,
+        })
+    }
+}
+
+fn native_component_bytes(
+    source: &objc2_image_io::CGImageSource,
+) -> Result<u64, ImageResourceError> {
+    use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CFType};
+    // SAFETY: the validated source has index zero; properties are metadata only.
+    let properties = unsafe { source.properties_at_index(0, None) }
+        .ok_or(ImageResourceError::InvalidResource)?;
+    // SAFETY: Image I/O property dictionaries have CFString keys and CF objects.
+    let properties: &CFDictionary<CFString, CFType> = unsafe { properties.cast_unchecked() };
+    // SAFETY: immutable documented Image I/O property key.
+    let depth = properties
+        .get(unsafe { objc2_image_io::kCGImagePropertyDepth })
+        .and_then(|value| value.downcast::<CFNumber>().ok())
+        .and_then(|value| value.as_i64());
+    Ok(match depth {
+        Some(1..=8) => 1,
+        Some(9..=16) | None => 2,
+        _ => 4,
     })
 }

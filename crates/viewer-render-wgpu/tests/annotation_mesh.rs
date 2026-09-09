@@ -99,8 +99,58 @@ fn selected_geometry_adds_four_fixed_screen_handles() {
         mesh.vertices()
             .iter()
             .filter(|vertex| vertex.kind == VertexKind::ScreenOffset)
-            .all(|vertex| vertex.screen_offset_px[0].abs() <= 11.0
-                && vertex.screen_offset_px[1].abs() <= 11.0)
+            .all(|vertex| vertex.screen_offset_px[0].abs() <= 14.0
+                && vertex.screen_offset_px[1].abs() <= 14.0)
+    );
+}
+
+#[test]
+fn selected_arrow_handles_are_only_at_the_two_editable_endpoints() {
+    let mut arrow = node(
+        "arrow",
+        1,
+        AnnotationGeometry::Arrow {
+            tail: NormalizedPoint::new(0.1, 0.2).unwrap(),
+            head: NormalizedPoint::new(0.7, 0.8).unwrap(),
+        },
+    );
+    arrow.selected = true;
+    let scene = SceneSnapshot::new(SceneRevision(1), vec![arrow], None).unwrap();
+    let mesh = AnnotationMeshBuilder::default().build(&scene).unwrap();
+    assert_eq!(mesh.selection_handle_count(), 2);
+    assert!(
+        mesh.vertices()
+            .iter()
+            .filter(|vertex| { vertex.kind == VertexKind::ScreenOffset })
+            .all(|vertex| matches!(vertex.source_position, [0.1, 0.2] | [0.7, 0.8]))
+    );
+}
+
+#[test]
+fn selected_handles_have_visible_white_interiors_and_full_size_hit_targets() {
+    let mut arrow = node(
+        "arrow",
+        1,
+        AnnotationGeometry::Arrow {
+            tail: NormalizedPoint::new(0.2, 0.2).unwrap(),
+            head: NormalizedPoint::new(0.6, 0.6).unwrap(),
+        },
+    );
+    arrow.selected = true;
+    let mesh = AnnotationMeshBuilder::default()
+        .build(&SceneSnapshot::new(SceneRevision(1), vec![arrow], None).unwrap())
+        .unwrap();
+    assert!(
+        mesh.vertices()
+            .iter()
+            .any(|vertex| vertex.color == [1.0, 1.0, 1.0, 1.0]),
+        "handles need a contrasting white interior"
+    );
+    assert!(
+        mesh.vertices()
+            .iter()
+            .any(|vertex| vertex.screen_offset_px[0] == 12.0),
+        "handle diameter must remain 24 logical pixels"
     );
 }
 

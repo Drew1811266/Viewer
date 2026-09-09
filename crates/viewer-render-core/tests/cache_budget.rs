@@ -29,10 +29,6 @@ fn baseline_budget_reserves_256_mib_for_gpu_images() {
     let budget = MemoryBudget::baseline_8gb();
 
     assert_eq!(budget.gpu_texture_bytes, 256 * 1024 * 1024);
-    assert_eq!(
-        budget.single_texture_limit_bytes(),
-        102 * 1024 * 1024 + 419_430
-    );
 }
 
 #[test]

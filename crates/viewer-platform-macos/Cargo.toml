@@ -48,6 +48,10 @@ viewer-infrastructure = { path = "../viewer-infrastructure" }
 name = "watcher_reconcile"
 path = "../../tests/watcher_reconcile.rs"
 
+[[test]]
+name = "image_render_glyph_atlas"
+harness = false
+
 [[bench]]
 name = "image_pipeline"
 harness = false

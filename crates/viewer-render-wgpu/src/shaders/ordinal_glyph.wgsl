@@ -28,7 +28,7 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     let center = camera.origin.xy
         + input.source_position.x * camera.axis_x.xy
         + input.source_position.y * camera.axis_y.xy;
-    let clip_offset = vec2<f32>(
+    let clip_offset = max(camera.viewport_physical.z, 1.0) * vec2<f32>(
         input.screen_offset_px.x * 2.0 / camera.viewport_physical.x,
         -input.screen_offset_px.y * 2.0 / camera.viewport_physical.y,
     );

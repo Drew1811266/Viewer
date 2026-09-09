@@ -77,6 +77,7 @@ pub struct SceneSnapshot {
     revision: SceneRevision,
     annotations: Vec<AnnotationNode>,
     draft: Option<AnnotationNode>,
+    annotations_editable: bool,
 }
 
 impl SceneSnapshot {
@@ -85,6 +86,7 @@ impl SceneSnapshot {
             revision,
             annotations: Vec::new(),
             draft: None,
+            annotations_editable: true,
         }
     }
 
@@ -103,6 +105,7 @@ impl SceneSnapshot {
             revision,
             annotations,
             draft,
+            annotations_editable: true,
         })
     }
 
@@ -116,6 +119,16 @@ impl SceneSnapshot {
 
     pub fn draft(&self) -> Option<&AnnotationNode> {
         self.draft.as_ref()
+    }
+
+    pub const fn annotations_editable(&self) -> bool {
+        self.annotations_editable
+    }
+
+    /// Controls new annotation gestures without cancelling an already staged edit.
+    pub fn with_annotations_editable(mut self, editable: bool) -> Self {
+        self.annotations_editable = editable;
+        self
     }
 
     pub fn apply_patch(

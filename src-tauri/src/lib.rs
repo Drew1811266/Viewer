@@ -201,6 +201,10 @@ fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+pub fn application_context() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
+}
+
 pub fn run() {
     let registry = Arc::new(ImageArtifactRegistry::default());
     let active_image_session = image_protocol::ActiveImageSession::default();
@@ -453,7 +457,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(application_context())
         .expect("failed to build Viewer");
 
     app.run(|app, event| match event {

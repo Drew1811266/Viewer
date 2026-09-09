@@ -28,7 +28,8 @@ import {
 } from './imageGeometry'
 import { createImagePreviewProjection } from './imagePreviewProjection'
 import { lensDimensions } from './magnifierGeometry'
-import WebImageViewport from './WebImageViewport'
+import { type NativeCloseBarrier, nativeCloseBarrier } from './nativeCloseBarrier'
+import { NativeLayoutCommands } from './nativeLayoutCommands'
 
 type NativeImageViewportProps = Omit<ImagePreviewSurfaceProps, 'renderer'> & {
   renderer: ImageRendererPort
@@ -50,9 +51,7 @@ export default function NativeImageViewport({
   file,
   files,
   magnifier,
-  pointerClientPoint,
   unavailableEntityIds = EMPTY_ENTITY_IDS,
-  requestImage,
   onNavigate,
   onDimensions,
   ariaLabel,
@@ -60,20 +59,22 @@ export default function NativeImageViewport({
   onEscape,
   slots,
   nativeBinding,
-  ...webOnlyProps
 }: NativeImageViewportProps) {
   const stage = useRef<HTMLDivElement>(null)
   const navigationElement = useRef<HTMLElement>(null)
   const sessionId = useRef(nextRendererSessionId())
   const generation = useRef(0)
   const session = useRef<ImageRendererSession | null>(null)
+  const sessionClosure = useRef<NativeCloseBarrier>(() => Promise.resolve())
   const nativeBindingRef = useRef(nativeBinding)
   nativeBindingRef.current = nativeBinding
+  const sourceMetadata = useRef(file.imageMetadata)
+  sourceMetadata.current = file.imageMetadata
+  const onDimensionsRef = useRef(onDimensions)
+  onDimensionsRef.current = onDimensions
   const resourceReadyGeneration = useRef<number | null>(null)
-  const lastAppliedSurface = useRef<(ImageRendererRect & { scaleFactor: number }) | null>(null)
-  const pendingSurface = useRef<(ImageRendererRect & { scaleFactor: number }) | null>(null)
-  const lastAppliedExclusions = useRef<ImageRendererRect[] | null>(null)
-  const pendingExclusions = useRef<ImageRendererRect[] | null>(null)
+  const surfaceCommands = useRef(new NativeLayoutCommands(sameSurface))
+  const exclusionCommands = useRef(new NativeLayoutCommands(sameRects))
   const sceneRevision = useRef(0)
   const [activeGeneration, setActiveGeneration] = useState(0)
   const [sessionEpoch, setSessionEpoch] = useState(0)
@@ -81,13 +82,21 @@ export default function NativeImageViewport({
   const [sourceSize, setSourceSize] = useState<Size>(file.imageMetadata ?? EMPTY_SIZE)
   const [stageSize, setStageSize] = useState<Size>(EMPTY_SIZE)
   const [ready, setReady] = useState(false)
-  const [fallbackToWeb, setFallbackToWeb] = useState(false)
   const [magnifierEnabled, setMagnifierEnabled] = useState(false)
   const [magnifierAnnounced, setMagnifierAnnounced] = useState(false)
   const [announcedScalePercent, setAnnouncedScalePercent] = useState(100)
   const [error, setError] = useState<string | null>(null)
-  const metadataWidth = file.imageMetadata?.width
-  const metadataHeight = file.imageMetadata?.height
+  const [detailUnavailable, setDetailUnavailable] = useState(false)
+  const [retryEpoch, setRetryEpoch] = useState(0)
+  const retryView = useRef<{
+    entityId: string
+    camera: ImageViewportState
+    magnifier: ReturnType<typeof nativeMagnifierPreferences> | null
+  } | null>(null)
+  const desiredView = useRef<{
+    camera: ImageViewportState
+    magnifier: ReturnType<typeof nativeMagnifierPreferences> | null
+  }>({ camera: DEFAULT_CAMERA, magnifier: null })
   const currentIndex = files.findIndex((candidate) => candidate.entityId === file.entityId)
   const unavailable = unavailableEntityIds.has(file.entityId)
   const transformsDisabled = unavailable || !isPreviewableImage(file)
@@ -105,27 +114,29 @@ export default function NativeImageViewport({
   useEffect(() => {
     if (transformsDisabled) return
     const assetGeneration = generation.current + 1
+    const restoredView = retryView.current?.entityId === file.entityId ? retryView.current : null
+    retryView.current = null
+    const initialView = {
+      camera: restoredView?.camera ?? DEFAULT_CAMERA,
+      magnifier: restoredView?.magnifier ?? null,
+    }
+    desiredView.current = initialView
     generation.current = assetGeneration
     setActiveGeneration(assetGeneration)
-    setCamera(DEFAULT_CAMERA)
-    setSourceSize(
-      metadataWidth !== undefined && metadataHeight !== undefined
-        ? { width: metadataWidth, height: metadataHeight }
-        : EMPTY_SIZE,
-    )
+    setCamera(restoredView?.camera ?? DEFAULT_CAMERA)
+    setSourceSize(sourceMetadata.current ?? EMPTY_SIZE)
     setReady(false)
-    setFallbackToWeb(false)
-    setMagnifierEnabled(false)
+    setMagnifierEnabled(restoredView?.magnifier != null)
     setError(null)
+    setDetailUnavailable(false)
     resourceReadyGeneration.current = null
-    lastAppliedSurface.current = null
-    pendingSurface.current = null
-    lastAppliedExclusions.current = null
-    pendingExclusions.current = null
+    surfaceCommands.current = new NativeLayoutCommands(sameSurface)
+    exclusionCommands.current = new NativeLayoutCommands(sameRects)
     sceneRevision.current = 0
     let disposed = false
     let stopListening: (() => void) | undefined
     let opened: ImageRendererSession | undefined
+    let latestDetailRevision = -1
 
     const receive = (event: ImageRendererEvent) => {
       if (
@@ -140,23 +151,30 @@ export default function NativeImageViewport({
         const dimensions = { width: event.width, height: event.height }
         setSourceSize(dimensions)
         setError(null)
-        onDimensions?.(file.entityId, event.width, event.height)
+        onDimensionsRef.current?.(file.entityId, event.width, event.height)
       } else if (event.type === 'frame_presented') {
         if (resourceReadyGeneration.current !== event.assetGeneration) return
         setError(null)
         setReady(true)
       } else if (event.type === 'camera_changed') {
-        setCamera(fromRendererCamera(event.camera))
-      } else if (event.type === 'backend_activated' && event.backend === 'web') {
-        setFallbackToWeb(true)
+        const next = fromRendererCamera(event.camera)
+        desiredView.current = { ...desiredView.current, camera: next }
+        setCamera(next)
+      } else if (event.type === 'detail_availability_changed') {
+        if (event.resourceRevision < latestDetailRevision) return
+        latestDetailRevision = event.resourceRevision
+        setDetailUnavailable(!event.available)
       } else if (event.type === 'failed') {
         setError(nativeFailureCopy(event.code))
       }
       nativeBindingRef.current?.onEvent(event)
     }
 
-    void (async () => {
+    const previousClosure = sessionClosure.current
+    const initialize = (async () => {
       try {
+        await previousClosure()
+        if (disposed) return
         stopListening = await renderer.listen(receive)
         if (disposed) {
           stopListening()
@@ -167,12 +185,20 @@ export default function NativeImageViewport({
           entityId: file.entityId,
           assetGeneration,
         })
-        if (disposed) {
-          await opened.close()
-          return
+        if (disposed) return
+        // Controls stay usable while Close/Open/restore is pending. Reconcile
+        // the latest intent, including an explicit magnifier-off, before scene
+        // revisions or input are allowed to enter the new session.
+        let hydrated = restoredView === null ? initialView : null
+        while (!disposed && desiredView.current !== hydrated) {
+          const next = desiredView.current
+          await dispatch(opened, { type: 'camera', camera: toRendererCamera(next.camera) }, 0)
+          if (disposed) return
+          await dispatch(opened, { type: 'set_magnifier', magnifier: next.magnifier }, 0)
+          hydrated = next
         }
+        if (disposed) return
         session.current = opened
-        if (opened.backend === 'web') setFallbackToWeb(true)
         setSessionEpoch((current) => current + 1)
       } catch (cause) {
         if (!disposed) setError(nativeFailureCopy(errorCode(cause)))
@@ -182,20 +208,20 @@ export default function NativeImageViewport({
     return () => {
       disposed = true
       stopListening?.()
-      const current = opened ?? session.current
-      if (session.current === current) session.current = null
-      if (current !== null && current !== undefined) void current.close()
+      if (session.current === opened) session.current = null
+      // Even an in-flight Open/hydration must finish and close before a new
+      // generation opens; otherwise its late Close is stale and cannot reset
+      // a faulted native actor. Rejections are surfaced by the next Open.
+      sessionClosure.current = nativeCloseBarrier(
+        previousClosure,
+        initialize.then(() => opened),
+      )
+      void sessionClosure.current().catch(() => undefined)
     }
-  }, [file.entityId, metadataHeight, metadataWidth, onDimensions, renderer, transformsDisabled])
+  }, [file.entityId, file.modifiedNs, file.size, renderer, retryEpoch, transformsDisabled])
 
   useEffect(() => {
-    if (
-      fallbackToWeb ||
-      transformsDisabled ||
-      activeGeneration === 0 ||
-      nativeBinding === undefined
-    )
-      return
+    if (transformsDisabled || activeGeneration === 0 || nativeBinding === undefined) return
     const current = session.current
     if (current === null) return
     const revision = Math.max(sceneRevision.current + 1, nativeBinding.sceneRevision)
@@ -205,7 +231,6 @@ export default function NativeImageViewport({
       (ack) => {
         if (disposed) return
         sceneRevision.current = Math.max(sceneRevision.current, ack.acceptedRevision)
-        if (ack.backend === 'web') setFallbackToWeb(true)
       },
       (cause) => {
         if (!disposed) setError(nativeFailureCopy(errorCode(cause)))
@@ -216,7 +241,6 @@ export default function NativeImageViewport({
     }
   }, [
     activeGeneration,
-    fallbackToWeb,
     nativeBinding?.scene,
     nativeBinding?.sceneRevision,
     sessionEpoch,
@@ -224,13 +248,7 @@ export default function NativeImageViewport({
   ])
 
   useEffect(() => {
-    if (
-      fallbackToWeb ||
-      transformsDisabled ||
-      activeGeneration === 0 ||
-      nativeBinding === undefined
-    )
-      return
+    if (transformsDisabled || activeGeneration === 0 || nativeBinding === undefined) return
     const current = session.current
     if (current === null) return
     void dispatch(
@@ -238,10 +256,10 @@ export default function NativeImageViewport({
       { type: 'set_tool', tool: nativeBinding.tool },
       sceneRevision.current,
     ).catch((cause) => setError(nativeFailureCopy(errorCode(cause))))
-  }, [activeGeneration, fallbackToWeb, nativeBinding?.tool, sessionEpoch, transformsDisabled])
+  }, [activeGeneration, nativeBinding?.tool, sessionEpoch, transformsDisabled])
 
   useLayoutEffect(() => {
-    if (fallbackToWeb || transformsDisabled || activeGeneration === 0) return
+    if (transformsDisabled || activeGeneration === 0) return
     const node = stage.current
     if (node === null) return
     let disposed = false
@@ -250,6 +268,11 @@ export default function NativeImageViewport({
       if (disposed) return
       const current = session.current
       if (current === null) return
+      const assetGeneration = generation.current
+      const surfaces = surfaceCommands.current
+      const exclusionsState = exclusionCommands.current
+      const isCurrentSession = () =>
+        session.current === current && generation.current === assetGeneration
       const bounds = node.getBoundingClientRect()
       const surface = {
         left: bounds.left,
@@ -271,52 +294,50 @@ export default function NativeImageViewport({
         ...(navigationBounds === undefined ? [] : [rectFromBounds(navigationBounds)]),
         ...editorBounds,
       ]
-      if (
-        exclusions.every(validRect) &&
-        !sameRects(lastAppliedExclusions.current, exclusions) &&
-        !sameRects(pendingExclusions.current, exclusions)
-      ) {
-        pendingExclusions.current = exclusions
+      const exclusionSequence = exclusions.every(validRect)
+        ? exclusionsState.enqueue(exclusions)
+        : null
+      if (exclusionSequence !== null) {
         void dispatch(
           current,
           { type: 'set_input_exclusions', exclusions },
           sceneRevision.current,
         ).then(
           (ack) => {
-            if (disposed) return
-            if (sameRects(pendingExclusions.current, exclusions)) pendingExclusions.current = null
-            if (ack.disposition === 'applied' || ack.disposition === 'ignored_duplicate') {
-              lastAppliedExclusions.current = exclusions
-            }
+            if (!isCurrentSession()) return
+            exclusionsState.settle(
+              exclusionSequence,
+              exclusions,
+              ack.disposition === 'applied' || ack.disposition === 'ignored_duplicate',
+            )
           },
           (cause) => {
-            if (disposed) return
-            if (sameRects(pendingExclusions.current, exclusions)) pendingExclusions.current = null
-            setError(nativeFailureCopy(errorCode(cause)))
+            if (!isCurrentSession()) return
+            if (exclusionsState.settle(exclusionSequence, exclusions, false)) {
+              setError(nativeFailureCopy(errorCode(cause)))
+            }
           },
         )
       }
 
       if (validSurface(surface)) {
         setStageSize({ width: surface.width, height: surface.height })
-        if (
-          !sameSurface(lastAppliedSurface.current, surface) &&
-          !sameSurface(pendingSurface.current, surface)
-        ) {
-          pendingSurface.current = surface
+        const surfaceSequence = surfaces.enqueue(surface)
+        if (surfaceSequence !== null) {
           void dispatch(current, { type: 'set_surface', surface }, sceneRevision.current).then(
             (ack) => {
-              if (disposed) return
-              if (sameSurface(pendingSurface.current, surface)) pendingSurface.current = null
-              if (ack.disposition === 'applied' || ack.disposition === 'ignored_duplicate') {
-                lastAppliedSurface.current = surface
-              }
-              if (ack.backend === 'web') setFallbackToWeb(true)
+              if (!isCurrentSession()) return
+              surfaces.settle(
+                surfaceSequence,
+                surface,
+                ack.disposition === 'applied' || ack.disposition === 'ignored_duplicate',
+              )
             },
             (cause) => {
-              if (disposed) return
-              if (sameSurface(pendingSurface.current, surface)) pendingSurface.current = null
-              setError(nativeFailureCopy(errorCode(cause)))
+              if (!isCurrentSession()) return
+              if (surfaces.settle(surfaceSequence, surface, false)) {
+                setError(nativeFailureCopy(errorCode(cause)))
+              }
             },
           )
         }
@@ -325,30 +346,41 @@ export default function NativeImageViewport({
 
     sync()
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(sync)
+    // Fixed-position controls (for example the annotation tool menu) can be
+    // mounted after the native surface has been initialized and may overlap
+    // its input region. Observe structural changes so their exclusion bounds
+    // reach the native router before the next pointer event.
+    const mutationObserver =
+      typeof MutationObserver === 'undefined' ? null : new MutationObserver(sync)
     observer?.observe(node)
     if (navigationElement.current !== null) observer?.observe(navigationElement.current)
-    for (const element of node
-      .closest('.image-preview')
-      ?.querySelectorAll<HTMLElement>('[data-native-input-exclusion="true"]') ?? []) {
+    const root = node.closest('.image-preview')
+    for (const element of root?.querySelectorAll<HTMLElement>(
+      '[data-native-input-exclusion="true"]',
+    ) ?? []) {
       observer?.observe(element)
     }
+    mutationObserver?.observe(root ?? node, { childList: true, subtree: true })
     window.addEventListener('resize', sync)
     window.visualViewport?.addEventListener('resize', sync)
     return () => {
       disposed = true
       observer?.disconnect()
+      mutationObserver?.disconnect()
       window.removeEventListener('resize', sync)
       window.visualViewport?.removeEventListener('resize', sync)
     }
   }, [
     activeGeneration,
-    fallbackToWeb,
+    camera,
+    error,
     nativeBinding?.inputExclusionRevision,
     sessionEpoch,
     transformsDisabled,
   ])
 
   const sendCamera = useCallback((next: ImageViewportState) => {
+    desiredView.current = { ...desiredView.current, camera: next }
     setCamera(next)
     const current = session.current
     if (current !== null)
@@ -369,21 +401,14 @@ export default function NativeImageViewport({
 
   const toggleMagnifier = useCallback(() => {
     setMagnifierAnnounced(true)
-    setMagnifierEnabled((enabled) => {
-      const next = !enabled
-      const current = session.current
-      if (current !== null) {
-        void dispatch(
-          current,
-          {
-            type: 'set_magnifier',
-            magnifier: next ? nativeMagnifierPreferences(magnifier) : null,
-          },
-          sceneRevision.current,
-        )
-      }
-      return next
-    })
+    const next =
+      desiredView.current.magnifier === null ? nativeMagnifierPreferences(magnifier) : null
+    desiredView.current = { ...desiredView.current, magnifier: next }
+    setMagnifierEnabled(next !== null)
+    const current = session.current
+    if (current !== null) {
+      void dispatch(current, { type: 'set_magnifier', magnifier: next }, sceneRevision.current)
+    }
   }, [magnifier])
 
   const keyboard = useCallback(
@@ -416,26 +441,6 @@ export default function NativeImageViewport({
     },
     [navigate, onEscape, toggleMagnifier, transformsDisabled],
   )
-
-  if (fallbackToWeb) {
-    return (
-      <WebImageViewport
-        file={file}
-        files={files}
-        magnifier={magnifier}
-        pointerClientPoint={pointerClientPoint}
-        unavailableEntityIds={unavailableEntityIds}
-        requestImage={requestImage}
-        onNavigate={onNavigate}
-        onDimensions={onDimensions}
-        ariaLabel={ariaLabel}
-        toolbarLabel={toolbarLabel}
-        onEscape={onEscape}
-        slots={slots}
-        {...webOnlyProps}
-      />
-    )
-  }
 
   const displayControls: ReactNode = (
     <ViewerSegmentedControl label="图片显示控制">
@@ -520,9 +525,35 @@ export default function NativeImageViewport({
         <ImagePreviewLoading visible={!ready} />
       )}
       {error !== null && (
-        <ViewerLocalFeedback tone="danger" title="无法显示这张图片">
-          {error}
-        </ViewerLocalFeedback>
+        <div data-native-input-exclusion="true">
+          <ViewerLocalFeedback
+            tone="danger"
+            title="无法显示这张图片"
+            action={
+              <ViewerButton
+                onClick={() => {
+                  retryView.current = {
+                    entityId: file.entityId,
+                    camera,
+                    magnifier: magnifierEnabled ? nativeMagnifierPreferences(magnifier) : null,
+                  }
+                  setRetryEpoch((epoch) => epoch + 1)
+                }}
+              >
+                重试预览
+              </ViewerButton>
+            }
+          >
+            {error}
+          </ViewerLocalFeedback>
+        </div>
+      )}
+      {error === null && detailUnavailable && (
+        <div style={{ pointerEvents: 'none' }}>
+          <ViewerLocalFeedback tone="warning" title="高清细节暂不可用">
+            当前预览尚未恢复所需的清晰度，资源恢复后会自动更新。
+          </ViewerLocalFeedback>
+        </div>
       )}
       {magnifierAnnounced && (
         <span className="visually-hidden" aria-live="polite">

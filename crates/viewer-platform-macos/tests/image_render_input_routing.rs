@@ -40,6 +40,7 @@ fn pointer(
         location,
         button,
         pressure: 0.75,
+        shift: false,
         timestamp_ns,
     }
 }
@@ -110,7 +111,7 @@ fn renderer_capture_survives_leaving_the_stage_until_pointer_up() {
             location: point(100.0, 120.0),
             button: PointerButton::Primary,
             pressure: 0.75,
-            modifiers: Modifiers { space: false },
+            modifiers: Modifiers::default(),
             timestamp_ns: 10,
         }))
     );
@@ -211,7 +212,10 @@ fn space_temporarily_marks_stage_pointer_samples_for_pan() {
             location: point(150.0, 170.0),
             button: PointerButton::Primary,
             pressure: 0.75,
-            modifiers: Modifiers { space: true },
+            modifiers: Modifiers {
+                space: true,
+                ..Modifiers::default()
+            },
             timestamp_ns: 30,
         }))
     );
@@ -219,6 +223,49 @@ fn space_temporarily_marks_stage_pointer_samples_for_pan() {
         router.classify(WindowInput::Space { pressed: false }),
         RouteDecision::WebView
     );
+}
+
+#[test]
+fn pointer_samples_preserve_shift_without_stealing_capture_on_repeated_tool_updates() {
+    let mut router = router(InteractionMode::Ellipse);
+    let WindowInput::Pointer {
+        phase,
+        location,
+        button,
+        pressure,
+        timestamp_ns,
+        ..
+    } = pointer(
+        PointerPhase::Down,
+        point(250.0, 250.0),
+        PointerButton::Primary,
+        30,
+    )
+    else {
+        unreachable!()
+    };
+    let result = router.classify(WindowInput::Pointer {
+        phase,
+        location,
+        button,
+        pressure,
+        timestamp_ns,
+        shift: true,
+    });
+    let RouteDecision::Render(NativeInput::Pointer(sample)) = result else {
+        panic!("renderer owns stage pointer")
+    };
+    assert!(sample.modifiers.shift);
+    assert_eq!(router.set_tool(InteractionMode::Ellipse), None);
+    assert!(matches!(
+        router.classify(pointer(
+            PointerPhase::Up,
+            point(950.0, 740.0),
+            PointerButton::Primary,
+            31
+        )),
+        RouteDecision::Render(NativeInput::Pointer(_))
+    ));
 }
 
 #[test]
@@ -233,7 +280,7 @@ fn scroll_and_magnify_bypass_webview_only_over_the_stage() {
         RouteDecision::Render(NativeInput::Scroll(ScrollSample {
             location: point(300.0, 320.0),
             delta: point(3.0, -8.0),
-            modifiers: Modifiers { space: false },
+            modifiers: Modifiers::default(),
             timestamp_ns: 40,
         }))
     );

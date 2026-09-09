@@ -3,6 +3,10 @@ use std::{collections::BTreeSet, collections::VecDeque, error::Error, fmt};
 use crate::{AssetGeneration, MemoryBudget, NormalizedRect, PhysicalSize, SourceSize};
 
 pub const DEFAULT_TILE_SIZE: u32 = 512;
+/// One duplicated edge pixel is kept around tiled resources so linear
+/// sampling cannot pull a colour from a neighbouring tile's discontinuous
+/// texture boundary. Edge tiles only allocate sides that have a neighbour.
+pub const DEFAULT_TILE_BORDER: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DeviceLimits {
@@ -69,19 +73,17 @@ impl ResourcePlanner {
             return Err(ResourceError::EmptyViewport);
         }
 
-        let estimated_bytes = u64::from(request.source_size.width)
-            .saturating_mul(u64::from(request.source_size.height))
-            .saturating_mul(4);
+        let fits_mip_chain = full_mip_chain_bytes(request.source_size)
+            .is_some_and(|bytes| bytes <= self.budget.single_texture_limit_bytes());
         let fits_dimension = request.source_size.width <= self.limits.max_texture_dimension_2d
             && request.source_size.height <= self.limits.max_texture_dimension_2d;
-        let strategy =
-            if fits_dimension && estimated_bytes <= self.budget.single_texture_limit_bytes() {
-                TextureStrategy::SingleTexture
-            } else {
-                TextureStrategy::Tiled {
-                    tile_size: DEFAULT_TILE_SIZE,
-                }
-            };
+        let strategy = if fits_dimension && fits_mip_chain {
+            TextureStrategy::SingleTexture
+        } else {
+            TextureStrategy::Tiled {
+                tile_size: DEFAULT_TILE_SIZE,
+            }
+        };
 
         let level = choose_mip_level(request.source_size, request.display_scale);
         let tile_size = match strategy {
@@ -104,6 +106,25 @@ impl ResourcePlanner {
             required_tiles,
             prefetch_tiles,
         })
+    }
+}
+
+// GPU mip allocations halve each dimension (floor, at least one), unlike the
+// provider's independently derived LOD images. Include every allocated level;
+// overflow means a whole texture cannot fit, while visible tiling remains valid.
+fn full_mip_chain_bytes(source: SourceSize) -> Option<u64> {
+    let (mut width, mut height) = (source.width, source.height);
+    let mut bytes = 0_u64;
+    loop {
+        let level = u64::from(width)
+            .checked_mul(u64::from(height))?
+            .checked_mul(4)?;
+        bytes = bytes.checked_add(level)?;
+        if width == 1 && height == 1 {
+            return Some(bytes);
+        }
+        width = (width / 2).max(1);
+        height = (height / 2).max(1);
     }
 }
 

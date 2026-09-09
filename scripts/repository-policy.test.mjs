@@ -192,6 +192,7 @@ const directDependencies = [
   'objc2-quick-look-thumbnailing',
   'playwright',
   'pulldown-cmark',
+  'raw-window-metal',
   'rusqlite',
   'serde',
   'serde_json',
@@ -747,7 +748,11 @@ test('CI defines independent deterministic quality and security gates', async ()
   )
   assert.equal(
     packageJson.scripts['test:dev-launcher'],
-    'node --test scripts/development-video-runtime.test.mjs scripts/viewer-dev-launcher.test.mjs',
+    'node --test scripts/development-video-runtime.test.mjs scripts/viewer-dev-launcher.test.mjs scripts/run-managed-native-acceptance.test.mjs',
+  )
+  assert.equal(
+    packageJson.scripts['accept:native:managed'],
+    'node scripts/run-managed-native-acceptance.mjs',
   )
   assert.match(packageJson.scripts.quality, /^pnpm test:policy &&/)
   assert.match(
@@ -850,6 +855,38 @@ test('manual review transport and dependency boundaries remain one-way', async (
   assert.match(
     packageJson.scripts.quality,
     /pnpm test:review-protocol && pnpm test:review-loop && pnpm architecture:boundaries/,
+  )
+})
+
+test('desktop production composition is native-only after renderer migration', async () => {
+  const [appSource, portSource, surfaceSource] = await Promise.all([
+    read('ui/src/App.tsx'),
+    read('ui/src/rendering/imageRendererPort.ts'),
+    read('ui/src/components/imagePreview/ImagePreviewSurface.tsx'),
+  ])
+
+  // The real Tauri bridge is the desktop composition root. Injected bridges
+  // are reserved for browser/unit-test harnesses and must never select a
+  // second production renderer.
+  assert.match(
+    appSource,
+    /bridge === tauriViewerBridge \? createImageRendererPort\(\{ bridge \}\) : null/,
+    'desktop App must construct the native renderer only for the Tauri bridge',
+  )
+  assert.doesNotMatch(
+    appSource,
+    /createReactWebImageRendererAdapter|migrationPolicy|initialBackend/,
+    'desktop App must not contain a renderer migration switch',
+  )
+  assert.doesNotMatch(
+    portSource,
+    /WebImageRenderer|LegacyWebImageRenderer|migrationPolicy|initialBackend/,
+    'production renderer factory must not construct a Web fallback',
+  )
+  assert.match(
+    surfaceSource,
+    /props\.renderer\?\.backend === 'native'/,
+    'the production native viewport must remain the selected renderer path',
   )
 })
 

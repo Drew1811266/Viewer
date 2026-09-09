@@ -122,6 +122,7 @@ export default function AnnotationToolMenu({
         <div
           ref={menuRef}
           className="annotation-tool-menu__popover"
+          data-native-input-exclusion="true"
           role="menu"
           aria-label="标记工具"
           aria-describedby={disabledReason === null ? undefined : disabledMessageId}

@@ -268,11 +268,8 @@ function FeedbackList({
                     aria-label={`调整意见 ${label} 区域`}
                     disabled={readOnly || controller.dirty}
                     onClick={() => {
-                      if (nativeGeometryEditing) controller.beginRedraw(feedback.itemId)
-                      else {
-                        controller.selectFeedback(feedback.itemId)
-                        controller.setTool('rectangle')
-                      }
+                      controller.selectFeedback(feedback.itemId)
+                      controller.setTool(nativeGeometryEditing ? 'browse' : 'rectangle')
                     }}
                   >
                     调整区域

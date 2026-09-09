@@ -183,6 +183,12 @@ pub struct ImageRenderAnnotationDto {
 pub struct ImageRenderSceneDto {
     pub annotations: Vec<ImageRenderAnnotationDto>,
     pub draft: Option<ImageRenderAnnotationDto>,
+    #[serde(default = "default_annotations_editable")]
+    pub annotations_editable: bool,
+}
+
+fn default_annotations_editable() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -259,6 +265,13 @@ pub enum ImageRenderEventDto {
         scene_revision: u64,
         frame_index: u64,
     },
+    /// Nonterminal resource status, independent of actual surface submission.
+    DetailAvailabilityChanged {
+        session_id: u64,
+        asset_generation: u64,
+        resource_revision: u64,
+        available: bool,
+    },
     CameraChanged {
         session_id: u64,
         asset_generation: u64,
@@ -283,6 +296,31 @@ pub enum ImageRenderEventDto {
         session_id: u64,
         asset_generation: u64,
     },
+    GeometryEditStarted {
+        session_id: u64,
+        asset_generation: u64,
+        annotation_id: String,
+        geometry: ImageRenderAnnotationGeometryDto,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        handle: Option<String>,
+    },
+    GeometryEditChanged {
+        session_id: u64,
+        asset_generation: u64,
+        annotation_id: String,
+        geometry: ImageRenderAnnotationGeometryDto,
+    },
+    GeometryEditCompleted {
+        session_id: u64,
+        asset_generation: u64,
+        annotation_id: String,
+        geometry: ImageRenderAnnotationGeometryDto,
+    },
+    GeometryEditCancelled {
+        session_id: u64,
+        asset_generation: u64,
+        annotation_id: String,
+    },
     SelectionChanged {
         session_id: u64,
         asset_generation: u64,
@@ -304,4 +342,32 @@ pub enum ImageRenderEventDto {
         code: String,
         retryable: bool,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ImageRenderEventDto;
+
+    #[test]
+    fn detail_availability_wire_contract_is_nonterminal_and_versioned() {
+        for available in [false, true] {
+            let value = serde_json::to_value(ImageRenderEventDto::DetailAvailabilityChanged {
+                session_id: 1,
+                asset_generation: 2,
+                resource_revision: 3,
+                available,
+            })
+            .unwrap();
+            assert_eq!(
+                value,
+                serde_json::json!({
+                    "type": "detail_availability_changed",
+                    "sessionId": 1,
+                    "assetGeneration": 2,
+                    "resourceRevision": 3,
+                    "available": available
+                })
+            );
+        }
+    }
 }

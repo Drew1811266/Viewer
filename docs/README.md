@@ -36,6 +36,7 @@
 | [2026-09-01-viewer-composite-review-magnifier-design.md](superpowers/specs/2026-09-01-viewer-composite-review-magnifier-design.md) | Active | — |
 | [2026-09-01-review-save-pipeline-design.md](superpowers/specs/2026-09-01-review-save-pipeline-design.md) | Active | — |
 | [2026-09-02-viewer-unified-image-markup-tools-design.md](superpowers/specs/2026-09-02-viewer-unified-image-markup-tools-design.md) | Active | — |
+| [2026-09-03-viewer-native-wgpu-metal-image-renderer-design.md](superpowers/specs/2026-09-03-viewer-native-wgpu-metal-image-renderer-design.md) | Active | — |
 | [2026-08-27-viewer-continuous-review-and-agent-handoff.md](superpowers/plans/2026-08-27-viewer-continuous-review-and-agent-handoff.md) | Active | — |
 | [2026-09-01-viewer-composite-review-magnifier.md](superpowers/plans/2026-09-01-viewer-composite-review-magnifier.md) | Active | — |
 | [2026-09-01-review-save-pipeline.md](superpowers/plans/2026-09-01-review-save-pipeline.md) | Active | — |
@@ -44,6 +45,8 @@
 | [2026-08-25-viewer-open-review-protocol-foundation.md](superpowers/plans/2026-08-25-viewer-open-review-protocol-foundation.md) | Active | — |
 | [2026-08-24-viewer-architecture-boundary-governance.md](superpowers/plans/2026-08-24-viewer-architecture-boundary-governance.md) | Active | — |
 | [2026-08-24-viewer-workspace-orchestration-refactor.md](superpowers/plans/2026-08-24-viewer-workspace-orchestration-refactor.md) | Active | — |
+| [2026-09-03-viewer-native-wgpu-metal-image-renderer.md](superpowers/plans/2026-09-03-viewer-native-wgpu-metal-image-renderer.md) | Active | — |
+| [quality/IMAGE_RENDERER_ACCEPTANCE.md](quality/IMAGE_RENDERER_ACCEPTANCE.md) | Development evidence | — |
 | [video-runtime-build.md](video-runtime-build.md) | Active | — |
 | [adr/0001-macos-image-pipeline.md](adr/0001-macos-image-pipeline.md) | Active | — |
 | [adr/0002-file-transaction-protocol.md](adr/0002-file-transaction-protocol.md) | Active | — |

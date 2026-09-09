@@ -1,11 +1,12 @@
+use crate::gpu_memory::{GpuBuffer, GpuMemory};
 use std::{error::Error, fmt, mem};
+use viewer_render_core::MemoryAdmissionError;
 
 use bytemuck::{Pod, Zeroable};
 use viewer_render_core::{
     CameraState, LogicalPoint, LogicalSize, NormalizedPoint, NormalizedRect, ResourcePlan,
     Rotation, SourceSize, TextureStrategy, TileCoordinate, TransformSnapshot, ViewportLayout,
 };
-use wgpu::util::DeviceExt;
 
 use crate::ResourceHandle;
 
@@ -33,8 +34,8 @@ pub(crate) fn image_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct ImageVertex {
-    source_position: [f32; 2],
-    uv: [f32; 2],
+    pub(crate) source_position: [f32; 2],
+    pub(crate) uv: [f32; 2],
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -215,13 +216,18 @@ impl VisibleResources<'_> {
 
 pub struct ImagePass {
     pipeline: wgpu::RenderPipeline,
-    camera_buffer: wgpu::Buffer,
+    camera_buffer: GpuBuffer,
+    memory: GpuMemory,
     camera_bind_group: wgpu::BindGroup,
     texture_layout: wgpu::BindGroupLayout,
 }
 
 impl ImagePass {
-    pub fn new(device: &wgpu::Device, target_format: wgpu::TextureFormat) -> Self {
+    pub(crate) fn new(
+        device: &wgpu::Device,
+        target_format: wgpu::TextureFormat,
+        memory: &GpuMemory,
+    ) -> Result<Self, MemoryAdmissionError> {
         let camera_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Viewer image camera layout"),
             entries: &[
@@ -256,11 +262,11 @@ impl ImagePass {
                 count: None,
             }],
         });
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Viewer image camera uniform"),
-            contents: bytemuck::bytes_of(&CameraUniform::zeroed()),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let camera_buffer = memory.buffer_init(
+            "Viewer image camera uniform",
+            bytemuck::bytes_of(&CameraUniform::zeroed()),
+            wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        )?;
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Viewer image sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -327,19 +333,24 @@ impl ImagePass {
             multiview_mask: None,
             cache: None,
         });
-        Self {
+        Ok(Self {
+            memory: memory.clone(),
             pipeline,
             camera_buffer,
             camera_bind_group,
             texture_layout,
-        }
+        })
     }
 
     pub const fn texture_layout(&self) -> &wgpu::BindGroupLayout {
         &self.texture_layout
     }
 
-    pub fn prepare_camera(&self, queue: &wgpu::Queue, transform: &TransformSnapshot) {
+    pub fn prepare_camera(
+        &self,
+        _queue: &wgpu::Queue,
+        transform: &TransformSnapshot,
+    ) -> Result<(), MemoryAdmissionError> {
         let viewport = transform.viewport().logical_size;
         let origin = to_clip(
             transform.image_to_view(NormalizedPoint { x: 0.0, y: 0.0 }),
@@ -358,7 +369,8 @@ impl ImagePass {
             axis_x: [x[0] - origin[0], x[1] - origin[1], 0.0, 0.0],
             axis_y: [y[0] - origin[0], y[1] - origin[1], 0.0, 0.0],
         };
-        queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&uniform));
+        self.memory
+            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&uniform))
     }
 
     pub fn encode<'pass>(

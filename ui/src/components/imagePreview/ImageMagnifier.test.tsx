@@ -21,6 +21,8 @@ function currentOriginal(
 }
 
 describe('ImageMagnifier', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   it.each([
     ['circle', 'small', 200, 200],
     ['circle', 'medium', 280, 280],
@@ -74,6 +76,8 @@ describe('ImageMagnifier', () => {
   })
 
   it('keeps the compound overlay visual-only and outside the interaction tree', () => {
+    // This test exercises semantics, not overlay painting (covered below).
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
     render(
       <ImageMagnifier
         ref={createRef<ImageMagnifierHandle>()}

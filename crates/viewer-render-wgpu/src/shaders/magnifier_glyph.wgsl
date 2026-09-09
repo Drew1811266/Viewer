@@ -47,7 +47,7 @@ fn inside_clip(position: vec2<f32>) -> bool {
 fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
     let center = source_to_clip(input.source_position);
-    let clip_offset = vec2<f32>(
+    let clip_offset = max(magnifier.viewport_physical.z, 1.0) * vec2<f32>(
         input.screen_offset_px.x * 2.0 / magnifier.viewport_physical.x,
         -input.screen_offset_px.y * 2.0 / magnifier.viewport_physical.y,
     );

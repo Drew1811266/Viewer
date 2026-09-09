@@ -28,7 +28,10 @@ pub fn system_ordinal_glyph_atlas() -> Result<OrdinalGlyphAtlas, SurfaceError> {
         return Ok(atlas.clone());
     }
     MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
-    let atlas = render_system_ordinal_glyph_atlas()?;
+    let memory = viewer_render_core::ImageMemoryCoordinator::new(
+        viewer_render_core::ImageMemoryPolicy::baseline_8gb(),
+    );
+    let atlas = system_ordinal_glyph_atlas_with_memory(&memory)?;
     let _ = SYSTEM_ORDINAL_GLYPH_ATLAS.set(atlas);
     SYSTEM_ORDINAL_GLYPH_ATLAS
         .get()
@@ -36,15 +39,27 @@ pub fn system_ordinal_glyph_atlas() -> Result<OrdinalGlyphAtlas, SurfaceError> {
         .ok_or(SurfaceError::GlyphAtlasUnavailable)
 }
 
-fn render_system_ordinal_glyph_atlas() -> Result<OrdinalGlyphAtlas, SurfaceError> {
+pub fn system_ordinal_glyph_atlas_with_memory(
+    memory: &viewer_render_core::ImageMemoryCoordinator,
+) -> Result<OrdinalGlyphAtlas, SurfaceError> {
+    MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
     let width = CELL_WIDTH * GLYPHS.len() as u32;
-    let mut pixels = vec![0_u8; width as usize * ATLAS_HEIGHT as usize];
+    let mut pixels = viewer_render_core::SharedPixels::try_zeroed(
+        memory,
+        viewer_render_core::AssetGeneration(0),
+        u64::from(width) * u64::from(ATLAS_HEIGHT),
+    )
+    .map_err(|_| SurfaceError::GlyphAtlasUnavailable)?;
     // SAFETY: `pixels` is a checked, tightly packed one-byte alpha buffer and
     // stays alive until the bitmap context is dropped after synchronous text
     // drawing. Alpha-only contexts intentionally have no color space.
     let context = unsafe {
         CGBitmapContextCreate(
-            pixels.as_mut_ptr().cast(),
+            pixels
+                .get_mut()
+                .expect("unique atlas storage")
+                .as_mut_ptr()
+                .cast(),
             width as usize,
             ATLAS_HEIGHT as usize,
             8,
@@ -94,7 +109,21 @@ fn render_system_ordinal_glyph_atlas() -> Result<OrdinalGlyphAtlas, SurfaceError
     drop(_guard);
     drop(context);
 
-    OrdinalGlyphAtlas::new(width, ATLAS_HEIGHT, pixels, metrics)
+    // AppKit's flipped flag describes text layout, but does not normalize the
+    // bitmap CGContext's bottom-up storage. Texture v=0 is the top row in both
+    // native glyph passes, so normalize once at this raster/atlas boundary.
+    let row_bytes = width as usize;
+    for top in 0..ATLAS_HEIGHT as usize / 2 {
+        let bottom = ATLAS_HEIGHT as usize - 1 - top;
+        for x in 0..row_bytes {
+            pixels
+                .get_mut()
+                .expect("unique atlas storage")
+                .swap(top * row_bytes + x, bottom * row_bytes + x);
+        }
+    }
+
+    OrdinalGlyphAtlas::from_shared(width, ATLAS_HEIGHT, pixels, metrics)
         .map_err(|_| SurfaceError::GlyphAtlasUnavailable)
 }
 

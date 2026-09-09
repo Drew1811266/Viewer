@@ -4376,6 +4376,7 @@ dependencies = [
  "viewer-render-wgpu",
  "viewer-test-support",
  "viewer-video-mpv",
+ "wgpu",
 ]
 
 [[package]]
@@ -4458,6 +4459,7 @@ version = "0.1.7"
 dependencies = [
  "bytemuck",
  "raw-window-metal",
+ "serde",
  "thiserror 2.0.18",
  "viewer-render-core",
  "wgpu",

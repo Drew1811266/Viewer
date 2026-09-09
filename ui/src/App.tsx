@@ -23,7 +23,7 @@ import type { Point } from './components/imagePreview/imageGeometry'
 import { useLatestPointerClientPoint } from './components/imagePreview/useLatestPointerClientPoint'
 import ReviewWorkspaceLayer, { ReviewToolbarAction } from './components/review/ReviewWorkspaceLayer'
 import { createImageRendererPort } from './rendering/imageRendererPort'
-import { createReactWebImageRendererAdapter } from './rendering/reactWebImageRendererAdapter'
+import type { ImageRendererPort } from './rendering/imageRendererTypes'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
 import { useViewerController } from './state/useViewerController'
 
@@ -77,14 +77,11 @@ function ViewerWorkspace({
   }, [])
   const ports = useMemo(() => createWorkspacePorts(bridge), [bridge])
   const imageRenderer = useMemo(
-    () =>
-      createImageRendererPort({
-        bridge,
-        migrationPolicy: {
-          initialBackend: bridge === tauriViewerBridge ? 'native' : 'web',
-          legacyWeb: createReactWebImageRendererAdapter(),
-        },
-      }),
+    // The desktop composition root is the only production caller and always
+    // uses the native renderer. A null renderer is reserved for injected
+    // browser/unit-test bridges so those harnesses can keep their DOM oracle.
+    (): ImageRendererPort | null =>
+      bridge === tauriViewerBridge ? createImageRendererPort({ bridge }) : null,
     [bridge],
   )
   const shell = useWorkspaceShellCoordinator({

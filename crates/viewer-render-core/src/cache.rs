@@ -34,7 +34,7 @@ impl MemoryBudget {
     }
 
     pub const fn single_texture_limit_bytes(self) -> u64 {
-        self.gpu_texture_bytes / 5 * 2 + (self.gpu_texture_bytes % 5) * 2 / 5
+        self.gpu_texture_bytes / 4
     }
 
     const fn limit(self, tier: CacheTier) -> u64 {

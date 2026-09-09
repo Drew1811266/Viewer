@@ -43,6 +43,69 @@ fn one_k_and_four_k_fit_single_textures_but_eight_k_uses_tiles() {
 }
 
 #[test]
+fn full_mip_chain_must_fit_the_current_budget_quarter_not_only_its_base_level() {
+    // 3700² BGRA base fits 64MiB; its complete mip chain does not.
+    for (width, height) in [(3_700, 3_700), (4_096, 4_096)] {
+        assert_eq!(
+            planner()
+                .plan(request(width, height, 1.0))
+                .unwrap()
+                .strategy,
+            TextureStrategy::Tiled { tile_size: 512 }
+        );
+    }
+    let reduced = ResourcePlanner::new(
+        DeviceLimits::new(16_384).unwrap(),
+        MemoryBudget::new(256 << 20, 128 << 20, 2 << 30).unwrap(),
+    );
+    assert_eq!(
+        reduced.plan(request(3_840, 2_160, 1.0)).unwrap().strategy,
+        TextureStrategy::Tiled { tile_size: 512 }
+    );
+}
+
+#[test]
+fn non_power_of_two_and_skinny_mip_chains_respect_exact_admission_boundaries() {
+    // Literal GPU allocation sizes: 7×5 + 3×2 + 1×1 = 42 BGRA texels;
+    // 1×5 + 1×2 + 1×1 = 8; 16² + 8² + 4² + 2² + 1 = 341.
+    for (width, height, gpu_at_boundary) in [(7, 5, 672), (1, 5, 128), (16, 16, 5_456), (1, 1, 16)]
+    {
+        for (gpu_bytes, expected) in [
+            (gpu_at_boundary, TextureStrategy::SingleTexture),
+            (
+                gpu_at_boundary - 1,
+                TextureStrategy::Tiled { tile_size: 512 },
+            ),
+        ] {
+            let planner = ResourcePlanner::new(
+                DeviceLimits::new(16_384).unwrap(),
+                MemoryBudget::new(256 << 20, gpu_bytes, 2 << 30).unwrap(),
+            );
+            assert_eq!(
+                planner.plan(request(width, height, 1.0)).unwrap().strategy,
+                expected,
+                "{width}×{height}, GPU budget {gpu_bytes}"
+            );
+        }
+    }
+}
+
+#[test]
+fn overflowing_full_image_estimate_uses_bounded_visible_tiles() {
+    let mut request = request(u32::MAX, u32::MAX, 1.0);
+    request.visible_normalized_rect =
+        NormalizedRect::new(0.0, 0.0, 0.000_000_001, 0.000_000_001).unwrap();
+    let planner = ResourcePlanner::new(
+        DeviceLimits::new(u32::MAX).unwrap(),
+        MemoryBudget::new(u64::MAX, u64::MAX, u64::MAX).unwrap(),
+    );
+    let plan = planner.plan(request).unwrap();
+    assert_eq!(plan.strategy, TextureStrategy::Tiled { tile_size: 512 });
+    assert_eq!(plan.required_tiles.len(), 1);
+    assert_eq!(plan.prefetch_tiles.len(), 3);
+}
+
+#[test]
 fn device_dimension_limit_forces_tiling_even_when_bytes_fit() {
     let planner = ResourcePlanner::new(
         DeviceLimits::new(4_096).unwrap(),

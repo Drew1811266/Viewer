@@ -31,5 +31,8 @@ fn vs_main(input: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(image_texture, image_sampler, input.uv);
+    let color = textureSample(image_texture, image_sampler, input.uv);
+    // Match the render pass's linear 0.95 background exactly. Each LOD
+    // replaces coverage; source-over across LODs would apply alpha twice.
+    return vec4<f32>(color.rgb + vec3<f32>(0.95) * (1.0 - color.a), 1.0);
 }

@@ -58,6 +58,7 @@ impl ImageSourceAuthorizer for FixtureAuthorizer {
 #[derive(Default)]
 struct RecordingDriver {
     commands: Mutex<Vec<&'static str>>,
+    annotation_permissions: Mutex<Vec<bool>>,
 }
 
 #[derive(Default)]
@@ -94,7 +95,13 @@ impl ImageRenderDriver for RecordingDriver {
             AuthorizedImageRenderCommand::SetSurface { .. } => "surface",
             AuthorizedImageRenderCommand::SetInputExclusions { .. } => "exclusions",
             AuthorizedImageRenderCommand::SetTool { .. } => "tool",
-            AuthorizedImageRenderCommand::SetScene { .. } => "scene",
+            AuthorizedImageRenderCommand::SetScene { scene } => {
+                self.annotation_permissions
+                    .lock()
+                    .unwrap()
+                    .push(scene.annotations_editable());
+                "scene"
+            }
             AuthorizedImageRenderCommand::Camera { .. } => "camera",
             AuthorizedImageRenderCommand::SetMagnifier { .. } => "magnifier",
         };
@@ -165,6 +172,7 @@ async fn open_resize_scene_and_close_are_ordered_and_retry_safe() {
             scene: ImageRenderSceneDto {
                 annotations: vec![],
                 draft: None,
+                annotations_editable: true,
             },
         },
     );
@@ -190,6 +198,39 @@ async fn open_resize_scene_and_close_are_ordered_and_retry_safe() {
         ImageRenderDispositionDto::IgnoredDuplicate
     );
     assert_eq!(driver.commands(), vec!["open", "surface", "scene", "close"]);
+}
+
+#[tokio::test]
+async fn readonly_scene_permission_reaches_the_native_driver_and_legacy_snapshots_keep_their_default()
+ {
+    let driver = Arc::new(RecordingDriver::default());
+    let runtime = ImageRenderRuntime::with_ports(
+        Arc::new(FixtureAuthorizer),
+        driver.clone(),
+        Arc::new(RecordingImageRenderEvents::default()),
+    );
+    runtime.dispatch(open(1)).await.unwrap();
+    for (index, value) in [
+        serde_json::json!({ "annotations": [], "draft": null, "annotationsEditable": false }),
+        serde_json::json!({ "annotations": [], "draft": null }),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let scene: ImageRenderSceneDto = serde_json::from_value(value).unwrap();
+        runtime
+            .dispatch(envelope(
+                index as u64 + 2,
+                index as u64 + 1,
+                ImageRenderCommandKindDto::SetScene { scene },
+            ))
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        *driver.annotation_permissions.lock().unwrap(),
+        vec![false, true]
+    );
 }
 
 #[tokio::test]

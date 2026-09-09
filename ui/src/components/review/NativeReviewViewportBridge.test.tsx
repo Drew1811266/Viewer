@@ -13,6 +13,208 @@ const PROJECTION: ImagePreviewProjection = {
 }
 
 describe('NativeReviewViewportBridge', () => {
+  it('sends readonly permission changes to native without clearing the selected marker', () => {
+    const controller = controllerFixture()
+    controller.editor.selectedItemId = 'target-1'
+    controller.feedback = [
+      {
+        itemId: 'target-1',
+        feedbackId: 'feedback-1',
+        targetKey: null,
+        assetVersionId: 'asset-1',
+        ordinal: 1,
+        text: '意见',
+        createdAtMs: 1,
+        anchor: { kind: 'image_point', x: 0.2, y: 0.3 },
+      },
+    ]
+    let binding:
+      | import('../../rendering/imageRendererTypes').ImageRendererViewportBinding
+      | undefined
+    const child = (value: {
+      binding: import('../../rendering/imageRendererTypes').ImageRendererViewportBinding
+    }) => {
+      binding = value.binding
+      return null
+    }
+    const rendered = render(
+      <NativeReviewViewportBridge controller={controller}>{child}</NativeReviewViewportBridge>,
+    )
+    expect(binding?.scene.annotationsEditable).toBe(true)
+    const revision = binding?.sceneRevision
+    rendered.rerender(
+      <NativeReviewViewportBridge
+        controller={{ ...controller, readOnlyReason: 'write_unavailable' }}
+      >
+        {child}
+      </NativeReviewViewportBridge>,
+    )
+    expect(binding?.scene.annotationsEditable).toBe(false)
+    expect(binding?.sceneRevision).not.toBe(revision)
+    expect(binding?.scene.annotations[0]?.selected).toBe(true)
+  })
+
+  it('cancels only the active geometry edit and ignores completion rejected by staging', () => {
+    const controller = controllerFixture()
+    let publish: ((event: ImageRendererEvent) => void) | null = null
+    render(
+      <NativeReviewViewportBridge controller={controller}>
+        {({ binding }) => {
+          publish = binding.onEvent
+          return null
+        }}
+      </NativeReviewViewportBridge>,
+    )
+    act(() => {
+      publish?.({
+        type: 'geometry_edit_started',
+        sessionId: '1',
+        assetGeneration: 1,
+        annotationId: 'target-1',
+        geometry: { type: 'point', position: { x: 0.2, y: 0.3 } },
+      })
+      publish?.({
+        type: 'geometry_edit_changed',
+        sessionId: '1',
+        assetGeneration: 1,
+        annotationId: 'target-1',
+        geometry: { type: 'point', position: { x: 0.25, y: 0.3 } },
+      })
+      publish?.({
+        type: 'geometry_edit_cancelled',
+        sessionId: '1',
+        assetGeneration: 1,
+        annotationId: 'other',
+      })
+    })
+    expect(controller.cancelDraft).not.toHaveBeenCalled()
+    act(() =>
+      publish?.({
+        type: 'geometry_edit_cancelled',
+        sessionId: '1',
+        assetGeneration: 1,
+        annotationId: 'target-1',
+      }),
+    )
+    expect(controller.cancelDraft).toHaveBeenCalledOnce()
+    vi.mocked(controller.stageFeedbackAnchor).mockReturnValue(false)
+    act(() => {
+      publish?.({
+        type: 'geometry_edit_started',
+        sessionId: '1',
+        assetGeneration: 1,
+        annotationId: 'target-2',
+        geometry: { type: 'point', position: { x: 0.2, y: 0.3 } },
+      })
+      publish?.({
+        type: 'geometry_edit_completed',
+        sessionId: '1',
+        assetGeneration: 1,
+        annotationId: 'target-2',
+        geometry: { type: 'point', position: { x: 0.4, y: 0.5 } },
+      })
+    })
+    expect(controller.replaceFeedbackAnchor).not.toHaveBeenCalled()
+  })
+
+  it('keeps the browse input tool while a geometry edit stages without changing redraw tools', () => {
+    const controller = controllerFixture()
+    controller.tool = 'browse'
+    let publish: ((event: ImageRendererEvent) => void) | null = null
+    const child = ({
+      binding,
+    }: {
+      binding: import('../../rendering/imageRendererTypes').ImageRendererViewportBinding
+    }) => {
+      publish = binding.onEvent
+      return <div data-testid="native-tool">{binding.tool}</div>
+    }
+    const rendered = render(
+      <NativeReviewViewportBridge controller={controller}>{child}</NativeReviewViewportBridge>,
+    )
+    act(() =>
+      publish?.({
+        type: 'geometry_edit_started',
+        sessionId: '1',
+        assetGeneration: 1,
+        annotationId: 'target-1',
+        geometry: { type: 'point', position: { x: 0.2, y: 0.3 } },
+      }),
+    )
+    const staging = {
+      ...controller,
+      tool: 'point' as const,
+      editor: {
+        ...controller.editor,
+        activeTool: 'point' as const,
+        phase: {
+          status: 'drawing' as const,
+          sourceItemId: 'target-1',
+          draftAnchor: { kind: 'image_point' as const, x: 0.2, y: 0.3 },
+        },
+      },
+    }
+    rendered.rerender(
+      <NativeReviewViewportBridge controller={staging}>{child}</NativeReviewViewportBridge>,
+    )
+    expect(screen.getByTestId('native-tool')).toHaveTextContent('browse')
+    rendered.unmount()
+    render(
+      <NativeReviewViewportBridge controller={{ ...staging, redrawItemId: 'target-1' }}>
+        {child}
+      </NativeReviewViewportBridge>,
+    )
+    expect(screen.getByTestId('native-tool')).toHaveTextContent('point')
+  })
+
+  it('stages existing geometry by item id and persists completion through replacement', () => {
+    const controller = controllerFixture()
+    let publish: ((event: ImageRendererEvent) => void) | null = null
+    render(
+      <NativeReviewViewportBridge controller={controller}>
+        {({ binding }) => {
+          publish = binding.onEvent
+          return null
+        }}
+      </NativeReviewViewportBridge>,
+    )
+    act(() => {
+      publish?.({
+        type: 'geometry_edit_started',
+        sessionId: '1',
+        assetGeneration: 1,
+        annotationId: 'target-1',
+        geometry: { type: 'point', position: { x: 0.2, y: 0.3 } },
+      })
+      publish?.({
+        type: 'geometry_edit_changed',
+        sessionId: '1',
+        assetGeneration: 1,
+        annotationId: 'target-1',
+        geometry: { type: 'point', position: { x: 0.4, y: 0.5 } },
+      })
+      publish?.({
+        type: 'geometry_edit_completed',
+        sessionId: '1',
+        assetGeneration: 1,
+        annotationId: 'target-1',
+        geometry: { type: 'point', position: { x: 0.4, y: 0.5 } },
+      })
+    })
+    expect(controller.stageFeedbackAnchor).toHaveBeenCalledOnce()
+    expect(controller.stageFeedbackAnchor).toHaveBeenCalledWith('target-1', {
+      kind: 'image_point',
+      x: 0.4,
+      y: 0.5,
+    })
+    expect(controller.replaceFeedbackAnchor).toHaveBeenCalledWith('target-1', {
+      kind: 'image_point',
+      x: 0.4,
+      y: 0.5,
+    })
+    expect(controller.finishDrawing).not.toHaveBeenCalled()
+  })
+
   it('routes drawing, selection and cancellation events into the existing workbench controller', () => {
     const controller = controllerFixture()
     let publish: ((event: ImageRendererEvent) => void) | null = null
@@ -85,15 +287,18 @@ describe('NativeReviewViewportBridge', () => {
       },
     }
     let publish: ((event: ImageRendererEvent) => void) | null = null
+    let exclusionRevision = 0
     render(
       <NativeReviewViewportBridge controller={controller}>
         {({ binding, editor }) => {
           publish = binding.onEvent
+          exclusionRevision = binding.inputExclusionRevision
           return editor(PROJECTION)
         }}
       </NativeReviewViewportBridge>,
     )
 
+    const previousRevision = exclusionRevision
     act(() =>
       publish?.({
         type: 'editor_placement_changed',
@@ -109,6 +314,17 @@ describe('NativeReviewViewportBridge', () => {
       left: '352px',
       top: '236px',
     })
+    expect(exclusionRevision).toBeGreaterThan(previousRevision)
+    const movedRevision = exclusionRevision
+    act(() =>
+      publish?.({
+        type: 'editor_placement_changed',
+        sessionId: '1',
+        assetGeneration: 1,
+        position: { x: 380, y: 220 },
+      }),
+    )
+    expect(exclusionRevision).toBe(movedRevision)
   })
 })
 

@@ -19,6 +19,156 @@ fn source(name: &str) -> AuthorizedImageSource {
 }
 
 #[test]
+fn tile_decode_rejects_full_mip_staging_that_exceeds_budget() {
+    let cache = tempfile::tempdir().unwrap();
+    let budget = MemoryBudget::new(1024 * 1024, 1024 * 1024, 16 * 1024 * 1024).unwrap();
+    let provider = MacImageResourceProvider::new(cache.path(), budget).unwrap();
+    let result = provider.request_tiles(
+        &source("srgb.jpg"),
+        AssetGeneration(1),
+        &ResourcePlan {
+            strategy: TextureStrategy::Tiled { tile_size: 512 },
+            level: 0,
+            required_tiles: vec![TileCoordinate {
+                level: 0,
+                x: 0,
+                y: 0,
+            }],
+            prefetch_tiles: vec![],
+        },
+    );
+    assert!(matches!(result, Err(ImageResourceError::LimitExceeded)));
+}
+
+#[test]
+fn tile_decode_crops_before_normalizing_to_fit_native_plus_tiles_budget() {
+    let cache = tempfile::tempdir().unwrap();
+    let budget = MemoryBudget::new(5 * 1024 * 1024, 1024 * 1024, 16 * 1024 * 1024).unwrap();
+    let provider = MacImageResourceProvider::new(cache.path(), budget).unwrap();
+    let result = provider.request_tiles(
+        &source("srgb.jpg"),
+        AssetGeneration(1),
+        &ResourcePlan {
+            strategy: TextureStrategy::Tiled { tile_size: 512 },
+            level: 0,
+            required_tiles: vec![TileCoordinate {
+                level: 0,
+                x: 0,
+                y: 0,
+            }],
+            prefetch_tiles: vec![],
+        },
+    );
+    assert!(
+        result.is_ok(),
+        "a 3MiB native mip plus 1MiB tile fits without a duplicate normalized mip"
+    );
+}
+
+#[test]
+fn native_tile_crops_match_upright_srgb_preview_rows() {
+    for name in ["srgb.jpg", "rotated-6.jpg", "p3.jpg", "alpha.png"] {
+        let (_cache, provider) = provider();
+        let source = source(name);
+        let preview = provider
+            .request_preview(
+                &source,
+                AssetGeneration(1),
+                PreviewRequest::new(2048, 2048).unwrap(),
+            )
+            .unwrap();
+        let tile = provider
+            .request_tiles(
+                &source,
+                AssetGeneration(1),
+                &ResourcePlan {
+                    strategy: TextureStrategy::Tiled { tile_size: 256 },
+                    level: 0,
+                    required_tiles: vec![TileCoordinate {
+                        level: 0,
+                        x: 1,
+                        y: 1,
+                    }],
+                    prefetch_tiles: vec![],
+                },
+            )
+            .unwrap()
+            .remove(0);
+        assert_eq!(tile.sample_border, 1);
+        // The requested 256×256 interior starts one pixel into the padded
+        // texture. The duplicated ring is intentionally not compared as
+        // part of the logical tile payload.
+        let logical_width = (preview.width - 256).min(256) as usize;
+        let logical_height = (preview.height - 256).min(256) as usize;
+        for row in 0..logical_height {
+            let source_start = (row + 256) * preview.bytes_per_row as usize + 256 * 4;
+            let tile_start = (row + 1) * tile.bytes_per_row as usize + 4;
+            assert!(
+                preview.pixels[source_start..source_start + logical_width * 4]
+                    == tile.pixels[tile_start..tile_start + logical_width * 4],
+                "tile row {row} in {name} changed orientation or color"
+            );
+        }
+    }
+}
+
+#[test]
+fn eight_k_level_zero_tiles_fit_baseline_staging_budget() {
+    if std::env::var_os("VIEWER_RUN_LARGE_IMAGE_TESTS").is_none() {
+        return;
+    }
+    let fixture_dir = tempfile::tempdir().unwrap();
+    let fixture = fixture_dir.path().join("8k.jpg");
+    let output = std::process::Command::new("/usr/bin/sips")
+        .args(["--resampleHeightWidth", "4320", "7680"])
+        .arg(image_fixture("srgb.jpg"))
+        .arg("--out")
+        .arg(&fixture)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let source = AuthorizedImageSource::authorize_for_process(&fixture).unwrap();
+    let (_cache, provider) = provider();
+    let probe = provider.probe(&source).unwrap();
+    assert_eq!((probe.width, probe.height), (7680, 4320));
+    let tiles = (0..9)
+        .flat_map(|y| (0..15).map(move |x| TileCoordinate { level: 0, x, y }))
+        .collect();
+    let result = provider
+        .request_tiles(
+            &source,
+            AssetGeneration(1),
+            &ResourcePlan {
+                strategy: TextureStrategy::Tiled { tile_size: 512 },
+                level: 0,
+                required_tiles: tiles,
+                prefetch_tiles: vec![],
+            },
+        )
+        .unwrap();
+    assert_eq!(result.len(), 135);
+    let expected_bytes = (0..9)
+        .flat_map(|y| (0..15).map(move |x| (x, y)))
+        .map(|(x, y)| {
+            let width = 512_u32.min(7680 - x * 512);
+            let height = 512_u32.min(4320 - y * 512);
+            let left = u32::from(x > 0);
+            let top = u32::from(y > 0);
+            let right = u32::from(x < 14);
+            let bottom = u32::from(y < 8);
+            usize::try_from((width + left + right) * (height + top + bottom) * 4).unwrap()
+        })
+        .sum::<usize>();
+    assert_eq!(
+        result
+            .iter()
+            .map(|resource| resource.pixels.len())
+            .sum::<usize>(),
+        expected_bytes
+    );
+}
+
+#[test]
 fn probe_reuses_image_io_metadata_for_jpeg_png_orientation_alpha_and_profile() {
     let (_cache, provider) = provider();
     let rotated = provider.probe(&source("rotated-6.jpg")).unwrap();
@@ -112,8 +262,9 @@ fn requested_tiles_share_one_level_decode_and_preserve_edge_dimensions() {
         .unwrap();
 
     assert_eq!(resources.len(), 2);
-    assert_eq!((resources[0].width, resources[0].height), (512, 512));
-    assert_eq!((resources[1].width, resources[1].height), (512, 256));
+    assert_eq!((resources[0].width, resources[0].height), (513, 513));
+    assert_eq!((resources[1].width, resources[1].height), (513, 257));
+    assert!(resources.iter().all(|resource| resource.sample_border == 1));
     assert!(matches!(
         resources[1].kind,
         DecodedResourceKind::Tile(TileCoordinate { x: 1, y: 1, .. })

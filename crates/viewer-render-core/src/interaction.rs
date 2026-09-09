@@ -1,6 +1,7 @@
+use crate::geometry_edit::edit_geometry;
 use crate::{
-    AnnotationGeometry, AnnotationId, CameraState, HitIndex, LogicalPoint, NormalizedPoint,
-    NormalizedRect, SceneSnapshot, TransformSnapshot,
+    AnnotationGeometry, AnnotationHandle, AnnotationHitPart, AnnotationId, CameraState, HitIndex,
+    LogicalPoint, NormalizedPoint, NormalizedRect, SceneSnapshot, TransformSnapshot,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,6 +32,7 @@ pub enum PointerButton {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Modifiers {
     pub space: bool,
+    pub shift: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -99,6 +101,22 @@ pub enum InteractionEvent {
     DraftChanged(DraftGeometry),
     DraftCompleted(AnnotationGeometry),
     DraftCancelled,
+    GeometryEditStarted {
+        annotation_id: AnnotationId,
+        geometry: AnnotationGeometry,
+        handle: Option<AnnotationHandle>,
+    },
+    GeometryEditChanged {
+        annotation_id: AnnotationId,
+        geometry: AnnotationGeometry,
+    },
+    GeometryEditCompleted {
+        annotation_id: AnnotationId,
+        geometry: AnnotationGeometry,
+    },
+    GeometryEditCancelled {
+        annotation_id: AnnotationId,
+    },
     SelectionChanged(Option<AnnotationId>),
     EditorPlacementChanged(LogicalPoint),
 }
@@ -109,11 +127,22 @@ enum Capture {
         start: LogicalPoint,
         last: LogicalPoint,
         moved: bool,
+        select_on_click: bool,
     },
     Draw {
         start: NormalizedPoint,
+        start_view: LogicalPoint,
         current: NormalizedPoint,
         points: Vec<NormalizedPoint>,
+    },
+    Edit {
+        annotation_id: AnnotationId,
+        original: AnnotationGeometry,
+        candidate: AnnotationGeometry,
+        handle: Option<AnnotationHandle>,
+        start: LogicalPoint,
+        transform: TransformSnapshot,
+        moved: bool,
     },
 }
 
@@ -132,8 +161,13 @@ impl InteractionController {
     }
 
     pub fn set_mode(&mut self, mode: InteractionMode) {
+        if self.mode == mode {
+            return;
+        }
         self.mode = mode;
-        self.capture = None;
+        if !matches!(self.capture, Some(Capture::Edit { .. })) {
+            self.capture = None;
+        }
     }
 
     pub fn handle_input(
@@ -169,7 +203,7 @@ impl InteractionController {
             return self.cancel();
         }
         match sample.phase {
-            PointerPhase::Down => self.pointer_down(sample, transform),
+            PointerPhase::Down => self.pointer_down(sample, transform, scene),
             PointerPhase::Move => self.pointer_move(sample, transform),
             PointerPhase::Up => self.pointer_up(sample, transform, scene),
             PointerPhase::Cancel => unreachable!(),
@@ -180,15 +214,67 @@ impl InteractionController {
         &mut self,
         sample: PointerSample,
         transform: &TransformSnapshot,
+        scene: &SceneSnapshot,
     ) -> Vec<InteractionEvent> {
         if sample.button != PointerButton::Primary || self.capture.is_some() {
             return Vec::new();
         }
-        if self.mode == InteractionMode::Browse || sample.modifiers.space {
+        if !sample.modifiers.space
+            && let Some(hit) = HitIndex::rebuild(scene)
+                .hit_test_part(sample.location, 8.0, transform)
+                .filter(|hit| {
+                    self.mode == InteractionMode::Browse
+                        || scene
+                            .annotations()
+                            .iter()
+                            .any(|node| node.id == hit.annotation_id && node.selected)
+                })
+        {
+            let node = scene
+                .annotations()
+                .iter()
+                .find(|node| node.id == hit.annotation_id)
+                .expect("hit index references this scene");
+            if !node.selected {
+                return vec![InteractionEvent::SelectionChanged(Some(hit.annotation_id))];
+            }
+            if !matches!(node.geometry, AnnotationGeometry::Stroke { .. })
+                && scene.annotations_editable()
+                && !scene.annotations().iter().any(|node| node.draft)
+                && scene.draft().is_none()
+            {
+                self.capture = Some(Capture::Edit {
+                    annotation_id: node.id.clone(),
+                    original: node.geometry.clone(),
+                    candidate: node.geometry.clone(),
+                    handle: match hit.part {
+                        AnnotationHitPart::Handle(handle) => Some(handle),
+                        _ => None,
+                    },
+                    start: sample.location,
+                    transform: *transform,
+                    moved: false,
+                });
+                return vec![InteractionEvent::GeometryEditStarted {
+                    annotation_id: node.id.clone(),
+                    geometry: node.geometry.clone(),
+                    handle: match hit.part {
+                        AnnotationHitPart::Handle(handle) => Some(handle),
+                        _ => None,
+                    },
+                }];
+            }
+            return Vec::new();
+        }
+        if self.mode == InteractionMode::Browse
+            || sample.modifiers.space
+            || !scene.annotations_editable()
+        {
             self.capture = Some(Capture::Pan {
                 start: sample.location,
                 last: sample.location,
                 moved: false,
+                select_on_click: !sample.modifiers.space,
             });
             return Vec::new();
         }
@@ -197,6 +283,7 @@ impl InteractionController {
         };
         self.capture = Some(Capture::Draw {
             start,
+            start_view: sample.location,
             current: start,
             points: vec![start],
         });
@@ -231,8 +318,15 @@ impl InteractionController {
                 start,
                 current,
                 points,
+                ..
             }) => {
-                *current = transform.view_to_image_clamped(sample.location);
+                *current = constrained_draw_point(
+                    self.mode,
+                    *start,
+                    transform.view_to_image_clamped(sample.location),
+                    sample.modifiers.shift,
+                    transform,
+                );
                 if self.mode == InteractionMode::Brush
                     && points.last() != Some(current)
                     && points.len() < crate::MAX_STROKE_POINTS
@@ -243,6 +337,15 @@ impl InteractionController {
                     self.mode, *start, *current, points,
                 ))]
             }
+            Some(capture @ Capture::Edit { .. }) => update_edit(capture, sample.location)
+                .map(
+                    |(annotation_id, geometry)| InteractionEvent::GeometryEditChanged {
+                        annotation_id,
+                        geometry,
+                    },
+                )
+                .into_iter()
+                .collect(),
             None => Vec::new(),
         }
     }
@@ -257,8 +360,13 @@ impl InteractionController {
             return Vec::new();
         };
         match capture {
-            Capture::Pan { start, moved, .. } => {
-                if moved {
+            Capture::Pan {
+                start,
+                moved,
+                select_on_click,
+                ..
+            } => {
+                if moved || !select_on_click {
                     Vec::new()
                 } else {
                     let hit = HitIndex::rebuild(scene).hit_test(start, 8.0, transform);
@@ -267,10 +375,28 @@ impl InteractionController {
             }
             Capture::Draw {
                 start,
+                start_view,
                 current: _,
                 mut points,
             } => {
-                let current = transform.view_to_image_clamped(sample.location);
+                let dx = (sample.location.x - start_view.x).abs();
+                let dy = (sample.location.y - start_view.y).abs();
+                if self.mode != InteractionMode::Point
+                    && (dx.hypot(dy) < 6.0
+                        || (matches!(
+                            self.mode,
+                            InteractionMode::Rectangle | InteractionMode::Ellipse
+                        ) && (dx < 6.0 || dy < 6.0)))
+                {
+                    return vec![InteractionEvent::DraftCancelled];
+                }
+                let current = constrained_draw_point(
+                    self.mode,
+                    start,
+                    transform.view_to_image_clamped(sample.location),
+                    sample.modifiers.shift,
+                    transform,
+                );
                 if self.mode == InteractionMode::Brush
                     && points.last() != Some(&current)
                     && points.len() < crate::MAX_STROKE_POINTS
@@ -288,14 +414,90 @@ impl InteractionController {
                     },
                 )
             }
+            mut capture @ Capture::Edit { .. } => {
+                update_edit(&mut capture, sample.location);
+                let Capture::Edit {
+                    annotation_id,
+                    candidate,
+                    moved,
+                    ..
+                } = capture
+                else {
+                    unreachable!()
+                };
+                vec![if moved {
+                    InteractionEvent::GeometryEditCompleted {
+                        annotation_id,
+                        geometry: candidate,
+                    }
+                } else {
+                    InteractionEvent::GeometryEditCancelled { annotation_id }
+                }]
+            }
         }
     }
 
     fn cancel(&mut self) -> Vec<InteractionEvent> {
         match self.capture.take() {
             Some(Capture::Draw { .. }) => vec![InteractionEvent::DraftCancelled],
+            Some(Capture::Edit { annotation_id, .. }) => {
+                vec![InteractionEvent::GeometryEditCancelled { annotation_id }]
+            }
             Some(Capture::Pan { .. }) | None => Vec::new(),
         }
+    }
+}
+
+fn update_edit(
+    capture: &mut Capture,
+    location: LogicalPoint,
+) -> Option<(AnnotationId, AnnotationGeometry)> {
+    let Capture::Edit {
+        annotation_id,
+        original,
+        candidate,
+        handle,
+        start,
+        transform,
+        moved,
+    } = capture
+    else {
+        return None;
+    };
+    if (location.x - start.x).hypot(location.y - start.y) < 1.0 {
+        return None;
+    }
+    let next = edit_geometry(
+        original,
+        *handle,
+        transform.view_to_image_unclamped(*start),
+        transform.view_to_image_unclamped(location),
+    )?;
+    if next == *candidate {
+        return None;
+    }
+    *candidate = next.clone();
+    *moved = true;
+    Some((annotation_id.clone(), next))
+}
+
+fn constrained_draw_point(
+    mode: InteractionMode,
+    start: NormalizedPoint,
+    current: NormalizedPoint,
+    shift: bool,
+    transform: &TransformSnapshot,
+) -> NormalizedPoint {
+    if mode != InteractionMode::Ellipse || !shift {
+        return current;
+    }
+    let dx = current.x - start.x;
+    let dy = current.y - start.y;
+    let source = transform.source();
+    let side = (dx.abs() * f64::from(source.width)).min(dy.abs() * f64::from(source.height));
+    NormalizedPoint {
+        x: start.x + dx.signum() * side / f64::from(source.width),
+        y: start.y + dy.signum() * side / f64::from(source.height),
     }
 }
 

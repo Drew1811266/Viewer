@@ -53,5 +53,6 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     if !inside_clip(input.position.xy) {
         discard;
     }
-    return textureSample(image_texture, image_sampler, input.uv);
+    let color = textureSample(image_texture, image_sampler, input.uv);
+    return vec4<f32>(color.rgb + vec3<f32>(0.95) * (1.0 - color.a), 1.0);
 }

@@ -16,12 +16,6 @@ The controller uses one clean copied fixture, one Viewer process, one native hel
 | `preview-native` | Radial command activation | The circular menu opens the real image preview | Reuse opened project |
 | `compare-native` | Multi-selection shortcut | Two selected images open the comparison workspace | Reuse opened project |
 | `text-native` | Desktop preview shortcut | A text document opens in the formal text preview | Reuse opened project |
-| `video-section-native` | Tauri scan, probe, and registered cover bridge | The expanded `视频 · N` section keeps fixed card geometry and shows registered cached covers without exposing a filesystem path | Reuse opened project |
-| `video-first-frame-native` | Bundled libmpv and AppKit render surface | Double-clicking a playable card opens the shell immediately, reveals one native first frame at final fitted geometry, and shows no enlarged cover or black flash | Reuse opened project and playback generation |
-| `video-controls-native` | Typed playback commands and native events | Play/pause, frame movement, seek, volume, mute, rate, fullscreen, final-frame stop, and Escape ownership remain synchronized with the active generation | Reuse active playback generation |
-| `video-navigation-native` | Generation-scoped native teardown and reopen | Previous/next stays within videos, closes the old generation, and first-frame-gates the newly opened entity | Reuse opened project; replace playback generation |
-| `video-error-retry-native` | Normalized engine failure and deterministic retry | A failed preview retains navigation, Retry, Done, and Escape; Retry finishes closing the failed generation before reopening the same entity | Reuse opened project; replace failed generation |
-| `video-cache-clear-native` | Runtime cache statistics and verified clear command | Settings reports current usage against the fixed 1 GiB limit and confirmed clear leaves the current decoded frame uninterrupted | Reuse active playback generation |
 | `info-shortcut` | Command-key shortcut | Command-I opens the file information inspector | Reuse opened project |
 | `rename-dialog-native` | Native menu-to-dialog path | The radial organize action opens the rename dialog and cancels without mutation | Reuse opened project |
 | `finder-drop-valid` | Finder drag, valid source | Dropping the disposable project folder opens it successfully | Finder only; source unchanged |
@@ -36,6 +30,11 @@ The controller uses one clean copied fixture, one Viewer process, one native hel
 - Browser `forced-colors` evidence is not macOS Increase Contrast or Windows High Contrast evidence.
 
 ## Bundled-video development evidence
+
+The video-specific development journeys (`video-section-native`, `video-first-frame-native`,
+`video-controls-native`, `video-navigation-native`, `video-error-retry-native`, and
+`video-cache-clear-native`) are tracked by the video acceptance record below. They are not part of
+the executable shared-session controller matrix above until equivalent controller journeys exist.
 
 Task 14 development acceptance is recorded in
 [`2026-08-10-video-preview-acceptance.md`](2026-08-10-video-preview-acceptance.md).

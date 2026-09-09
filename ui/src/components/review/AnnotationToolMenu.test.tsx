@@ -57,6 +57,7 @@ describe('AnnotationToolMenu', () => {
 
     const trigger = screen.getByRole('button', { name: '标记' })
     fireEvent.click(trigger)
+    expect(screen.getByRole('menu')).toHaveAttribute('data-native-input-exclusion', 'true')
     const items = screen.getAllByRole('menuitemradio')
     expect(items.map((item) => item.textContent)).toEqual([
       expect.stringContaining('点'),

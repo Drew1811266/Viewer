@@ -1,4 +1,6 @@
+use crate::gpu_memory::{GpuBuffer, GpuMemory};
 use std::{error::Error, fmt, mem};
+use viewer_render_core::{AllocationClass, MemoryAdmissionError};
 
 use bytemuck::{Pod, Zeroable};
 use viewer_render_core::{LogicalPoint, NormalizedPoint, SceneRevision, TransformSnapshot};
@@ -25,17 +27,19 @@ pub struct MagnifierPass {
     annotation_pipeline: wgpu::RenderPipeline,
     glyph_pipeline: wgpu::RenderPipeline,
     border_pipeline: wgpu::RenderPipeline,
-    uniform_buffer: wgpu::Buffer,
+    uniform_buffer: GpuBuffer,
+    memory: GpuMemory,
     uniform_bind_group: wgpu::BindGroup,
 }
 
 impl MagnifierPass {
-    pub fn new(
+    pub(crate) fn new(
         device: &wgpu::Device,
         target_format: wgpu::TextureFormat,
         image_texture_layout: &wgpu::BindGroupLayout,
         glyph_texture_layout: &wgpu::BindGroupLayout,
-    ) -> Self {
+        memory: &GpuMemory,
+    ) -> Result<Self, MemoryAdmissionError> {
         let uniform_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Viewer magnifier uniform layout"),
             entries: &[
@@ -57,12 +61,15 @@ impl MagnifierPass {
                 },
             ],
         });
-        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Viewer magnifier uniform"),
-            size: mem::size_of::<MagnifierUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let uniform_buffer = memory.buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Viewer magnifier uniform"),
+                size: mem::size_of::<MagnifierUniform>() as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            },
+            AllocationClass::RendererBuffers,
+        )?;
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Viewer magnifier image sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -155,22 +162,23 @@ impl MagnifierPass {
             target_format,
         );
 
-        Self {
+        Ok(Self {
+            memory: memory.clone(),
             image_pipeline,
             annotation_pipeline,
             glyph_pipeline,
             border_pipeline,
             uniform_buffer,
             uniform_bind_group,
-        }
+        })
     }
 
     pub fn prepare(
         &self,
-        queue: &wgpu::Queue,
+        _queue: &wgpu::Queue,
         transform: &TransformSnapshot,
         config: MagnifierConfig,
-    ) {
+    ) -> Result<(), MemoryAdmissionError> {
         let viewport = transform.viewport();
         let origin = to_clip(
             project_source(config, transform, NormalizedPoint { x: 0.0, y: 0.0 }),
@@ -205,7 +213,12 @@ impl MagnifierPass {
                 0.0,
                 0.0,
             ],
-            viewport_physical: [physical.width as f32, physical.height as f32, 0.0, 0.0],
+            viewport_physical: [
+                physical.width as f32,
+                physical.height as f32,
+                scale,
+                (2.0 * config.magnification).clamp(2.0, 5.0) as f32 / 2.0,
+            ],
             clip: [
                 config.center.x as f32 * scale,
                 config.center.y as f32 * scale,
@@ -222,7 +235,8 @@ impl MagnifierPass {
                 0.0,
             ],
         };
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniform));
+        self.memory
+            .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniform))
     }
 
     pub fn encode<'pass>(

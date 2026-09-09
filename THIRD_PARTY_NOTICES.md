@@ -31,6 +31,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `objc2-metal-kit` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Host the native Metal image viewport on macOS | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-quick-look-thumbnailing` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Primary macOS thumbnail generation | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `pulldown-cmark` | 0.13.4 | MIT | Parse Markdown into a filtered event stream before HTML sanitization | [raphlinus/pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) | Yes |
+| `raw-window-metal` | 1.1.0 | MIT OR Apache-2.0 | Bind the native macOS image viewport to its retained CAMetalLayer surface | [rust-windowing/raw-window-metal](https://github.com/rust-windowing/raw-window-metal) | Yes |
 | `rusqlite` | 0.40.1 | MIT | Portable metadata and rebuildable session/search indexes | [rusqlite/rusqlite](https://github.com/rusqlite/rusqlite) | Yes |
 | `serde` | 1.0.228 | MIT OR Apache-2.0 | Typed serialization at IPC and persistence boundaries | [serde-rs/serde](https://github.com/serde-rs/serde) | Yes |
 | `serde_json` | 1.0.150 | MIT OR Apache-2.0 | Review protocol JSON and bounded desktop DTO response measurement; also fixtures and diagnostics | [serde-rs/json](https://github.com/serde-rs/json) | Yes |

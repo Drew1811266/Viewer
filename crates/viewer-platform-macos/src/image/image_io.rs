@@ -89,7 +89,7 @@ impl ImageIoBackend {
     }
 }
 
-pub(super) fn oriented_dimensions(probe: &ImageProbe) -> (u32, u32) {
+pub(crate) fn oriented_dimensions(probe: &ImageProbe) -> (u32, u32) {
     if matches!(probe.orientation, 5..=8) {
         (probe.height, probe.width)
     } else {
@@ -97,7 +97,7 @@ pub(super) fn oriented_dimensions(probe: &ImageProbe) -> (u32, u32) {
     }
 }
 
-fn fit_max_dimension(
+pub(crate) fn fit_max_dimension(
     probe: &ImageProbe,
     max_width: u32,
     max_height: u32,
@@ -125,7 +125,7 @@ fn fit_max_dimension(
     u32::try_from(target_width.max(target_height).max(1)).map_err(|_| ImageError::BudgetExceeded)
 }
 
-pub(super) fn open_image_source(
+pub(crate) fn open_image_source(
     source: &Path,
 ) -> Result<objc2_core_foundation::CFRetained<CGImageSource>, ImageError> {
     std::fs::metadata(source).map_err(|error| {
@@ -173,7 +173,7 @@ fn validate_image_source(image_source: &CGImageSource) -> Result<(), ImageError>
     Ok(())
 }
 
-pub(super) fn probe_image_source(image_source: &CGImageSource) -> Result<ImageProbe, ImageError> {
+pub(crate) fn probe_image_source(image_source: &CGImageSource) -> Result<ImageProbe, ImageError> {
     validate_image_source(image_source)?;
     let format = image_format(image_source)?;
     let properties = image_properties(image_source)?;
@@ -197,7 +197,7 @@ pub(super) fn probe_image_source(image_source: &CGImageSource) -> Result<ImagePr
     })
 }
 
-pub(super) fn thumbnail_from_image_source(
+pub(crate) fn thumbnail_from_image_source(
     image_source: &CGImageSource,
     max_pixels: u32,
 ) -> Result<CFRetained<CGImage>, ImageError> {

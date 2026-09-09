@@ -19,12 +19,15 @@ import {
   createSystemRuntime,
   inspectDevelopmentViewers,
   isExactDevelopmentViewerRunning,
+  isRepositoryViewerExecutable,
   isTauriDevProcess,
   isViewerExecutable,
   parseProcessTable,
   restartDevelopmentViewer,
   selectStopTargets,
+  selectStaleViteTargets,
   sessionMatchesProcess,
+  isScopedViteProcess,
 } from './viewer-dev-launcher.mjs'
 
 const repoRoot = '/Users/example/Project/Viewer'
@@ -227,7 +230,11 @@ describe('createSystemRuntime', () => {
       child = await runtime.spawn()
 
       let args
-      for (let attempt = 0; attempt < 40; attempt += 1) {
+      // The launcher first verifies/materializes the development runtime and
+      // then starts a detached process. On a busy CI host the fake child may
+      // take longer than one second to reach exec; keep the assertion about
+      // the exact argv while allowing that bounded startup jitter.
+      for (let attempt = 0; attempt < 160; attempt += 1) {
         try {
           args = await readFile(argsPath, 'utf8')
           break
@@ -432,7 +439,35 @@ describe('process selection', () => {
       isViewerExecutable('/Applications/Viewer.app/Contents/MacOS/viewer-desktop', repoRoot),
       true,
     )
+    assert.equal(
+      isViewerExecutable(
+        `${repoRoot}/target/debug/bundle/macos/Viewer.app/Contents/MacOS/viewer-desktop`,
+        repoRoot,
+      ),
+      true,
+    )
     assert.equal(isViewerExecutable('/tmp/another-product/viewer-desktop', repoRoot), false)
+  })
+
+  it('allows only repository development Viewers into the stop list', () => {
+    assert.equal(
+      isRepositoryViewerExecutable(`${repoRoot}/target/debug/viewer-desktop`, repoRoot),
+      true,
+    )
+    assert.equal(
+      isRepositoryViewerExecutable(
+        '/Applications/Viewer.app/Contents/MacOS/viewer-desktop',
+        repoRoot,
+      ),
+      false,
+    )
+    assert.equal(
+      isRepositoryViewerExecutable(
+        `${repoRoot}/target/debug/bundle/macos/Viewer.app/Contents/MacOS/viewer-desktop`,
+        repoRoot,
+      ),
+      false,
+    )
   })
 
   it('recognizes main and worktree Tauri development commands', () => {
@@ -451,6 +486,44 @@ describe('process selection', () => {
       true,
     )
     assert.equal(isTauriDevProcess('vite --port 5173', repoRoot), false)
+  })
+
+  it('recognizes only repository-scoped Vite executables', () => {
+    assert.equal(
+      isScopedViteProcess(
+        `${repoRoot}/ui/node_modules/.bin/vite`,
+        repoRoot,
+      ),
+      true,
+    )
+    assert.equal(
+      isScopedViteProcess(
+        `${repoRoot}/.worktrees/theme/ui/node_modules/vite/bin/vite.js`,
+        repoRoot,
+      ),
+      true,
+    )
+    assert.equal(
+      isScopedViteProcess(
+        `node ${repoRoot}/ui/node_modules/vite/bin/vite.js --host localhost`,
+        repoRoot,
+      ),
+      true,
+    )
+    assert.equal(isScopedViteProcess('vite --port 5173', repoRoot), false)
+    assert.equal(isScopedViteProcess('/tmp/vite/bin/vite.js', repoRoot), false)
+  })
+
+  it('selects orphaned scoped Vite processes without touching unrelated servers', () => {
+    const processes = parseProcessTable(`
+      520 1 520 ${repoRoot}/ui/node_modules/.bin/vite --host localhost --port 5173
+      521 520 520 ${repoRoot}/node_modules/@tauri-apps/cli/tauri.js dev
+      522 521 520 ${repoRoot}/target/debug/viewer-desktop
+      620 1 620 /tmp/vite/bin/vite.js --port 5173
+    `)
+    assert.deepEqual(selectStaleViteTargets(processes, repoRoot), [
+      { kind: 'process', id: 520, viewerPid: 520 },
+    ])
   })
 
   it('keeps the main repository and sibling worktrees in scope from a worktree', () => {
@@ -478,7 +551,6 @@ describe('process selection', () => {
       { kind: 'group', id: 120, viewerPid: 122 },
       { kind: 'group', id: 210, viewerPid: 212 },
       { kind: 'process', id: 220, viewerPid: 220 },
-      { kind: 'process', id: 320, viewerPid: 320 },
     ])
   })
 
@@ -487,7 +559,6 @@ describe('process selection', () => {
       { kind: 'group', id: 120, viewerPid: 122 },
       { kind: 'group', id: 210, viewerPid: 212 },
       { kind: 'process', id: 220, viewerPid: 220 },
-      { kind: 'process', id: 320, viewerPid: 320 },
     ])
   })
 
@@ -504,7 +575,6 @@ describe('process selection', () => {
       { kind: 'process', id: 122, viewerPid: 122 },
       { kind: 'group', id: 210, viewerPid: 212 },
       { kind: 'process', id: 220, viewerPid: 220 },
-      { kind: 'process', id: 320, viewerPid: 320 },
     ])
   })
 
@@ -677,6 +747,44 @@ describe('restartDevelopmentViewer', () => {
       executablePath: `${repoRoot}/target/debug/viewer-desktop`,
       logPath: `${repoRoot}/target/dev-launcher/tauri-dev.log`,
     })
+  })
+
+  it('never terminates a packaged Viewer and refuses to start beside it', async () => {
+    const events = []
+    const packaged = {
+      pid: 320,
+      ppid: 1,
+      pgid: 320,
+      command: '/Applications/Viewer.app/Contents/MacOS/viewer-desktop',
+    }
+    const runtime = {
+      async removeLegacyWrapper() {},
+      async listProcesses() {
+        return [packaged]
+      },
+      async readSession() {
+        return undefined
+      },
+      async writeSession() {
+        events.push('write')
+      },
+      async clearSession() {
+        events.push('clear')
+      },
+      async stop(target) {
+        events.push(`stop:${target.kind}:${target.id}`)
+      },
+      async spawn() {
+        events.push('spawn')
+        return { pid: 901, pgid: 901 }
+      },
+    }
+
+    await assert.rejects(
+      restartDevelopmentViewer({ paths, runtime, timeoutMs: 100, pollMs: 1 }),
+      /Existing Viewer process did not stop/,
+    )
+    assert.deepEqual(events, [])
   })
 
   it('clears a stale session without signaling its reused pid', async () => {
@@ -909,5 +1017,56 @@ describe('restartDevelopmentViewer', () => {
       'stop:group:919',
       'clear',
     ])
+  })
+
+  it('stops an orphaned current-worktree Vite process before spawning', async () => {
+    const events = []
+    const snapshots = [
+      [
+        {
+          pid: 950,
+          ppid: 1,
+          pgid: 950,
+          command: `${repoRoot}/ui/node_modules/.bin/vite --host localhost --port 5173`,
+        },
+      ],
+      [],
+      [
+        {
+          pid: 952,
+          ppid: 951,
+          pgid: 951,
+          command: `${repoRoot}/target/debug/viewer-desktop`,
+        },
+      ],
+    ]
+    const runtime = {
+      async removeLegacyWrapper() {},
+      async listProcesses() {
+        return snapshots.shift() ?? []
+      },
+      async readSession() {
+        return undefined
+      },
+      async writeSession() {},
+      async clearSession() {},
+      async stop(target) {
+        events.push(`stop:${target.kind}:${target.id}`)
+      },
+      async spawn() {
+        return { pid: 951, pgid: 951 }
+      },
+      isAlive() {
+        return true
+      },
+      async sleep() {},
+      async tailLog() {
+        return ''
+      },
+    }
+
+    await restartDevelopmentViewer({ paths, runtime, timeoutMs: 100, pollMs: 1 })
+
+    assert.deepEqual(events, ['stop:process:950'])
   })
 })

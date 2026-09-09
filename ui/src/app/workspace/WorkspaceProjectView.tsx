@@ -35,6 +35,7 @@ import WorkspaceLoadingState from '../../components/WorkspaceLoadingState'
 import WorkspaceMoreMenu from '../../components/WorkspaceMoreMenu'
 import WorkspaceViewMenu, { type WorkspaceViewContext } from '../../components/WorkspaceViewMenu'
 import { isImageFile, isVideoFile } from '../../fileKinds'
+import type { ImageRendererPort } from '../../rendering/imageRendererTypes'
 import type { ViewerSettingsContextValue } from '../../settings/ViewerSettingsProvider'
 import type { ViewerController } from '../../state/useViewerController'
 import type { ViewerState } from '../../state/viewerState'
@@ -95,6 +96,7 @@ export interface WorkspaceProjectViewProps {
   reviewToolbarAction: ReactNode
   reviewLayer: ReactNode
   onReselectProject(): void
+  imageRenderer: ImageRendererPort | null
 }
 
 export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
@@ -676,6 +678,7 @@ function WorkspaceOverlays({
   pointerClientPoint,
   moreMenuTriggerRef,
   activeImageReviewControllerRef,
+  imageRenderer,
 }: WorkspaceProjectViewProps & {
   moreMenuTriggerRef: MutableRefObject<HTMLElement | null>
   activeImageReviewControllerRef: MutableRefObject<ImageReviewWorkbenchController | null>
@@ -700,7 +703,6 @@ function WorkspaceOverlays({
         isImageFile(viewing.activePreviewFile) &&
         viewing.activePreviewFiles.length > 0 && (
           <WorkspaceImageReviewPreview
-            key={viewing.activePreviewFile.entityId}
             file={viewing.activePreviewFile}
             files={viewing.activePreviewFiles}
             magnifier={settings.magnifier}
@@ -714,6 +716,7 @@ function WorkspaceOverlays({
             review={review}
             emitIntent={emitIntent}
             activeControllerRef={activeImageReviewControllerRef}
+            imageRenderer={imageRenderer}
           />
         )}
       {viewing.activePreviewFile &&

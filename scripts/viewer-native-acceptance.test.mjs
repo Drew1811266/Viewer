@@ -51,6 +51,7 @@ import {
   validateWindow,
   validateWindowPoint,
   waitFor,
+  waitForNativeWindow,
   waitForNativeSliderLevel,
   readRgbaPng,
   writeRgbaPng,
@@ -1084,11 +1085,25 @@ async function createFixtureBaseline(repoDirectory) {
   await mkdir(path.join(baseline, '空目录/Empty'), { recursive: true })
   await mkdir(path.join(baseline, '目标/Source'), { recursive: true })
   await mkdir(path.join(baseline, '目标/Destination'), { recursive: true })
-  await writeFile(path.join(baseline, '衣服/A01/image.jpg'), 'jpeg-data')
+  await mkdir(path.join(baseline, '.viewer'), { recursive: true })
+  for (let index = 1; index <= 8; index += 1) {
+    await writeFile(
+      path.join(baseline, '衣服/A01', `商品-${String(index).padStart(2, '0')}.jpg`),
+      'jpeg-data',
+    )
+  }
   await writeFile(path.join(baseline, '文档/sample.md'), '# fixture')
+  await writeFile(path.join(baseline, '文档/plain.txt'), 'plain fixture')
   await writeFile(path.join(baseline, 'corrupt.jpg'), 'not-a-jpeg')
   await writeFile(path.join(baseline, '目标/Source/same.txt'), 'source')
   await writeFile(path.join(baseline, '目标/Destination/same.txt'), 'destination')
+  await execFileAsync('/usr/bin/sqlite3', [
+    path.join(baseline, '.viewer/metadata.sqlite'),
+    [
+      'CREATE TABLE operation_batches(batch_id TEXT PRIMARY KEY, kind TEXT NOT NULL, created_at_ms INTEGER NOT NULL, state TEXT NOT NULL, requested_count INTEGER NOT NULL, completed_count INTEGER NOT NULL, failed_count INTEGER NOT NULL, skipped_count INTEGER NOT NULL, started_at_ms INTEGER);',
+      'CREATE TABLE operation_items(operation_id TEXT PRIMARY KEY, batch_id TEXT NOT NULL, entity_id TEXT NOT NULL, kind TEXT NOT NULL, state TEXT NOT NULL, source_path TEXT NOT NULL, destination_path TEXT NOT NULL, temporary_path TEXT NOT NULL, conflict_policy TEXT NOT NULL, updated_at_ms INTEGER NOT NULL);',
+    ].join('\n'),
+  ])
   return baseline
 }
 
@@ -1149,12 +1164,12 @@ describe('fixture run', () => {
       const first = await resetFixtureVariant(run, 'search-results')
       assert.equal(path.basename(first), '测试图')
       assert.equal(path.basename(path.dirname(first)), 'search-results')
-      await rm(path.join(first, '衣服/A01/image.jpg'))
+      await rm(path.join(first, '衣服/A01/商品-01.jpg'))
       await writeFile(path.join(first, '文档/sample.md'), 'mutated')
 
       const restored = await resetFixtureVariant(run, 'search-results')
       assert.equal(restored, first)
-      assert.equal(await readFile(path.join(restored, '衣服/A01/image.jpg'), 'utf8'), 'jpeg-data')
+      assert.equal(await readFile(path.join(restored, '衣服/A01/商品-01.jpg'), 'utf8'), 'jpeg-data')
       assert.equal(await readFile(path.join(restored, '文档/sample.md'), 'utf8'), '# fixture')
     } finally {
       await rm(expectedRunRoot, { recursive: true, force: true })
@@ -1163,15 +1178,13 @@ describe('fixture run', () => {
   })
 
   it('prepares a bounded compact organization-drag fixture without mutating the baseline', async () => {
-    const baseline = path.join(
-      actualRepoRoot,
-      'target/atlas-product-migration-fixture/ViewerAcceptance',
-    )
-    const baselineFiles = await readdir(path.join(baseline, '衣服/A01'))
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-organization-'))
     const runId = `acceptance-organization-${process.pid}-${Date.now()}`
     const expectedRunRoot = path.join(os.homedir(), 'ViewerAcceptanceRuns', runId)
     try {
-      const run = await createFixtureRun({ repoRoot: actualRepoRoot, runId })
+      const baseline = await createFixtureBaseline(temporaryRoot)
+      const baselineFiles = await readdir(path.join(baseline, '衣服/A01'))
+      const run = await createFixtureRun({ repoRoot: temporaryRoot, runId })
       const projectPath = await resetFixtureVariant(run, 'other-files')
 
       await prepareFixtureForState(projectPath, 'prepareOrganizationDrag')
@@ -1189,6 +1202,7 @@ describe('fixture run', () => {
       assert.deepEqual(await readdir(path.join(baseline, '衣服/A01')), baselineFiles)
     } finally {
       await rm(expectedRunRoot, { recursive: true, force: true })
+      await rm(temporaryRoot, { recursive: true, force: true })
     }
   })
 
@@ -1200,7 +1214,7 @@ describe('fixture run', () => {
       await createFixtureBaseline(temporaryRoot)
       const run = await createFixtureRun({ repoRoot: temporaryRoot, runId })
       const projectPath = await resetFixtureVariant(run, 'search-results')
-      await mkdir(path.join(projectPath, '.viewer'))
+      await mkdir(path.join(projectPath, '.viewer'), { recursive: true })
 
       await prepareFixtureForState(projectPath, 'populateSearchIndexing')
 
@@ -1221,7 +1235,6 @@ describe('fixture run', () => {
       await createFixtureBaseline(temporaryRoot)
       const run = await createFixtureRun({ repoRoot: temporaryRoot, runId })
       const projectPath = await resetFixtureVariant(run, 'launch-error')
-      await mkdir(path.join(projectPath, '.viewer'))
       await writeFile(path.join(projectPath, '.viewer/metadata.sqlite'), 'sqlite baseline')
 
       await prepareFixtureForState(projectPath, 'corruptViewerMetadata')
@@ -1237,15 +1250,13 @@ describe('fixture run', () => {
   })
 
   it('seeds one bounded real recovery obligation in the disposable journal', async () => {
-    const baseline = path.join(
-      actualRepoRoot,
-      'target/atlas-product-migration-fixture/ViewerAcceptance',
-    )
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-recovery-'))
     const runId = `acceptance-recovery-${process.pid}-${Date.now()}`
     const expectedRunRoot = path.join(os.homedir(), 'ViewerAcceptanceRuns', runId)
     try {
+      const baseline = await createFixtureBaseline(temporaryRoot)
       const baselinePlainText = await readFile(path.join(baseline, '文档/plain.txt'))
-      const run = await createFixtureRun({ repoRoot: actualRepoRoot, runId })
+      const run = await createFixtureRun({ repoRoot: temporaryRoot, runId })
       const projectPath = await resetFixtureVariant(run, 'launch-recovery')
 
       await prepareFixtureForState(projectPath, 'seedRecoveryJournal')
@@ -1259,14 +1270,17 @@ describe('fixture run', () => {
       assert.deepEqual(await readFile(path.join(baseline, '文档/plain.txt')), baselinePlainText)
     } finally {
       await rm(expectedRunRoot, { recursive: true, force: true })
+      await rm(temporaryRoot, { recursive: true, force: true })
     }
   })
 
   it('seeds a bounded recovery workload long enough to capture real project validation', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-opening-'))
     const runId = `acceptance-opening-${process.pid}-${Date.now()}`
     const expectedRunRoot = path.join(os.homedir(), 'ViewerAcceptanceRuns', runId)
     try {
-      const run = await createFixtureRun({ repoRoot: actualRepoRoot, runId })
+      await createFixtureBaseline(temporaryRoot)
+      const run = await createFixtureRun({ repoRoot: temporaryRoot, runId })
       const projectPath = await resetFixtureVariant(run, 'entry-and-loading')
 
       await prepareFixtureForState(projectPath, 'seedOpeningRecoveryLoad')
@@ -1279,6 +1293,7 @@ describe('fixture run', () => {
       assert.equal(stdout.trim(), '400')
     } finally {
       await rm(expectedRunRoot, { recursive: true, force: true })
+      await rm(temporaryRoot, { recursive: true, force: true })
     }
   })
 
@@ -2389,6 +2404,55 @@ describe('window validation', () => {
         viewport: { width: 1440, height: 900 },
       }),
       largeWindow,
+    )
+  })
+})
+
+describe('native window readiness', () => {
+  it('waits for AppKit to publish the window after the Viewer PID is ready', async () => {
+    const attempts = []
+    const window = {
+      pid: 101,
+      windowId: 44,
+      x: 20,
+      y: 30,
+      width: 1024,
+      height: 720,
+    }
+    const result = await waitForNativeWindow({
+      helperPath: '/tmp/helper',
+      pid: 101,
+      viewport: { width: 1024, height: 720 },
+      timeoutMs: 100,
+      intervalMs: 1,
+      async discover() {
+        attempts.push(attempts.length)
+        if (attempts.length < 3) return []
+        return attempts.length === 3
+          ? [{ ...window, width: 1022, height: 718 }]
+          : [window]
+      },
+    })
+
+    assert.deepEqual(result, [window])
+    assert.equal(attempts.length, 4)
+  })
+
+  it('fails duplicate windows immediately instead of waiting out the timeout', async () => {
+    await assert.rejects(
+      waitForNativeWindow({
+        helperPath: '/tmp/helper',
+        pid: 101,
+        timeoutMs: 10_000,
+        intervalMs: 1_000,
+        async discover() {
+          return [
+            { pid: 101, windowId: 44 },
+            { pid: 101, windowId: 45 },
+          ]
+        },
+      }),
+      { code: 'PRECONDITION_WINDOW_COUNT' },
     )
   })
 })

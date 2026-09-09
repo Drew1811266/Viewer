@@ -158,6 +158,12 @@ impl From<crate::state::RuntimeError> for CommandError {
         use crate::state::RuntimeError;
 
         match error {
+            RuntimeError::NotImage => Self::new(
+                error.code(),
+                ErrorCategory::Validation,
+                "所选文件不是可预览图片。",
+                false,
+            ),
             RuntimeError::NotVideo => Self::new(
                 error.code(),
                 ErrorCategory::Validation,
@@ -192,6 +198,12 @@ impl From<crate::state::RuntimeError> for CommandError {
                 error.code(),
                 ErrorCategory::Environment,
                 "视频已关闭，但原生播放资源未能完整清理。",
+                true,
+            ),
+            RuntimeError::ImageRenderCloseFailed => Self::new(
+                error.code(),
+                ErrorCategory::Environment,
+                "图片预览已关闭，但原生渲染资源未能完整清理。",
                 true,
             ),
         }
@@ -243,6 +255,52 @@ impl From<crate::video_runtime::VideoCommandError> for CommandError {
             }
         };
         Self::new(error.code(), category, message, retryable)
+    }
+}
+
+impl From<crate::image_render_runtime::ImageRenderRuntimeError> for CommandError {
+    fn from(error: crate::image_render_runtime::ImageRenderRuntimeError) -> Self {
+        use crate::image_render_runtime::ImageRenderRuntimeError;
+
+        let (code, category, message, retryable) = match error {
+            ImageRenderRuntimeError::InvalidEnvelope => (
+                "image_render_invalid_envelope",
+                ErrorCategory::Validation,
+                "图片渲染命令标识无效。",
+                false,
+            ),
+            ImageRenderRuntimeError::InvalidEntity => (
+                "image_render_invalid_entity",
+                ErrorCategory::Validation,
+                "图片标识无效。",
+                false,
+            ),
+            ImageRenderRuntimeError::UnauthorizedEntity => (
+                "image_render_unauthorized_entity",
+                ErrorCategory::Consistency,
+                "图片已不属于当前项目会话，请刷新后重试。",
+                true,
+            ),
+            ImageRenderRuntimeError::InvalidCommand => (
+                "image_render_invalid_command",
+                ErrorCategory::Validation,
+                "图片渲染命令内容无效。",
+                false,
+            ),
+            ImageRenderRuntimeError::DriverUnavailable => (
+                "image_render_driver_unavailable",
+                ErrorCategory::Environment,
+                "原生图片渲染器暂时不可用。",
+                true,
+            ),
+            ImageRenderRuntimeError::DriverFailed => (
+                "image_render_driver_failed",
+                ErrorCategory::Environment,
+                "原生图片渲染操作失败，请重试。",
+                true,
+            ),
+        };
+        Self::new(code, category, message, retryable)
     }
 }
 

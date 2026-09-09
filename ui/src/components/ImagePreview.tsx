@@ -6,6 +6,7 @@ import type {
   ImageRepresentationRequest,
   MagnifierPreferences,
 } from '../api/types'
+import type { ImageRendererPort } from '../rendering/imageRendererTypes'
 import ImagePreviewSurface from './imagePreview/ImagePreviewSurface'
 import type { Point } from './imagePreview/imageGeometry'
 import ViewerButton from './ui/ViewerButton'
@@ -24,6 +25,7 @@ interface ImagePreviewProps {
   onNavigate: (file: BrowserFile) => void
   onClose: () => void
   onDimensions?: (entityId: string, width: number, height: number) => void
+  renderer?: ImageRendererPort
 }
 
 export default function ImagePreview({
@@ -36,6 +38,7 @@ export default function ImagePreview({
   onNavigate,
   onClose,
   onDimensions,
+  renderer,
 }: ImagePreviewProps) {
   const [resolvedDimensions, setResolvedDimensions] = useState<{
     entityId: string
@@ -73,6 +76,7 @@ export default function ImagePreview({
       requestImage={requestImage}
       onNavigate={onNavigate}
       onDimensions={rememberDimensions}
+      renderer={renderer}
       ariaLabel={`图片预览 ${file.name}`}
       onEscape={onClose}
       slots={{

@@ -98,6 +98,7 @@ use viewer_infrastructure::{
 };
 use viewer_platform_macos::{
     files::{MacTrashPort, MacVolumePort},
+    image_render::AuthorizedImageSource,
     watcher::MacWatcherPort,
 };
 
@@ -133,6 +134,8 @@ pub trait DesktopEventSink: Send + Sync {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum RuntimeError {
+    #[error("the selected entity is not a previewable image")]
+    NotImage,
     #[error("the selected entity is not a video")]
     NotVideo,
     #[error("the selected entity does not belong to the active project session")]
@@ -145,11 +148,14 @@ pub enum RuntimeError {
     VideoRetryFailed(VideoFailureKind),
     #[error("the native video runtime could not close cleanly")]
     CloseFailed,
+    #[error("the native image renderer could not close cleanly")]
+    ImageRenderCloseFailed,
 }
 
 impl RuntimeError {
     pub const fn code(self) -> &'static str {
         match self {
+            Self::NotImage => "not_image",
             Self::NotVideo => "not_video",
             Self::StaleSession => "stale_session",
             Self::PathNotAuthorized => "path_not_authorized",
@@ -165,6 +171,7 @@ impl RuntimeError {
                 VideoFailureKind::ThumbnailUnavailable => "thumbnail_unavailable",
             },
             Self::CloseFailed => "video_close_failed",
+            Self::ImageRenderCloseFailed => "image_render_close_failed",
         }
     }
 }
@@ -172,6 +179,11 @@ impl RuntimeError {
 #[async_trait::async_trait]
 pub trait VideoClosePort: Send + Sync {
     async fn close_video(&self) -> Result<(), RuntimeError>;
+}
+
+#[async_trait::async_trait]
+pub trait ImageRenderClosePort: Send + Sync {
+    async fn close_image_renderer(&self) -> Result<(), RuntimeError>;
 }
 
 pub struct VideoOpenProjectLease {
@@ -332,7 +344,8 @@ pub struct DesktopRuntime {
     derived_scheduler: Arc<DerivedWorkScheduler>,
     image_requests: Arc<StdMutex<preview::ImageRequestLifecycles>>,
     video_lifecycle: StdMutex<Option<Arc<dyn VideoClosePort>>>,
-    video_project_gate: Arc<RwLock<()>>,
+    image_render_lifecycle: StdMutex<Option<std::sync::Weak<dyn ImageRenderClosePort>>>,
+    project_lifecycle_gate: Arc<RwLock<()>>,
     session: Mutex<Option<DesktopSession>>,
 }
 
@@ -507,7 +520,8 @@ impl DesktopRuntime {
             derived_scheduler,
             image_requests: Arc::new(StdMutex::new(preview::ImageRequestLifecycles::default())),
             video_lifecycle: StdMutex::new(None),
-            video_project_gate: Arc::new(RwLock::new(())),
+            image_render_lifecycle: StdMutex::new(None),
+            project_lifecycle_gate: Arc::new(RwLock::new(())),
             session: Mutex::new(None),
         }
     }
@@ -519,9 +533,77 @@ impl DesktopRuntime {
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(lifecycle);
     }
 
+    pub fn register_image_render_lifecycle(
+        &self,
+        lifecycle: std::sync::Weak<dyn ImageRenderClosePort>,
+    ) {
+        *self
+            .image_render_lifecycle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(lifecycle);
+    }
+
+    async fn close_registered_image_renderer(&self) -> Result<(), RuntimeError> {
+        let lifecycle = self
+            .image_render_lifecycle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade);
+        match lifecycle {
+            Some(lifecycle) => lifecycle.close_image_renderer().await,
+            None => Ok(()),
+        }
+    }
+
+    pub(crate) async fn authorized_image_source(
+        &self,
+        entity_id: EntityId,
+    ) -> Result<AuthorizedImageSource, RuntimeError> {
+        let (active, index) = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or(RuntimeError::StaleSession)?;
+            (session.active.clone(), Arc::clone(&session.index))
+        };
+        let indexed = index
+            .indexed_node(entity_id)
+            .map_err(|_| RuntimeError::StaleSession)?
+            .ok_or(RuntimeError::StaleSession)?;
+        if !indexed.node.kind.is_previewable_image() {
+            return Err(RuntimeError::NotImage);
+        }
+        let authorized_node = indexed.node.clone();
+        let (canonical_path, _, _) = preview::validated_indexed_source(&active, &indexed.node)
+            .map_err(|()| RuntimeError::PathNotAuthorized)?;
+        let source = tokio::task::spawn_blocking(move || {
+            AuthorizedImageSource::authorize_for_process(canonical_path)
+        })
+        .await
+        .map_err(|_| RuntimeError::PathNotAuthorized)?
+        .map_err(|_| RuntimeError::PathNotAuthorized)?;
+
+        let session = self.session.lock().await;
+        if session
+            .as_ref()
+            .is_none_or(|session| session.active.session_id != active.session_id)
+        {
+            return Err(RuntimeError::StaleSession);
+        }
+        let current = index
+            .indexed_node(entity_id)
+            .map_err(|_| RuntimeError::StaleSession)?
+            .ok_or(RuntimeError::StaleSession)?;
+        if current.node != authorized_node
+            || preview::validated_indexed_source(&active, &current.node).is_err()
+        {
+            return Err(RuntimeError::PathNotAuthorized);
+        }
+        Ok(source)
+    }
+
     pub async fn video_open_project_lease(&self) -> VideoOpenProjectLease {
         VideoOpenProjectLease {
-            _guard: Arc::clone(&self.video_project_gate).read_owned().await,
+            _guard: Arc::clone(&self.project_lifecycle_gate).read_owned().await,
         }
     }
 }

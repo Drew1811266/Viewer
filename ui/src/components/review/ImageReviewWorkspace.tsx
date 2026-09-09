@@ -1,13 +1,17 @@
+import type { ReactNode } from 'react'
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 import type { ImageReviewWorkbenchController } from '../../app/review/useImageReviewWorkbench'
+import type { ImageRendererViewportBinding } from '../../rendering/imageRendererTypes'
 import ImagePreviewSurface, {
   type ImagePreviewSurfaceProps,
 } from '../imagePreview/ImagePreviewSurface'
+import type { ImagePreviewProjection } from '../imagePreview/imagePreviewProjection'
 import ViewerButton from '../ui/ViewerButton'
 import AnnotationCanvas from './AnnotationCanvas'
 import AnnotationToolbar from './AnnotationToolbar'
 import { buildAnnotationScene, createAnnotationMagnifierPainter } from './annotationScene'
 import InlineFeedbackEditor from './InlineFeedbackEditor'
+import NativeReviewViewportBridge from './NativeReviewViewportBridge'
 import ReviewFeedbackRail from './ReviewFeedbackRail'
 
 export interface ImageReviewWorkspaceProps
@@ -77,9 +81,13 @@ export default function ImageReviewWorkspace({
   const requestImage =
     controller.protocol === 'continuous' ? requestContinuousImage : surfaceProps.requestImage
 
-  return (
+  const renderSurface = (
+    nativeBinding?: ImageRendererViewportBinding,
+    nativeEditor?: (projection: ImagePreviewProjection) => ReactNode,
+  ) => (
     <ImagePreviewSurface
       {...surfaceProps}
+      nativeBinding={nativeBinding}
       requestImage={requestImage}
       prefetchFit={controller.protocol !== 'continuous'}
       onNavigate={(file) => {
@@ -136,9 +144,23 @@ export default function ImageReviewWorkspace({
               )}
           </>
         ),
-        sidePanel: <ReviewFeedbackRail controller={controller} />,
+        nativeStageOverlay: nativeBinding === undefined ? undefined : nativeEditor,
+        sidePanel: (
+          <ReviewFeedbackRail
+            controller={controller}
+            nativeGeometryEditing={nativeBinding !== undefined}
+          />
+        ),
       }}
     />
+  )
+
+  return surfaceProps.renderer?.backend === 'native' ? (
+    <NativeReviewViewportBridge controller={controller}>
+      {({ binding, editor }) => renderSurface(binding, editor)}
+    </NativeReviewViewportBridge>
+  ) : (
+    renderSurface()
   )
 }
 

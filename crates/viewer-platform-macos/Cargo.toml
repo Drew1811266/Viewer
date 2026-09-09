@@ -25,12 +25,16 @@ objc2.workspace = true
 objc2-app-kit = { workspace = true, features = ["NSScreen"] }
 objc2-core-foundation.workspace = true
 objc2-core-graphics.workspace = true
+objc2-core-video.workspace = true
 objc2-foundation.workspace = true
 objc2-image-io.workspace = true
+objc2-metal-kit.workspace = true
 objc2-quick-look-thumbnailing.workspace = true
 trash.workspace = true
 tauri = { version = "2", default-features = false, features = ["wry"] }
 viewer-video-mpv = { path = "../viewer-video-mpv" }
+viewer-render-core = { path = "../viewer-render-core" }
+viewer-render-wgpu = { path = "../viewer-render-wgpu" }
 
 [dev-dependencies]
 libc.workspace = true
@@ -43,6 +47,10 @@ viewer-infrastructure = { path = "../viewer-infrastructure" }
 [[test]]
 name = "watcher_reconcile"
 path = "../../tests/watcher_reconcile.rs"
+
+[[test]]
+name = "image_render_glyph_atlas"
+harness = false
 
 [[bench]]
 name = "image_pipeline"

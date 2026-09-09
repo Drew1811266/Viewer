@@ -171,6 +171,26 @@ it('adds a newly opened image with its prepared asset instead of a fixed member 
   expect(review.value.saveFeedback).toHaveBeenCalledOnce()
 })
 
+it('uses the client mutation id to keep a new opinion retry bound to one provisional scene item', async () => {
+  const review = coordinator()
+  const adapter = continuousImageReviewWorkbenchAdapter(review.value)
+  const preparation = await adapter.prepareEntity('image-2')
+
+  await adapter.saveFeedback({
+    entityId: 'image-2',
+    clientMutationId: 'mutation-42',
+    item: null,
+    operation: 'text',
+    text: '修正袖口',
+    anchor: RECT,
+    preparation,
+  })
+
+  expect(review.value.beginEditor).toHaveBeenCalledWith(
+    expect.objectContaining({ contextKey: 'new:image-2:mutation-42' }),
+  )
+})
+
 it('keeps an orphaned retained asset version from blocking the prepared current version', async () => {
   const orphaned = view()
   if (orphaned.current === null) throw new Error('Expected current continuous review fixture')

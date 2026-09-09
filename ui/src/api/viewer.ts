@@ -1,4 +1,9 @@
 import { invoke } from '@tauri-apps/api/core'
+import type {
+  ImageRenderCommandEnvelope,
+  ImageRendererAck,
+  ImageRendererEvent,
+} from '../rendering/imageRendererTypes'
 import type { ReviewWorkspacePort } from './reviewWorkspaceTypes'
 
 // Separate from the legacy ViewerBridge: declaring this transport does not switch product UI.
@@ -110,6 +115,13 @@ export type ProjectDropEvent =
   | { type: 'drop'; paths: string[] }
   | { type: 'leave' }
 
+type NativeImageRendererEvent = {
+  [Type in ImageRendererEvent['type']]: Omit<
+    Extract<ImageRendererEvent, { type: Type }>,
+    'sessionId'
+  > & { sessionId: number }
+}[ImageRendererEvent['type']]
+
 export const videoFeasibilityBridge = {
   invoke<T>(command: 'run_video_feasibility', payload: { request: unknown }): Promise<T> {
     return invoke<T>(command, payload)
@@ -168,6 +180,7 @@ export interface ViewerBridge {
   reviewComplete(request: ReviewCompleteRequest): Promise<ReviewSessionSnapshot>
   reviewAbandon(request: ReviewMutationGuardRequest): Promise<ReviewSessionSnapshot>
   reviewCancelTask(request: ReviewSessionRequest): Promise<boolean>
+  imageRenderCommand(command: ImageRenderCommandEnvelope): Promise<ImageRendererAck>
   videoOpen(request: VideoOpenRequest): Promise<VideoSession>
   videoCancelOpen(request: VideoOpenAttemptRequest): Promise<boolean>
   videoClose(request: VideoGenerationRequest): Promise<void>
@@ -191,6 +204,7 @@ export interface ViewerBridge {
   listenCloseBlocked(handler: (event: CloseBlockedEvent) => void): Promise<UnlistenFn>
   listenVideo(handler: (event: VideoEvent) => void): Promise<UnlistenFn>
   listenReviewProgress(handler: (event: ReviewProgress) => void): Promise<UnlistenFn>
+  listenImageRender(handler: (event: ImageRendererEvent) => void): Promise<UnlistenFn>
   listenProjectClosed(handler: () => void): Promise<UnlistenFn>
   listenProjectDrops(handler: (paths: string[]) => void): Promise<UnlistenFn>
   listenProjectDropEvents(handler: (event: ProjectDropEvent) => void): Promise<UnlistenFn>
@@ -362,6 +376,9 @@ export const tauriViewerBridge: ViewerBridge = {
   reviewCancelTask(request) {
     return invoke<boolean>('review_cancel_task', { request })
   },
+  imageRenderCommand(command) {
+    return invoke<ImageRendererAck>('image_render_command', { command })
+  },
   videoOpen(request) {
     return invoke<VideoSession>('video_open', { request })
   },
@@ -434,6 +451,11 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   listenReviewProgress(handler) {
     return listen<ReviewProgress>('viewer://review-progress', ({ payload }) => handler(payload))
+  },
+  listenImageRender(handler) {
+    return listen<NativeImageRendererEvent>('viewer://image-render', ({ payload }) =>
+      handler({ ...payload, sessionId: String(payload.sessionId) } as ImageRendererEvent),
+    )
   },
   listenProjectClosed(handler) {
     return listen<void>('viewer://project-closed', handler)

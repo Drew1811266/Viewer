@@ -10,7 +10,17 @@ case "$(uname -m)" in
   *) printf 'unsupported macOS architecture\n' >&2; exit 1 ;;
 esac
 
-source_dir=${1:-${VIEWER_VIDEO_SOURCE_DIR:-$repo_root/target/viewer-video-runtime/$host_target/ViewerVideoRuntime}}
+if [[ -n "${1:-}" ]]; then
+  source_dir=$1
+elif [[ -n "${VIEWER_VIDEO_SOURCE_DIR:-}" ]]; then
+  source_dir=$VIEWER_VIDEO_SOURCE_DIR
+elif [[ -d "$repo_root/target/viewer-video-runtime/$host_target/ViewerVideoRuntime" ]]; then
+  source_dir="$repo_root/target/viewer-video-runtime/$host_target/ViewerVideoRuntime"
+else
+  # Local development may only have the reviewed universal runtime. Release
+  # CI still supplies the architecture-specific source explicitly.
+  source_dir="$repo_root/target/viewer-video-runtime/universal-apple-darwin/ViewerVideoRuntime"
+fi
 target_dir=${2:-${VIEWER_VIDEO_TAURI_RESOURCE_DIR:-$repo_root/target/viewer-video-runtime/universal-apple-darwin/ViewerVideoRuntime}}
 runtime_verifier=${VIEWER_VIDEO_RUNTIME_VERIFIER:-$script_dir/verify-runtime.sh}
 
@@ -92,19 +102,22 @@ while IFS= read -r executable; do
   fi
 done < <(find "$source_dir" -type f -perm -111 -print)
 
-if command -v codesign >/dev/null 2>&1; then
+signing_identity=${VIEWER_VIDEO_SIGNING_IDENTITY:-}
+if [[ -n "$signing_identity" ]]; then
   codesign_bin=${VIEWER_VIDEO_CODESIGN_BIN:-codesign}
-  signing_identity=${VIEWER_VIDEO_SIGNING_IDENTITY:-}
-  if [[ -z "$signing_identity" ]]; then
-    signing_identity=$(security find-identity -v -p codesigning 2>/dev/null | sed -nE 's/^.*"([^"]+)".*$/\1/p' | head -1)
+  if ! command -v "$codesign_bin" >/dev/null 2>&1 && [[ ! -x "$codesign_bin" ]]; then
+    printf 'configured video runtime signing tool does not exist: %s\n' "$codesign_bin" >&2
+    exit 1
   fi
   if [[ "$signing_identity" != Developer\ ID\ Application:* ]]; then
-    printf 'release staging requires VIEWER_VIDEO_SIGNING_IDENTITY with a Developer ID Application identity\n' >&2
+    printf 'VIEWER_VIDEO_SIGNING_IDENTITY must be a Developer ID Application identity\n' >&2
     exit 1
   fi
   while IFS= read -r -d '' nested; do
     "$codesign_bin" --force --options runtime --timestamp --sign "$signing_identity" "$nested"
   done < <(find "$target_dir" -type f \( -name '*.dylib' -o -perm -111 \) -print0)
+else
+  printf 'Viewer video runtime staged without release signing (development mode)\n'
 fi
 
 (

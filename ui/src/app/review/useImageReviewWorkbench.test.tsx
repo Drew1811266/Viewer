@@ -173,6 +173,56 @@ describe('useImageReviewWorkbench', () => {
     expect(hook.result.current.editor.phase.status).toBe('idle')
   })
 
+  it('publishes a stable client mutation id before persistence settles and clears it atomically', async () => {
+    let resolveSave: (view: ReturnType<typeof workbenchView>) => void = () => {
+      throw new Error('save promise was not created')
+    }
+    const saveFeedback = vi.fn(
+      () =>
+        new Promise<ReturnType<typeof workbenchView>>((resolve) => {
+          resolveSave = resolve
+        }),
+    )
+    const adapter: ImageReviewWorkbenchAdapter = {
+      protocol: 'legacy',
+      preparationKey: (entityId) => `test:${entityId}`,
+      viewKey: () => 'view:1',
+      prepareEntity: vi.fn(async (entityId) => ({ key: `test:${entityId}`, prepared: null })),
+      view: () => ({
+        feedback: [],
+        readOnlyReason: null,
+        restorableItemId: null,
+        statusMessage: null,
+      }),
+      saveFeedback,
+      deleteFeedback: vi.fn(async () => workbenchView('target-revision-1')),
+      restoreDeletedFeedback: vi.fn(async () => workbenchView('target-revision-1')),
+      discardPendingInput: vi.fn(() => true),
+    }
+    const hook = renderHook(() => useImageReviewWorkbench({ adapter, entityId: 'image-1' }))
+    await waitFor(() => expect(adapter.prepareEntity).toHaveBeenCalledOnce())
+    act(() => {
+      hook.result.current.beginAnnotation(RECT)
+      hook.result.current.updateDraftText('立即显示的意见')
+    })
+
+    let saving: Promise<void> = Promise.resolve()
+    act(() => {
+      saving = hook.result.current.saveDraft()
+    })
+
+    expect(hook.result.current.editor.phase.status).toBe('saving')
+    expect(hook.result.current.pendingMutationId).toMatch(/^image-1:\d+$/)
+    expect(saveFeedback).toHaveBeenCalledWith(
+      expect.objectContaining({ clientMutationId: hook.result.current.pendingMutationId }),
+    )
+
+    resolveSave(workbenchView('target-revision-1'))
+    await act(() => saving)
+    expect(hook.result.current.pendingMutationId).toBeNull()
+    expect(hook.result.current.editor.phase.status).toBe('idle')
+  })
+
   it('keeps unsaved text and anchor after a command failure', async () => {
     const review = coordinator(snapshot('active'))
     vi.mocked(review.addAnchoredFeedback).mockRejectedValue({
@@ -202,6 +252,7 @@ describe('useImageReviewWorkbench', () => {
         message: '意见尚未保存，请重试。',
       }),
     )
+    expect(hook.result.current.pendingMutationId).toMatch(/^image-1:\d+$/)
   })
 
   it('blocks every leave intent while dirty and proceeds only after explicit discard', async () => {

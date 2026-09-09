@@ -19,6 +19,8 @@ html,
 body,
 #root {
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 * {
@@ -2428,6 +2430,25 @@ body:has(.viewer-dialog-backdrop) .task-bar {
   min-height: 0;
   overflow: hidden;
   position: relative;
+}
+
+.image-preview:has(.native-image-viewport) {
+  background: transparent;
+}
+
+.native-image-viewport {
+  background: transparent;
+}
+
+:root:has(.native-image-viewport),
+body:has(.native-image-viewport),
+#root:has(.native-image-viewport) {
+  background: transparent;
+}
+
+.viewer-shell:has(> .image-preview .native-image-viewport)
+  > :not(.image-preview, .review-local-notice, .viewer-dialog-backdrop) {
+  display: none;
 }
 
 .image-preview-surface__content {

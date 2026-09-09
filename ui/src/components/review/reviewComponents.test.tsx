@@ -639,8 +639,8 @@ describe('review workspace components', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+    expect(await screen.findByText('已核对交接版本')).toBeVisible()
     await waitFor(() => expect(continuous.previewArchive).toHaveBeenCalledWith(selection))
-    expect(screen.getByText('已核对交接版本')).toBeVisible()
   })
 
   it('rejects a supplied selection that is no longer bound to the current C snapshot', () => {

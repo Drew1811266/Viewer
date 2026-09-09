@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -249,6 +249,8 @@ beforeEach(() => {
   )
 })
 afterEach(() => {
+  // Unmount and flush pending React effects while their canvas/RAF doubles still exist.
+  cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })

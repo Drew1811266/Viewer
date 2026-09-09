@@ -171,7 +171,7 @@ export class ContinuousReviewSession {
     this.loading = true
     if (this.pending === null) this.update({ state: { kind: 'loading' }, error: null })
     try {
-      const view = await this.port.getWorkspace(this.scope)
+      const view = await this.getWorkspaceWithTransientRetry(epoch)
       if (!this.isActive(epoch)) throw this.stale()
       if (sequence !== this.loadSequence)
         throw reviewWorkspaceError('cancelled', '已由后续读取替代', true)
@@ -213,6 +213,27 @@ export class ContinuousReviewSession {
     } finally {
       if (sequence === this.loadSequence && this.isActive(epoch)) this.loading = false
     }
+  }
+
+  /**
+   * A freshly restarted Tauri process can briefly reject the first workspace
+   * read while its desktop worker is coming up. Retry that narrow transient
+   * window once while keeping the public loading state unchanged. Permanent
+   * protocol/data errors still follow the existing unavailable path.
+   */
+  private async getWorkspaceWithTransientRetry(epoch: number) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await this.port.getWorkspace(this.scope)
+      } catch (cause) {
+        const error = normalizeReviewWorkspaceError(cause)
+        const transient = error.retryable && ['internal', 'busy', 'io'].includes(error.code)
+        if (!transient || attempt > 0 || !this.isActive(epoch)) throw cause
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        if (!this.isActive(epoch)) throw this.stale(error.committedAuthoringReceipt)
+      }
+    }
+    throw reviewWorkspaceError('internal', '评审工作区读取失败', true)
   }
   cancel = async () => {
     if (!this.isActive()) throw this.stale()

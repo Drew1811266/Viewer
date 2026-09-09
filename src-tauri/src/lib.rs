@@ -13,6 +13,8 @@ pub mod commands;
 pub mod dto;
 pub mod error;
 pub mod image_protocol;
+pub mod image_render_events;
+pub mod image_render_runtime;
 pub mod markdown;
 pub mod operation_runtime;
 pub mod state;
@@ -27,6 +29,7 @@ const EMBEDDED_VIDEO_RUNTIME_SCHEMA_VERSION: &str = env!("VIEWER_VIDEO_RUNTIME_S
 const PROJECT_CLOSED_EVENT: &str = "viewer://project-closed";
 const TERMINAL_CLOSE_CACHE_CLEANUP_FAILURE: &str = "project_closed_cache_cleanup_failed";
 const TERMINAL_VIDEO_CLOSE_FAILURE: &str = "video_close_failed";
+const TERMINAL_IMAGE_RENDER_CLOSE_FAILURE: &str = "image_render_close_failed";
 
 fn validate_embedded_video_runtime_schema() -> Result<(), String> {
     let embedded = EMBEDDED_VIDEO_RUNTIME_SCHEMA_VERSION
@@ -41,7 +44,9 @@ fn validate_embedded_video_runtime_schema() -> Result<(), String> {
 pub(crate) fn is_terminal_close_cleanup_failure(error: &error::CommandError) -> bool {
     matches!(
         error.code.as_str(),
-        TERMINAL_CLOSE_CACHE_CLEANUP_FAILURE | TERMINAL_VIDEO_CLOSE_FAILURE
+        TERMINAL_CLOSE_CACHE_CLEANUP_FAILURE
+            | TERMINAL_VIDEO_CLOSE_FAILURE
+            | TERMINAL_IMAGE_RENDER_CLOSE_FAILURE
     )
 }
 
@@ -196,6 +201,10 @@ fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+pub fn application_context() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
+}
+
 pub fn run() {
     let registry = Arc::new(ImageArtifactRegistry::default());
     let active_image_session = image_protocol::ActiveImageSession::default();
@@ -270,6 +279,7 @@ pub fn run() {
             commands::operations::undo_last_operation,
             commands::operations::open_permission_settings,
             commands::finder_drag::begin_finder_drag,
+            commands::image_render::image_render_command,
             commands::settings::get_viewer_settings,
             commands::settings::update_viewer_settings,
             commands::video::video_open,
@@ -336,6 +346,25 @@ pub fn run() {
                 app.path().resource_dir().unwrap_or_default(),
             ));
             let app_cache_root = app.path().app_cache_dir()?;
+            let image_render_events: Arc<dyn image_render_events::ImageRenderEventPort> = Arc::new(
+                image_render_events::TauriImageRenderEventEmitter::new(app.handle().clone()),
+            );
+            let image_render_driver: Arc<dyn image_render_runtime::ImageRenderDriver> =
+                Arc::new(image_render_runtime::NativeImageRenderDriver::new(
+                    &app_cache_root.join("image-render"),
+                    Arc::clone(&image_render_events),
+                ));
+            let image_authorizer: Arc<dyn image_render_runtime::ImageSourceAuthorizer> =
+                runtime.clone();
+            let image_render_runtime =
+                Arc::new(image_render_runtime::ImageRenderRuntime::with_ports(
+                    image_authorizer,
+                    image_render_driver,
+                    image_render_events,
+                ));
+            let image_render_lifecycle: Arc<dyn state::ImageRenderClosePort> =
+                image_render_runtime.clone();
+            runtime.register_image_render_lifecycle(Arc::downgrade(&image_render_lifecycle));
             let video_cache =
                 viewer_infrastructure::video_cache::VideoCache::initialize(&app_cache_root)
                     .map_err(|error| format!("failed to initialize video cache: {error}"))?;
@@ -377,6 +406,7 @@ pub fn run() {
             let video_lifecycle: Arc<dyn state::VideoClosePort> = video_runtime.clone();
             runtime.register_video_lifecycle(video_lifecycle);
             app.manage(runtime);
+            app.manage(image_render_runtime);
             app.manage(video_runtime);
             app.manage(settings_service);
             app.manage(ExitGate::default());
@@ -427,7 +457,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(application_context())
         .expect("failed to build Viewer");
 
     app.run(|app, event| match event {

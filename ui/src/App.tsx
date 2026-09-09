@@ -22,6 +22,8 @@ import EmptyProject from './components/EmptyProject'
 import type { Point } from './components/imagePreview/imageGeometry'
 import { useLatestPointerClientPoint } from './components/imagePreview/useLatestPointerClientPoint'
 import ReviewWorkspaceLayer, { ReviewToolbarAction } from './components/review/ReviewWorkspaceLayer'
+import { createImageRendererPort } from './rendering/imageRendererPort'
+import type { ImageRendererPort } from './rendering/imageRendererTypes'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
 import { useViewerController } from './state/useViewerController'
 
@@ -74,6 +76,14 @@ function ViewerWorkspace({
     intentTargetRef.current(intent)
   }, [])
   const ports = useMemo(() => createWorkspacePorts(bridge), [bridge])
+  const imageRenderer = useMemo(
+    // The desktop composition root is the only production caller and always
+    // uses the native renderer. A null renderer is reserved for injected
+    // browser/unit-test bridges so those harnesses can keep their DOM oracle.
+    (): ImageRendererPort | null =>
+      bridge === tauriViewerBridge ? createImageRendererPort({ bridge }) : null,
+    [bridge],
+  )
   const shell = useWorkspaceShellCoordinator({
     projectSessionId,
     videoProjectSessionId: state.project?.sessionId ?? null,
@@ -247,6 +257,7 @@ function ViewerWorkspace({
         />
       }
       onReselectProject={reselectProject}
+      imageRenderer={imageRenderer}
     />
   )
 }

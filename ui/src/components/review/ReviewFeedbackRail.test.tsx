@@ -72,6 +72,15 @@ function controller(
 }
 
 describe('ReviewFeedbackRail', () => {
+  it('selects native geometry for direct adjustment', () => {
+    const review = controller()
+    render(<ReviewFeedbackRail controller={review} nativeGeometryEditing />)
+    fireEvent.click(screen.getByRole('button', { name: '调整意见 1 区域' }))
+    expect(review.selectFeedback).toHaveBeenCalledWith('target-1')
+    expect(review.setTool).toHaveBeenCalledWith('browse')
+    expect(review.beginRedraw).not.toHaveBeenCalled()
+  })
+
   it('provides selection, text edit, geometry edit, delete and session restore controls', async () => {
     const review = controller()
     const rendered = render(<ReviewFeedbackRail controller={review} />)

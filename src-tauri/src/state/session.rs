@@ -172,10 +172,28 @@ impl DesktopRuntime {
     }
 
     pub async fn open_project(&self, root: &Path) -> Result<ProjectSnapshot, CommandError> {
-        let mut session = self.session.lock().await;
-        if session.is_some() {
-            return Err(CommandError::from(ProjectOpenError::AlreadyOpen));
+        // Opening is a user action and must not queue behind an in-progress
+        // close. Besides making the UI appear hung, waiting here would allow a
+        // new open to start immediately after the old session has been taken
+        // but before its native resources are fully torn down. Treat any
+        // lifecycle transition as the still-active project instead.
+        let _project_transition = self
+            .project_lifecycle_gate
+            .try_write()
+            .map_err(|_| CommandError::from(ProjectOpenError::AlreadyOpen))?;
+        {
+            let session = self.session.lock().await;
+            if session.is_some() {
+                return Err(CommandError::from(ProjectOpenError::AlreadyOpen));
+            }
         }
+        // A prior project close may have committed its session teardown before
+        // the native renderer finished closing. Retry that independent
+        // lifecycle boundary before a new project can become active.
+        self.close_registered_image_renderer()
+            .await
+            .map_err(CommandError::from)?;
+        let mut session = self.session.lock().await;
         let prepared = self
             .project_service
             .prepare_open(root)
@@ -414,9 +432,12 @@ impl DesktopRuntime {
     }
 
     pub async fn close_project(&self) -> Result<(), CommandError> {
-        let _video_project_close = self.video_project_gate.write().await;
+        let _project_transition = self.project_lifecycle_gate.write().await;
         let Some(mut session) = self.session.lock().await.take() else {
-            return Ok(());
+            return self
+                .close_registered_image_renderer()
+                .await
+                .map_err(CommandError::from);
         };
         // Invalidate the session before the first cleanup await. Native actions
         // guarded by this token must not start after close has taken ownership.
@@ -426,6 +447,7 @@ impl DesktopRuntime {
         session.review_workspace.close().await;
         session.review.shutdown().await;
         session.review_changes.clear();
+        let image_render_result = self.close_registered_image_renderer().await;
         let video_lifecycle = self
             .video_lifecycle
             .lock()
@@ -480,7 +502,8 @@ impl DesktopRuntime {
         });
         cache_result?;
         video_result?;
-        playback_result.map_err(CommandError::from)
+        playback_result.map_err(CommandError::from)?;
+        image_render_result.map_err(CommandError::from)
     }
 
     /// Finalizes shutdown when the operating system has committed to ending

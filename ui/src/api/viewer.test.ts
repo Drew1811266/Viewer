@@ -23,6 +23,50 @@ afterEach(() => {
 })
 
 describe('tauriViewerBridge', () => {
+  it('exposes one typed image render command and one semantic event transport', async () => {
+    const handler = vi.fn()
+    const unlisten = vi.fn()
+    let receive: ((event: { payload: unknown }) => void) | undefined
+    listen.mockImplementation(async (_event, eventHandler) => {
+      receive = eventHandler
+      return unlisten
+    })
+    const command = {
+      sessionId: 41,
+      assetGeneration: 1,
+      sceneRevision: 0,
+      commandId: 1,
+      command: {
+        type: 'open' as const,
+        entityId: '00000000-0000-4000-8000-000000000007',
+      },
+    }
+
+    await tauriViewerBridge.imageRenderCommand(command)
+    const stop = await tauriViewerBridge.listenImageRender(handler)
+
+    expect(invoke).toHaveBeenCalledWith('image_render_command', { command })
+    expect(listen).toHaveBeenCalledWith('viewer://image-render', expect.any(Function))
+    receive?.({
+      payload: {
+        type: 'ready',
+        sessionId: 41,
+        assetGeneration: 1,
+        width: 900,
+        height: 600,
+      },
+    })
+    expect(handler).toHaveBeenCalledWith({
+      type: 'ready',
+      sessionId: '41',
+      assetGeneration: 1,
+      width: 900,
+      height: 600,
+    })
+    stop()
+    expect(unlisten).toHaveBeenCalledOnce()
+  })
+
   it('maps every review operation and the progress event to the native contract', async () => {
     const unlisten = vi.fn()
     let receive: ((event: { payload: unknown }) => void) | undefined

@@ -54,6 +54,12 @@ pub(super) fn scan_index(
     if v3::decode_index_v3(&bytes).is_ok() {
         return Ok(None);
     }
+    // A valid continuous index (including the current v4 protocol) is already the
+    // authoritative format.  Do not send it through the legacy catalog decoder;
+    // doing so reports a false unsupported-protocol migration error to the UI.
+    if super::super::detect_continuous_review_protocol(&bytes, MAX_REVIEW_INDEX_BYTES).is_ok() {
+        return Ok(None);
+    }
     let decoded = protocol::decode_catalog_versioned(&bytes).map_err(protocol_error)?;
     if decoded.value.project_id != project {
         return Err(ReviewCommitError::Integrity);
@@ -292,4 +298,29 @@ fn scan_drafts(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::inspect;
+    use std::fs;
+    use viewer_domain::ProjectId;
+
+    #[test]
+    fn current_v4_index_is_not_misclassified_as_legacy_migration() {
+        let root = tempfile::tempdir().unwrap();
+        let reviews = root.path().join(".viewer/reviews");
+        fs::create_dir_all(&reviews).unwrap();
+        let project_id = ProjectId::from_u128(1);
+        fs::write(
+            reviews.join("index.json"),
+            format!(
+                r#"{{"protocolVersion":"viewer.review/4","kind":"index","projectId":"{}","streams":[]}}"#,
+                project_id
+            ),
+        )
+        .unwrap();
+
+        assert!(inspect(root.path(), project_id).unwrap().is_none());
+    }
 }

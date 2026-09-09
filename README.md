@@ -77,6 +77,15 @@ pnpm start:viewer
 开发自动化在命令成功后不得再通过 bundle identifier 或临时 `Viewer.app`
 二次打开 Viewer；验证应使用启动器输出的 Viewer PID 和进程表。
 
+需要让原生验收自行管理生命周期时使用：
+
+```bash
+pnpm accept:native:managed -- --smoke --viewport 1024x720
+```
+
+该命令会启动当前工作树、把验收绑定到本次启动返回的 PID，并在结束后关闭同一会话；
+不会按应用名称打开已打包的 `Viewer.app`；若已有打包版正在运行，命令会报告实例冲突而不关闭它。
+
 ## 技术栈
 
 | 层级 | 主要技术 | 作用 |

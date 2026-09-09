@@ -371,7 +371,7 @@ describe('VideoPreview', () => {
       />,
     )
     await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
-    harness.emit({ type: 'fullscreenChanged', generation: 1, fullscreen: true })
+    act(() => harness.emit({ type: 'fullscreenChanged', generation: 1, fullscreen: true }))
     await screen.findByRole('button', { name: '退出全屏' })
 
     fireEvent.keyDown(window, { key: 'Escape' })
@@ -380,7 +380,7 @@ describe('VideoPreview', () => {
     )
     expect(onClose).not.toHaveBeenCalled()
 
-    harness.emit({ type: 'fullscreenChanged', generation: 1, fullscreen: false })
+    act(() => harness.emit({ type: 'fullscreenChanged', generation: 1, fullscreen: false }))
     await screen.findByRole('button', { name: '进入全屏' })
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledOnce()

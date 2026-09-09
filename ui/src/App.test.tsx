@@ -7,7 +7,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
-import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import App from './App'
 import type {
   ReviewHistorySelector,
@@ -177,6 +177,11 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     reviewComplete: vi.fn(),
     reviewAbandon: vi.fn(),
     reviewCancelTask: vi.fn().mockResolvedValue(false),
+    imageRenderCommand: vi.fn().mockResolvedValue({
+      disposition: 'applied',
+      acceptedRevision: 0,
+      backend: 'native',
+    }),
     videoOpen: vi.fn(),
     videoCancelOpen: vi.fn().mockResolvedValue(true),
     videoClose: vi.fn(),
@@ -208,6 +213,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     listenCloseBlocked: vi.fn().mockResolvedValue(() => undefined),
     listenVideo: vi.fn().mockResolvedValue(() => undefined),
     listenReviewProgress: vi.fn().mockResolvedValue(() => undefined),
+    listenImageRender: vi.fn().mockResolvedValue(() => undefined),
     listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDropEvents: vi.fn().mockResolvedValue(() => undefined),
@@ -247,6 +253,12 @@ describe('App-local session coordinator contracts', () => {
 })
 
 describe('Viewer empty state', () => {
+  beforeEach(() => {
+    // App tests cover review/navigation control flow; canvas painting has dedicated tests.
+    const context = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    return () => context.mockRestore()
+  })
+
   it('asks the user to import one project folder', () => {
     render(<App />)
     expect(screen.getByRole('heading', { name: 'Viewer' })).toBeVisible()

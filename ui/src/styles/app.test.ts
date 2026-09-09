@@ -9,6 +9,22 @@ const viewerStyleSources = viewerStyleFiles
   .join('\n')
 
 describe('workspace style contracts', () => {
+  it('keeps document scrolling locked so only the workspace owns vertical scrolling', () => {
+    const documentRoot = appCss.match(/html,\s*body,\s*#root\s*\{([^}]*)\}/)?.[1]
+
+    expect(documentRoot).toMatch(/\boverflow:\s*hidden;/)
+    expect(documentRoot).toMatch(/\boverscroll-behavior:\s*none;/)
+  })
+
+  it('removes the covered workspace from WebKit composition while the native image surface is visible', () => {
+    const coveredWorkspace = appCss.match(
+      /\.viewer-shell:has\(> \.image-preview \.native-image-viewport\)\s*> :not\(\.image-preview, \.review-local-notice, \.viewer-dialog-backdrop\) \{([^}]*)\}/,
+    )?.[1]
+
+    expect(coveredWorkspace).toMatch(/\bdisplay:\s*none;/)
+    expect(coveredWorkspace).not.toMatch(/\bvisibility:/)
+  })
+
   it('keeps magnifier settings grouped, wrapped, and reachable in the dialog body', () => {
     const rules = parseRules(appCss)
     const subheading = rules.find((rule) => rule.selector === '.settings-dialog-subheading')

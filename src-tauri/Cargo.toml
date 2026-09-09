@@ -11,7 +11,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
 default = []
-video-feasibility = ["dep:dispatch2", "tauri/macos-private-api"]
+video-feasibility = ["tauri/macos-private-api"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -33,15 +33,18 @@ viewer-application = { path = "../crates/viewer-application" }
 viewer-domain = { path = "../crates/viewer-domain" }
 viewer-infrastructure = { path = "../crates/viewer-infrastructure" }
 viewer-platform-macos = { path = "../crates/viewer-platform-macos" }
+viewer-render-core = { path = "../crates/viewer-render-core" }
+viewer-render-wgpu = { path = "../crates/viewer-render-wgpu" }
 viewer-video-mpv = { path = "../crates/viewer-video-mpv" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-dispatch2 = { workspace = true, optional = true }
+dispatch2.workspace = true
 objc2.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 viewer-test-support = { path = "../crates/viewer-test-support" }
+wgpu.workspace = true
 
 [[test]]
 name = "security_boundaries"
@@ -90,3 +93,19 @@ path = "../tests/video_resource_lifecycle.rs"
 [[test]]
 name = "video_performance_gate"
 path = "../tests/video_performance_gate.rs"
+
+[[test]]
+name = "image_render_runtime"
+path = "../tests/image_render_runtime.rs"
+
+[[test]]
+name = "image_render_security_boundaries"
+path = "../tests/image_render_security_boundaries.rs"
+
+[[test]]
+name = "image_render_recovery"
+path = "../tests/image_render_recovery.rs"
+
+[[test]]
+name = "image_render_performance_gate"
+path = "../tests/image_render_performance_gate.rs"

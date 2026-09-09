@@ -881,7 +881,7 @@ mod tests {
                 .expect("read feasibility matrix runner");
 
         assert!(cargo_manifest.contains("video-feasibility = ["));
-        assert!(cargo_manifest.contains("\"dep:dispatch2\""));
+        assert!(cargo_manifest.contains("dispatch2.workspace = true"));
         assert!(cargo_manifest.contains("viewer-video-mpv = { path ="));
         assert!(!cargo_manifest.contains("\"dep:viewer-video-mpv\""));
         assert!(cargo_manifest.contains("\"tauri/macos-private-api\""));

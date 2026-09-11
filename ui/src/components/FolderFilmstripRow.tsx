@@ -33,6 +33,46 @@ interface FolderFilmstripRowProps {
   feedbackCountByEntityId?: ReadonlyMap<string, number>
 }
 
+interface FilmstripThumbnailProps {
+  file: BrowserFile
+  imageWidth: number
+  imageHeight: number
+  dimensions: ImageDimensions | null
+  requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
+  onNaturalDimensions: (
+    identity: { entityId: string; modifiedNs: string },
+    dimensions: ImageDimensions,
+  ) => void
+}
+
+/**
+ * 单个挂载缩略图的宿主：为每个挂载项持有一个 AbortController，
+ * 卸载（滚出视口 / 行卸载）即取消在途解码请求，把调度器槽位让给新方向。
+ */
+function FilmstripThumbnail({
+  file,
+  imageWidth,
+  imageHeight,
+  dimensions,
+  requestThumbnail,
+  onNaturalDimensions,
+}: FilmstripThumbnailProps) {
+  const identityKey = `${file.entityId}:${file.modifiedNs}`
+  const controller = useMemo(() => new AbortController(), [identityKey])
+  useEffect(() => () => controller.abort(), [controller])
+  return (
+    <AspectThumbnail
+      file={file}
+      width={imageWidth}
+      height={imageHeight}
+      dimensionsKnown={validDimensions(dimensions)}
+      loadThumbnail={requestThumbnail}
+      signal={controller.signal}
+      onNaturalDimensions={onNaturalDimensions}
+    />
+  )
+}
+
 type RowState =
   | { status: 'idle' | 'loading' }
   | { status: 'ready'; images: BrowserFile[] }
@@ -365,12 +405,12 @@ export default function FolderFilmstripRow({
                       }}
                     >
                       {isPreviewableImage(file) ? (
-                        <AspectThumbnail
+                        <FilmstripThumbnail
                           file={file}
-                          width={item.imageWidth}
-                          height={item.imageHeight}
-                          dimensionsKnown={validDimensions(dimensions)}
-                          loadThumbnail={requestThumbnail}
+                          imageWidth={item.imageWidth}
+                          imageHeight={item.imageHeight}
+                          dimensions={dimensions}
+                          requestThumbnail={requestThumbnail}
                           onNaturalDimensions={rememberNaturalDimensions}
                         />
                       ) : (

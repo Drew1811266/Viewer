@@ -1360,10 +1360,13 @@ describe('Viewer empty state', () => {
 
     const front = await screen.findByRole('button', { name: '预览 front.jpg' })
     await waitFor(() =>
-      expect(viewer.requestImage).toHaveBeenCalledWith({
-        entityId: 'image-1',
-        representation: { kind: 'thumbnail', maxPixels: 198, scaleMilli: 1_000 },
-      }),
+      expect(viewer.requestImage).toHaveBeenCalledWith(
+        {
+          entityId: 'image-1',
+          representation: { kind: 'thumbnail', maxPixels: 198, scaleMilli: 1_000 },
+        },
+        expect.anything(),
+      ),
     )
     expect(front.closest('[role="listitem"]')).toHaveStyle({
       width: '198px',
@@ -1381,10 +1384,13 @@ describe('Viewer empty state', () => {
         height: '96px',
       }),
     )
-    expect(viewer.requestImage).toHaveBeenCalledWith({
-      entityId: 'image-1',
-      representation: { kind: 'thumbnail', maxPixels: 144, scaleMilli: 1_000 },
-    })
+    expect(viewer.requestImage).toHaveBeenCalledWith(
+      {
+        entityId: 'image-1',
+        representation: { kind: 'thumbnail', maxPixels: 144, scaleMilli: 1_000 },
+      },
+      expect.anything(),
+    )
   })
 
   it('reuses the same thumbnail representation from a folder filmstrip in the content grid', async () => {
@@ -1459,10 +1465,13 @@ describe('Viewer empty state', () => {
       height: '132px',
     })
     await waitFor(() =>
-      expect(viewer.requestImage).toHaveBeenCalledWith({
-        entityId: 'image-1',
-        representation: { kind: 'thumbnail', maxPixels: 198, scaleMilli: 1_000 },
-      }),
+      expect(viewer.requestImage).toHaveBeenCalledWith(
+        {
+          entityId: 'image-1',
+          representation: { kind: 'thumbnail', maxPixels: 198, scaleMilli: 1_000 },
+        },
+        undefined,
+      ),
     )
 
     openSettingsFromMenu()
@@ -1483,10 +1492,13 @@ describe('Viewer empty state', () => {
       'aria-activedescendant',
       'file-image-1',
     )
-    expect(viewer.requestImage).toHaveBeenCalledWith({
-      entityId: 'image-1',
-      representation: { kind: 'thumbnail', maxPixels: 144, scaleMilli: 1_000 },
-    })
+    expect(viewer.requestImage).toHaveBeenCalledWith(
+      {
+        entityId: 'image-1',
+        representation: { kind: 'thumbnail', maxPixels: 144, scaleMilli: 1_000 },
+      },
+      undefined,
+    )
   })
 
   it('reloads visible filmstrip rows after an external category refresh', async () => {

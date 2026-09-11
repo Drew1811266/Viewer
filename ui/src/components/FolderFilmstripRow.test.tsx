@@ -141,6 +141,26 @@ async function sizeViewport(width: number, scrollLeft = 0) {
 }
 
 describe('FolderFilmstripRow', () => {
+  it('aborts in-flight thumbnail requests when the row unmounts', async () => {
+    const signals: AbortSignal[] = []
+    const requestThumbnail = vi
+      .fn()
+      .mockImplementation(
+        (_file: BrowserFile, _maxPixels: number, _scaleMilli: number, signal?: AbortSignal) => {
+          if (signal !== undefined) signals.push(signal)
+          return Promise.resolve('viewer-image://thumbnail')
+        },
+      )
+    const filmstrip = renderRow({ requestThumbnail })
+
+    await waitFor(() => expect(requestThumbnail).toHaveBeenCalled())
+    expect(signals.length).toBeGreaterThan(0)
+    expect(signals.every((signal) => !signal.aborted)).toBe(true)
+
+    filmstrip.unmount()
+    expect(signals.every((signal) => signal.aborted)).toBe(true)
+  })
+
   it('shows feedback counts only on affected filmstrip images', async () => {
     const filmstrip = renderRow({
       feedbackCountByEntityId: new Map([

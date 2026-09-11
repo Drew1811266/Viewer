@@ -8,7 +8,14 @@ export interface AspectThumbnailProps {
   width: number
   height: number
   dimensionsKnown: boolean
-  loadThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
+  loadThumbnail?: (
+    file: BrowserFile,
+    maxPixels: number,
+    scaleMilli: number,
+    signal?: AbortSignal,
+  ) => Promise<string>
+  /** 由宿主管理的生命周期信号：宿主在卸载/方向反转时 abort，组件本身不主动取消。 */
+  signal?: AbortSignal
   onNaturalDimensions: (
     identity: { entityId: string; modifiedNs: string },
     dimensions: ImageDimensions,
@@ -26,6 +33,7 @@ export default function AspectThumbnail({
   height,
   dimensionsKnown,
   loadThumbnail,
+  signal,
   onNaturalDimensions,
 }: AspectThumbnailProps) {
   const identityKey = `${file.entityId}:${file.modifiedNs}`
@@ -41,7 +49,7 @@ export default function AspectThumbnail({
     setState((current) =>
       current.identityKey === identityKey ? current : { status: 'loading', identityKey },
     )
-    void loadThumbnail(file, requestSize.maxPixels, requestSize.scaleMilli).then(
+    void loadThumbnail(file, requestSize.maxPixels, requestSize.scaleMilli, signal).then(
       (url) => {
         if (active) setState({ status: 'ready', identityKey, url })
       },
@@ -52,7 +60,7 @@ export default function AspectThumbnail({
     return () => {
       active = false
     }
-  }, [file, height, identityKey, loadThumbnail, width])
+  }, [file, height, identityKey, loadThumbnail, signal, width])
 
   const currentState =
     state.identityKey === identityKey ? state : ({ status: 'loading', identityKey } as const)

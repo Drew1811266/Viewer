@@ -201,7 +201,27 @@ describe('AspectThumbnail', () => {
       />,
     )
 
-    await waitFor(() => expect(loadThumbnail).toHaveBeenCalledWith(file, 4_096, 4_000))
+    await waitFor(() => expect(loadThumbnail).toHaveBeenCalledWith(file, 4_096, 4_000, undefined))
+  })
+
+  it('passes the host-managed abort signal to the loader', async () => {
+    const controller = new AbortController()
+    const loadThumbnail = vi.fn().mockResolvedValue('viewer-image://thumbnail')
+    render(
+      <AspectThumbnail
+        file={file}
+        width={120}
+        height={80}
+        dimensionsKnown
+        loadThumbnail={loadThumbnail}
+        signal={controller.signal}
+        onNaturalDimensions={vi.fn()}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(loadThumbnail).toHaveBeenCalledWith(file, 120, 1_000, controller.signal),
+    )
   })
 
   it('ignores an obsolete thumbnail completion after the file identity changes', async () => {

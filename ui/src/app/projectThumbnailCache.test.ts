@@ -109,4 +109,91 @@ describe('projectThumbnailCache', () => {
     await expect(cache.request(file, 198, 1_000)).resolves.toBe('viewer-image://new')
     expect(loader).toHaveBeenCalledTimes(2)
   })
+
+  it('rejects an aborted caller immediately and lets a fresh request re-issue the loader', async () => {
+    const pending = deferred<string>()
+    const loader = vi
+      .fn()
+      .mockImplementationOnce(() => pending.promise)
+      .mockResolvedValueOnce('viewer-image://reissued')
+    const cache = createProjectThumbnailCache('session-1', loader)
+    const file = image('image-1')
+    const controller = new AbortController()
+
+    const first = cache.request(file, 198, 1_000, controller.signal)
+    controller.abort()
+    await expect(first).rejects.toThrow('thumbnail request aborted')
+
+    await expect(cache.request(file, 198, 1_000)).resolves.toBe('viewer-image://reissued')
+    expect(loader).toHaveBeenCalledTimes(2)
+    pending.resolve('viewer-image://late')
+  })
+
+  it('removes the in-flight entry when a caller aborts so remounts never await a doomed promise', async () => {
+    const pending = deferred<string>()
+    const loader = vi.fn().mockImplementation(() => pending.promise)
+    const cache = createProjectThumbnailCache('session-1', loader)
+    const file = image('image-1')
+    const shared = new AbortController()
+
+    void cache.request(file, 198, 1_000)
+    const attached = cache.request(file, 198, 1_000, shared.signal)
+    shared.abort()
+    await expect(attached).rejects.toThrow('thumbnail request aborted')
+
+    const reissued = cache.request(file, 198, 1_000)
+    expect(loader).toHaveBeenCalledTimes(2)
+    pending.resolve('viewer-image://late')
+    await expect(reissued).resolves.toBe('viewer-image://late')
+    await expect(cache.request(file, 198, 1_000)).resolves.toBe('viewer-image://late')
+  })
+
+  it('keeps unrelated callers resolved when one caller aborts a shared request', async () => {
+    const pending = deferred<string>()
+    const loader = vi.fn().mockImplementation(() => pending.promise)
+    const cache = createProjectThumbnailCache('session-1', loader)
+    const file = image('image-1')
+    const aborting = new AbortController()
+
+    const patient = cache.request(file, 198, 1_000)
+    const cancellable = cache.request(file, 198, 1_000, aborting.signal)
+    aborting.abort()
+    await expect(cancellable).rejects.toThrow('thumbnail request aborted')
+
+    pending.resolve('viewer-image://shared')
+    await expect(patient).resolves.toBe('viewer-image://shared')
+    await expect(cache.request(file, 198, 1_000)).resolves.toBe('viewer-image://shared')
+    expect(loader).toHaveBeenCalledOnce()
+  })
+
+  it('prefetches through the loader with low priority and coalesces with interactive keys', async () => {
+    const loader = vi.fn(
+      async (
+        _file: BrowserFile,
+        _max: number,
+        _scale: number,
+        _signal?: AbortSignal,
+        priority?: string,
+      ) => `viewer-image://${priority ?? 'interactive'}`,
+    )
+    const cache = createProjectThumbnailCache('session-1', loader)
+    const file = image('image-1')
+
+    await expect(cache.prefetch(file, 198, 1_000)).resolves.toBe('viewer-image://prefetch')
+    expect(loader).toHaveBeenCalledTimes(1)
+    expect(loader.mock.calls[0]?.[4]).toBe('prefetch')
+
+    // 同键命中 resolved 缓存：交互请求直接复用预取结果，不重复发起。
+    await expect(cache.request(file, 198, 1_000)).resolves.toBe('viewer-image://prefetch')
+    expect(loader).toHaveBeenCalledTimes(1)
+
+    // 预取命中在途交互请求时共享同一个 pending，不重复发起。
+    const inFlight = deferred<string>()
+    const dedupeLoader = vi.fn().mockImplementation(() => inFlight.promise)
+    const dedupeCache = createProjectThumbnailCache('session-2', dedupeLoader)
+    void dedupeCache.request(file, 198, 1_000)
+    void dedupeCache.prefetch(file, 198, 1_000)
+    expect(dedupeLoader).toHaveBeenCalledOnce()
+    inFlight.resolve('viewer-image://either')
+  })
 })

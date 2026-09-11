@@ -1,10 +1,16 @@
 # 性能优化实施方案：解码调度 / 取消与预取 / 内存压力联动 / 性能门禁
 
-状态：已评审通过（2026-09-11 三项决策确认：dispatch2 依赖接受 / verify:perf 先本机后 CI / 基准机用开发机）；M1 已落地
+状态：已评审通过（2026-09-11 三项决策确认：dispatch2 依赖接受 / verify:perf 先本机后 CI / 基准机用开发机）；M1、M2 已落地
 日期：2026-09-11
 落地记录：M1（方案一）已实现 —— `viewer-infrastructure/src/decode_scheduler.rs`、
 `ImageRequest.priority` + IPC DTO `priority` 可选字段、desktop 接线（`render_visible_image`
 先取解码票再进 VisibleDerived）、platform QoS 标注（`image/qos.rs`）。
+落地记录：M2（方案二）已实现 —— `projectThumbnailCache` 每调用方独立取消信号
+（abort 即让出 in-flight 记录，修复重挂载拿到注定被丢弃 Promise 的真 bug）+
+`prefetch` 低优先级入口（与交互请求同键去重）；`AspectThumbnail`/`FolderFilmstripRow`
+挂载项持有 AbortController，卸载即取消；`usePrefetchOnScroll`（rAF 节流 + 120ms
+静止判定 + 快甩不预取 + 反向 abort）接入 `FolderOverview`，预取相邻行前 6 张
+经 IPC `priority:'prefetch'` 进调度器低优先级队列。
 实现偏差说明：ticket 本身不携带 token，取消语义完全复用既有
 `ImageRequestCancellation`（acquire 处 `select!` 让已取消请求立即离开队列），
 与 §2.1 "取消语义复用 cancel_image_request" 一致。

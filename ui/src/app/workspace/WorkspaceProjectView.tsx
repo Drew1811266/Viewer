@@ -526,6 +526,7 @@ function WorkspaceBrowseContent(
         density={thumbnailDensity}
         requestFolderImages={viewing.requestFolderImages}
         requestThumbnail={viewing.requestThumbnail}
+        prefetchThumbnails={viewing.prefetchThumbnails}
         onPreview={viewing.openFilmstripPreview}
         onSelect={selectFolderTarget}
         feedbackCountByEntityId={props.review.feedbackCountByEntityId}

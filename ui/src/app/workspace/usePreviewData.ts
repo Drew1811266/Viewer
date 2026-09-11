@@ -5,6 +5,13 @@ import type { PreviewDataPort } from './ports'
 
 export interface PreviewDataCoordinator {
   requestThumbnail: ThumbnailLoader
+  /** 批量预取缩略图（低解码优先级）；每个文件独立结算，取消由 signal 控制。 */
+  prefetchThumbnails(
+    files: BrowserFile[],
+    maxPixels: number,
+    scaleMilli: number,
+    signal: AbortSignal,
+  ): Promise<void>
   requestFolderImages(entityId: string): Promise<BrowserFile[]>
   requestPreviewImage(
     file: BrowserFile,
@@ -24,12 +31,18 @@ export function usePreviewData(
   port: PreviewDataPort,
 ): PreviewDataCoordinator {
   const loadThumbnail = useCallback<ThumbnailLoader>(
-    (file, maxPixels, scaleMilli) =>
+    (file, maxPixels, scaleMilli, signal, priority) =>
       port
-        .requestImage({
-          entityId: file.entityId,
-          representation: { kind: 'thumbnail', maxPixels, scaleMilli },
-        })
+        .requestImage(
+          {
+            entityId: file.entityId,
+            representation:
+              priority === 'prefetch'
+                ? { kind: 'thumbnail', maxPixels, scaleMilli, priority }
+                : { kind: 'thumbnail', maxPixels, scaleMilli },
+          },
+          signal,
+        )
         .then((image) => image.url),
     [port],
   )
@@ -38,6 +51,13 @@ export function usePreviewData(
     [loadThumbnail, projectSessionId],
   )
   useEffect(() => () => thumbnailCache.clear(), [thumbnailCache])
+  const prefetchThumbnails = useCallback<PreviewDataCoordinator['prefetchThumbnails']>(
+    (files, maxPixels, scaleMilli, signal) =>
+      Promise.allSettled(
+        files.map((file) => thumbnailCache.prefetch(file, maxPixels, scaleMilli, signal)),
+      ).then(() => undefined),
+    [thumbnailCache],
+  )
 
   const requestFolderImages = useCallback(
     async (entityId: string) => {
@@ -63,6 +83,7 @@ export function usePreviewData(
 
   return {
     requestThumbnail: thumbnailCache.request,
+    prefetchThumbnails,
     requestFolderImages,
     requestPreviewImage,
     requestTextPreview,

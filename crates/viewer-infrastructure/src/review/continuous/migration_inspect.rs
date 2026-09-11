@@ -51,8 +51,17 @@ pub(super) fn scan_index(
         verify_without_index(directory)?;
         return Ok(None);
     };
-    if v3::decode_index_v3(&bytes).is_ok() {
-        return Ok(None);
+    match protocol::detect_continuous_review_protocol(&bytes, MAX_REVIEW_INDEX_BYTES) {
+        Ok(protocol::ContinuousReviewProtocol::V3) => {
+            v3::decode_index_v3(&bytes).map_err(protocol_error)?;
+            return Ok(None);
+        }
+        Ok(protocol::ContinuousReviewProtocol::V4) => {
+            protocol::v4::decode_index_v4(&bytes).map_err(protocol_error)?;
+            return Ok(None);
+        }
+        Err(protocol::ReviewProtocolError::UnsupportedVersion) => {}
+        Err(error) => return Err(protocol_error(error)),
     }
     // A valid continuous index (including the current v4 protocol) is already the
     // authoritative format.  Do not send it through the legacy catalog decoder;

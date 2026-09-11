@@ -528,6 +528,70 @@ fn read_only_unknown_protocol_and_unselected_nonempty_legacy_data_never_write() 
     assert!(!root.path().join(".viewer/reviews/write.lock").exists());
 }
 
+#[test]
+fn current_v4_index_with_preserved_v1_draft_does_not_enter_legacy_migration() {
+    let root = TempDir::new().unwrap();
+    let reviews = root.path().join(".viewer/reviews");
+    let draft_bytes = fixture("review-draft-v1.valid.json");
+    let draft = viewer_infrastructure::review::decode_draft_versioned(&draft_bytes)
+        .unwrap()
+        .value;
+    let mut index: serde_json::Value =
+        serde_json::from_slice(&fixture("review-index-v3.valid.json")).unwrap();
+    index["protocolVersion"] = "viewer.review/4".into();
+    index["streams"][0]["reviewStreamId"] = draft.review_stream_id.to_string().into();
+    index["streams"][0]["taskId"] = "task-b".into();
+    index["streams"][0]["batchId"] = "batch-b".into();
+    index["streams"][0]["legacyRefs"] = serde_json::json!([{
+        "kind": "draft",
+        "roundId": draft.review_round_id,
+        "protocolVersion": "viewer.review/1",
+        "location": format!("drafts/{}.json", draft.review_round_id),
+        "blake3": blake3::hash(&draft_bytes).to_hex().to_string(),
+    }]);
+    fs::create_dir_all(reviews.join("drafts")).unwrap();
+    fs::write(
+        reviews.join(format!("drafts/{}.json", draft.review_round_id)),
+        draft_bytes,
+    )
+    .unwrap();
+    fs::write(
+        reviews.join("index.json"),
+        serde_json::to_vec(&index).unwrap(),
+    )
+    .unwrap();
+
+    let provider = ProjectReviewRepositoryProvider::new(root.path(), draft.project_id);
+
+    assert_eq!(provider.inspect_migration().unwrap(), None);
+    assert!(provider.continuous_reader().is_ok());
+}
+
+#[test]
+fn malformed_current_index_is_an_integrity_error_not_an_unsupported_legacy_version() {
+    for protocol_version in ["viewer.review/3", "viewer.review/4"] {
+        let root = TempDir::new().unwrap();
+        let reviews = root.path().join(".viewer/reviews");
+        let mut index: serde_json::Value =
+            serde_json::from_slice(&fixture("review-index-v3.valid.json")).unwrap();
+        index["protocolVersion"] = protocol_version.into();
+        index["kind"] = "not-an-index".into();
+        fs::create_dir_all(&reviews).unwrap();
+        fs::write(
+            reviews.join("index.json"),
+            serde_json::to_vec(&index).unwrap(),
+        )
+        .unwrap();
+        let provider = ProjectReviewRepositoryProvider::new(root.path(), ProjectId::from_u128(1));
+
+        assert_eq!(
+            provider.inspect_migration(),
+            Err(ReviewCommitError::Integrity),
+            "{protocol_version}"
+        );
+    }
+}
+
 fn mixed(root: &TempDir) -> PathBuf {
     let mut index: serde_json::Value =
         serde_json::from_slice(&fixture("review-index-v2.valid.json")).unwrap();

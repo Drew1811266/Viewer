@@ -270,7 +270,23 @@ impl DesktopRuntime {
         entity_id: EntityId,
         kind: ImageRepresentationKind,
     ) -> Result<ImageRepresentationDto, CommandError> {
-        self.request_image_for_session(None, request_id, entity_id, kind)
+        self.request_image_with_priority(
+            request_id,
+            entity_id,
+            kind,
+            viewer_application::ImagePriority::Interactive,
+        )
+        .await
+    }
+
+    pub async fn request_image_with_priority(
+        &self,
+        request_id: ImageRequestId,
+        entity_id: EntityId,
+        kind: ImageRepresentationKind,
+        priority: viewer_application::ImagePriority,
+    ) -> Result<ImageRepresentationDto, CommandError> {
+        self.request_image_for_session(None, request_id, entity_id, kind, priority)
             .await
     }
 
@@ -287,12 +303,21 @@ impl DesktopRuntime {
         request_id: ImageRequestId,
         entity_id: EntityId,
         kind: ImageRepresentationKind,
+        priority: viewer_application::ImagePriority,
     ) -> Result<ImageRepresentationDto, CommandError> {
         let mut lease = ImageRequestLease::start(Arc::clone(&self.image_requests), request_id)?;
-        self.render_image_for_session(expected_session, request_id, &mut lease, entity_id, kind)
-            .await
+        self.render_image_for_session(
+            expected_session,
+            request_id,
+            &mut lease,
+            entity_id,
+            kind,
+            priority,
+        )
+        .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn render_image_for_session(
         &self,
         expected_session: Option<SessionId>,
@@ -300,6 +325,7 @@ impl DesktopRuntime {
         lease: &mut ImageRequestLease,
         entity_id: EntityId,
         kind: ImageRepresentationKind,
+        priority: viewer_application::ImagePriority,
     ) -> Result<ImageRepresentationDto, CommandError> {
         ensure_image_request_active(lease.cancellation())?;
         let (active, index, cache, image) = {
@@ -337,6 +363,7 @@ impl DesktopRuntime {
                 ensure_image_request_active(lease.cancellation())?;
                 let artifact = render_visible_image(
                     &self.derived_scheduler,
+                    &self.decode_scheduler,
                     image.as_ref(),
                     ImageRequest {
                         request_id,
@@ -345,6 +372,7 @@ impl DesktopRuntime {
                         entity_id,
                         source,
                         kind,
+                        priority,
                     },
                 )
                 .await
@@ -487,6 +515,7 @@ impl DesktopRuntime {
                         max_height: 1_600,
                         scale_milli: 1_000,
                     },
+                    viewer_application::ImagePriority::Interactive,
                 )
                 .await;
             if let Ok(representation) = representation {
@@ -612,11 +641,21 @@ pub(super) fn validated_indexed_source(
 }
 
 async fn render_visible_image(
-    scheduler: &Arc<DerivedWorkScheduler>,
+    derived_scheduler: &Arc<DerivedWorkScheduler>,
+    decode_scheduler: &Arc<DecodeScheduler>,
     image: &dyn ImagePort,
     request: ImageRequest,
 ) -> Result<viewer_application::ImageArtifact, ImageError> {
-    let _permit = scheduler.acquire(DerivedWorkClass::VisibleDerived).await;
+    // 统一解码调度器：取消的请求立刻离开队列；拿到票再进入可见派生类，
+    // 排队风暴不会长时间占住跨领域调度器的可见位。
+    let _ticket = tokio::select! {
+        biased;
+        _ = request.cancellation.cancelled() => return Err(ImageError::Cancelled),
+        ticket = decode_scheduler.acquire(request.priority.into()) => ticket,
+    };
+    let _permit = derived_scheduler
+        .acquire(DerivedWorkClass::VisibleDerived)
+        .await;
     image.render(request).await
 }
 
@@ -694,6 +733,7 @@ mod scheduler_tests {
     #[tokio::test]
     async fn real_visible_render_blocks_video_probe_until_render_finishes() {
         let scheduler = Arc::new(DerivedWorkScheduler::default());
+        let decode_scheduler = DecodeScheduler::new(3);
         let renderer = Arc::new(BlockingRenderer {
             started: tokio::sync::Notify::new(),
             release: tokio::sync::Notify::new(),
@@ -701,11 +741,13 @@ mod scheduler_tests {
         let source = tempfile::NamedTempFile::new().unwrap();
         let render = tokio::spawn({
             let scheduler = Arc::clone(&scheduler);
+            let decode_scheduler = Arc::clone(&decode_scheduler);
             let renderer = Arc::clone(&renderer);
             let source = source.path().to_path_buf();
             async move {
                 render_visible_image(
                     &scheduler,
+                    &decode_scheduler,
                     renderer.as_ref(),
                     ImageRequest {
                         request_id: ImageRequestId::new(),
@@ -714,6 +756,7 @@ mod scheduler_tests {
                         entity_id: EntityId::new(),
                         source,
                         kind: ImageRepresentationKind::Original100Percent,
+                        priority: viewer_application::ImagePriority::Interactive,
                     },
                 )
                 .await
@@ -736,6 +779,53 @@ mod scheduler_tests {
         .await
         .unwrap();
         drop(permit);
+    }
+
+    #[tokio::test]
+    async fn decode_scheduler_serializes_visible_renders_to_the_configured_limit() {
+        let scheduler = Arc::new(DerivedWorkScheduler::default());
+        let decode_scheduler = DecodeScheduler::new(1);
+        let renderer = Arc::new(BlockingRenderer {
+            started: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        let spawn_render = |renderer: Arc<BlockingRenderer>| {
+            let scheduler = Arc::clone(&scheduler);
+            let decode_scheduler = Arc::clone(&decode_scheduler);
+            tokio::spawn(async move {
+                render_visible_image(
+                    &scheduler,
+                    &decode_scheduler,
+                    renderer.as_ref(),
+                    ImageRequest {
+                        request_id: ImageRequestId::new(),
+                        cancellation: ImageRequestCancellation::new(),
+                        session_id: SessionId::new(),
+                        entity_id: EntityId::new(),
+                        source: std::path::PathBuf::from("/tmp/unused-source"),
+                        kind: ImageRepresentationKind::Original100Percent,
+                        priority: viewer_application::ImagePriority::Interactive,
+                    },
+                )
+                .await
+            })
+        };
+
+        let first = spawn_render(Arc::clone(&renderer));
+        renderer.started.notified().await;
+        let second = spawn_render(Arc::clone(&renderer));
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(
+            !second.is_finished(),
+            "second render must wait for the decode slot"
+        );
+
+        renderer.release.notify_one();
+        first.await.unwrap().unwrap();
+        renderer.started.notified().await;
+        renderer.release.notify_one();
+        second.await.unwrap().unwrap();
+        assert_eq!(decode_scheduler.snapshot().in_flight, 0);
     }
 }
 

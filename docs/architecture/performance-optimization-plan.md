@@ -1,7 +1,13 @@
 # 性能优化实施方案：解码调度 / 取消与预取 / 内存压力联动 / 性能门禁
 
-状态：设计提案（待评审）
+状态：已评审通过（2026-09-11 三项决策确认：dispatch2 依赖接受 / verify:perf 先本机后 CI / 基准机用开发机）；M1 已落地
 日期：2026-09-11
+落地记录：M1（方案一）已实现 —— `viewer-infrastructure/src/decode_scheduler.rs`、
+`ImageRequest.priority` + IPC DTO `priority` 可选字段、desktop 接线（`render_visible_image`
+先取解码票再进 VisibleDerived）、platform QoS 标注（`image/qos.rs`）。
+实现偏差说明：ticket 本身不携带 token，取消语义完全复用既有
+`ImageRequestCancellation`（acquire 处 `select!` 让已取消请求立即离开队列），
+与 §2.1 "取消语义复用 cancel_image_request" 一致。
 范围：viewer-infrastructure / viewer-platform-macos / src-tauri（viewer-desktop）/ ui
 关联：ADR 0003（会话级实体键）、docs/TECHNICAL_FOUNDATIONS.md
 

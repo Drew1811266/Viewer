@@ -420,6 +420,7 @@ fn image_request(
         entity_id: EntityId::new(),
         source,
         kind,
+        priority: viewer_application::ImagePriority::Interactive,
     }
 }
 

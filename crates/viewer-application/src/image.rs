@@ -8,6 +8,15 @@ use std::{
 use tokio::sync::Notify;
 use viewer_domain::{EntityId, ImageRequestId, SessionId, image::ImageRepresentationKind};
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ImagePriority {
+    /// 正在查看的内容（当前视口内的缩略图/预览/全图），解码调度器优先放行。
+    #[default]
+    Interactive,
+    /// 滚动方向预测的预取请求，在无交互等待时才被调度。
+    Prefetch,
+}
+
 #[derive(Clone, Debug)]
 pub struct ImageRequest {
     pub request_id: ImageRequestId,
@@ -16,6 +25,7 @@ pub struct ImageRequest {
     pub entity_id: EntityId,
     pub source: PathBuf,
     pub kind: ImageRepresentationKind,
+    pub priority: ImagePriority,
 }
 
 #[derive(Clone, Debug)]

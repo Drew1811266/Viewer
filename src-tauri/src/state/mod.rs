@@ -83,6 +83,7 @@ use viewer_infrastructure::operation::{
 };
 use viewer_infrastructure::{
     SystemClock,
+    decode_scheduler::{DEFAULT_DECODE_CONCURRENCY, DecodeScheduler},
     image_cache::{ImageArtifactRegistry, ImageCacheKey, ImageCacheKeyInput},
     portable::{PortableMarkerStore, PortableProjectMetadata},
     scan::walker::{ProjectWalker, is_macos_alias},
@@ -342,6 +343,7 @@ pub struct DesktopRuntime {
     marker_projection_factory: Arc<dyn DesktopMarkerProjectionFactory>,
     video_probe: Arc<dyn VideoMetadataProbe>,
     derived_scheduler: Arc<DerivedWorkScheduler>,
+    decode_scheduler: Arc<DecodeScheduler>,
     image_requests: Arc<StdMutex<preview::ImageRequestLifecycles>>,
     video_lifecycle: StdMutex<Option<Arc<dyn VideoClosePort>>>,
     image_render_lifecycle: StdMutex<Option<std::sync::Weak<dyn ImageRenderClosePort>>>,
@@ -518,12 +520,18 @@ impl DesktopRuntime {
             marker_projection_factory,
             video_probe,
             derived_scheduler,
+            decode_scheduler: DecodeScheduler::new(DEFAULT_DECODE_CONCURRENCY),
             image_requests: Arc::new(StdMutex::new(preview::ImageRequestLifecycles::default())),
             video_lifecycle: StdMutex::new(None),
             image_render_lifecycle: StdMutex::new(None),
             project_lifecycle_gate: Arc::new(RwLock::new(())),
             session: Mutex::new(None),
         }
+    }
+
+    /// 统一解码调度器（像素管线全局并发闸门）。暴露给测试与遥测。
+    pub fn decode_scheduler(&self) -> Arc<DecodeScheduler> {
+        Arc::clone(&self.decode_scheduler)
     }
 
     pub fn register_video_lifecycle(&self, lifecycle: Arc<dyn VideoClosePort>) {

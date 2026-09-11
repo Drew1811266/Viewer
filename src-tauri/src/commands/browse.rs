@@ -36,11 +36,13 @@ pub async fn request_image_representation(
     entity_id: String,
     representation: ImageRepresentationRequestDto,
 ) -> Result<ImageRepresentationDto, CommandError> {
+    let priority = representation.priority().into();
     runtime
-        .request_image_with_id(
+        .request_image_with_priority(
             parse_image_request_id(&request_id)?,
             parse_entity_id(&entity_id)?,
             representation.into(),
+            priority,
         )
         .await
 }

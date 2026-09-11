@@ -1,5 +1,6 @@
 mod encode;
 pub mod image_io;
+pub mod qos;
 pub mod quick_look;
 mod review_annotation;
 mod review_evidence;

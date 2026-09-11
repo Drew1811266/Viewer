@@ -270,15 +270,23 @@ export type FolderWorkspace =
   | { workspace: 'content'; images: BrowserFile[]; videos: VideoFile[]; otherFiles: BrowserFile[] }
   | { workspace: 'empty' }
 
+export type ImageRequestPriority = 'interactive' | 'prefetch'
+
 export type ImageRepresentationRequest =
-  | { kind: 'thumbnail'; maxPixels: number; scaleMilli: number }
+  | {
+      kind: 'thumbnail'
+      maxPixels: number
+      scaleMilli: number
+      priority?: ImageRequestPriority
+    }
   | {
       kind: 'fit_preview'
       maxWidth: number
       maxHeight: number
       scaleMilli: number
+      priority?: ImageRequestPriority
     }
-  | { kind: 'original100_percent' }
+  | { kind: 'original100_percent'; priority?: ImageRequestPriority }
 
 export interface ImageRequest {
   entityId: string

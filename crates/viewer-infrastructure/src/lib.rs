@@ -1,3 +1,4 @@
+pub mod decode_scheduler;
 pub mod image_cache;
 pub mod operation;
 pub mod portable;

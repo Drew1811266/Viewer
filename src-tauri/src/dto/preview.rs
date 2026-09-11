@@ -2,6 +2,25 @@ use serde::{Deserialize, Serialize};
 use viewer_application::ImageBackend;
 use viewer_domain::file::ImageMetadata;
 
+/// 解码优先级（内部 IPC DTO，非评审协议）。缺省 interactive；
+/// 预取请求传 `prefetch`，由统一解码调度器排队，不与交互请求抢并发槽。
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImagePriorityDto {
+    #[default]
+    Interactive,
+    Prefetch,
+}
+
+impl From<ImagePriorityDto> for viewer_application::ImagePriority {
+    fn from(priority: ImagePriorityDto) -> Self {
+        match priority {
+            ImagePriorityDto::Interactive => Self::Interactive,
+            ImagePriorityDto::Prefetch => Self::Prefetch,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageMetadataDto {
@@ -70,6 +89,8 @@ pub enum ImageRepresentationRequestDto {
         max_pixels: u32,
         #[serde(rename = "scaleMilli")]
         scale_milli: u16,
+        #[serde(default)]
+        priority: ImagePriorityDto,
     },
     FitPreview {
         #[serde(rename = "maxWidth")]
@@ -78,8 +99,23 @@ pub enum ImageRepresentationRequestDto {
         max_height: u32,
         #[serde(rename = "scaleMilli")]
         scale_milli: u16,
+        #[serde(default)]
+        priority: ImagePriorityDto,
     },
-    Original100Percent,
+    Original100Percent {
+        #[serde(default)]
+        priority: ImagePriorityDto,
+    },
+}
+
+impl ImageRepresentationRequestDto {
+    pub fn priority(&self) -> ImagePriorityDto {
+        match self {
+            Self::Thumbnail { priority, .. }
+            | Self::FitPreview { priority, .. }
+            | Self::Original100Percent { priority } => *priority,
+        }
+    }
 }
 
 impl From<ImageRepresentationRequestDto> for viewer_domain::image::ImageRepresentationKind {
@@ -88,6 +124,7 @@ impl From<ImageRepresentationRequestDto> for viewer_domain::image::ImageRepresen
             ImageRepresentationRequestDto::Thumbnail {
                 max_pixels,
                 scale_milli,
+                ..
             } => Self::Thumbnail {
                 max_pixels,
                 scale_milli,
@@ -96,12 +133,13 @@ impl From<ImageRepresentationRequestDto> for viewer_domain::image::ImageRepresen
                 max_width,
                 max_height,
                 scale_milli,
+                ..
             } => Self::FitPreview {
                 max_width,
                 max_height,
                 scale_milli,
             },
-            ImageRepresentationRequestDto::Original100Percent => Self::Original100Percent,
+            ImageRepresentationRequestDto::Original100Percent { .. } => Self::Original100Percent,
         }
     }
 }

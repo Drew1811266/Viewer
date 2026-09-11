@@ -80,11 +80,14 @@ impl ImageIoRenderBackend for ImageIoBackend {
         let backend = *self;
         let source = request.source.clone();
         let kind = request.kind;
+        let priority = request.priority;
         let destination = destination.to_path_buf();
-        let (width, height) =
-            tokio::task::spawn_blocking(move || backend.render_sync(source, kind, destination))
-                .await
-                .map_err(|error| ImageError::Io(format!("Image I/O worker failed: {error}")))??;
+        let (width, height) = tokio::task::spawn_blocking(move || {
+            super::qos::annotate_decode_thread(priority);
+            backend.render_sync(source, kind, destination)
+        })
+        .await
+        .map_err(|error| ImageError::Io(format!("Image I/O worker failed: {error}")))??;
         Ok(RenderedDimensions { width, height })
     }
 }
@@ -618,6 +621,8 @@ fn run_quick_look_executor(
     receiver: mpsc::Receiver<QuickLookCommand>,
     callback_commands: mpsc::Sender<QuickLookCommand>,
 ) {
+    // 专用 Quick Look 线程只做缩略图生成，按预取级 QoS 标注一次。
+    super::qos::annotate_decode_thread(viewer_application::ImagePriority::Prefetch);
     // SAFETY: The shared generator is obtained and then used exclusively on
     // this dedicated worker thread. Objective-C callbacks only send plain Rust
     // completion values back through the command channel.
@@ -1065,6 +1070,7 @@ mod tests {
                 max_pixels: 256,
                 scale_milli: 1_000,
             },
+            priority: viewer_application::ImagePriority::Interactive,
         }
     }
 

@@ -29,6 +29,7 @@
     "gate:m3": "./scripts/run-m3-organization-gate.sh",
     "test:image-render": "node --test scripts/image-render/performance-gate.test.mjs scripts/image-render/native-acceptance.test.mjs && cargo test --locked -p viewer-desktop --test image_render_recovery --test image_render_performance_gate",
     "gate:image-render": "./scripts/image-render/run-performance-gate.sh",
+    "verify:perf": "VIEWER_RUN_PERF_TESTS=1 cargo test --locked -p viewer-infrastructure --test perf_decode_scheduler -- --nocapture && VIEWER_RUN_PERF_TESTS=1 cargo test --locked -p viewer-render-wgpu --test perf_scroll -- --nocapture",
     "tauri": "tauri",
     "video:runtime:stage": "scripts/video/stage-tauri-resources.sh",
     "video:runtime:verify": "VIEWER_VIDEO_STAGE_DIR=target/viewer-video-runtime/universal-apple-darwin/ViewerVideoRuntime scripts/video/verify-runtime.sh",

@@ -1,6 +1,6 @@
 # 性能优化实施方案：解码调度 / 取消与预取 / 内存压力联动 / 性能门禁
 
-状态：已评审通过（2026-09-11 三项决策确认：dispatch2 依赖接受 / verify:perf 先本机后 CI / 基准机用开发机）；M1、M2、M3 已落地
+状态：已评审通过（2026-09-11 三项决策确认：dispatch2 依赖接受 / verify:perf 先本机后 CI / 基准机用开发机）；M1、M2、M3、M4 已落地（方案收官）
 日期：2026-09-11
 落地记录：M1（方案一）已实现 —— `viewer-infrastructure/src/decode_scheduler.rs`、
 `ImageRequest.priority` + IPC DTO `priority` 可选字段、desktop 接线（`render_visible_image`
@@ -23,6 +23,20 @@ normal→恢复默认容量。
 实现偏差说明：ticket 本身不携带 token，取消语义完全复用既有
 `ImageRequestCancellation`（acquire 处 `select!` 让已取消请求立即离开队列），
 与 §2.1 "取消语义复用 cancel_image_request" 一致。
+落地记录：M4（方案四）已实现 —— `pnpm verify:perf`（显式执行，不并入
+`verify:clean`）+ 两个 `VIEWER_RUN_PERF_TESTS=1` 门控基准：
+`tests/perf_decode_scheduler.rs`（缩略图风暴：峰值==limit、耗时≤串行1.6×；
+取消代价：100ms 内回收槽位，落在 viewer-infrastructure——风暴与取消度量的是
+调度器语义而非渲染器，与 §5.1 表格同置一处反而失真）+
+`crates/viewer-render-wgpu/tests/perf_scroll.rs`（冷滚动：无头渲染器合成分块
+大图 4096²/1024 瓦片，2× 相机逐帧下移 60 帧只上传新进视口冷瓦片，帧时间=
+上传+渲染墙钟 p95<8ms；GPU 时间戳样本附带报告不作门禁——无头模式无法呈现）。
+基线数值入库 `docs/quality/perf-baseline.md`（2026-09-11 · Apple M4 · debug
+profile：冷滚动 p95=0.38ms / 风暴 252ms vs 串行 757ms 峰值 3 / 取消回收 205µs）。
+实现偏差说明：风暴/取消运行于 tokio current_thread（工作区未启用
+`rt-multi-thread`），sleep 墙钟重叠已表达并发语义；§5.1 "合成项目 30 文件夹×30 图"
+的 DOM 级滚动无法无头化，冷滚动改为在 wgpu 渲染器上度量分块冷上传 + 绘制帧时间，
+缩略图风暴场景承接其"集中解码"语义。
 范围：viewer-infrastructure / viewer-platform-macos / src-tauri（viewer-desktop）/ ui
 关联：ADR 0003（会话级实体键）、docs/TECHNICAL_FOUNDATIONS.md
 

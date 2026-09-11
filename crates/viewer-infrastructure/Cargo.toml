@@ -102,3 +102,7 @@ path = "../../tests/review_repository.rs"
 [[test]]
 name = "review_protocol_v3_contract"
 path = "../../tests/review_protocol_v3_contract.rs"
+
+[[test]]
+name = "perf_decode_scheduler"
+path = "../../tests/perf_decode_scheduler.rs"

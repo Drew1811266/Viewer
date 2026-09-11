@@ -72,6 +72,8 @@ export default function AspectThumbnail({
         <img
           src={currentState.url}
           alt=""
+          decoding="async"
+          draggable={false}
           style={{
             ...size,
             objectFit: 'contain',

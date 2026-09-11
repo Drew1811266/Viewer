@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="coral" data-badge="solid" data-stage="light" data-page-node-id="OPEn6EFV3mdB8ZMWcuDcDk">
+<head data-page-node-id="NCV8GRUte0NAFBmKp9A2QH">
+<meta charset="UTF-8" data-page-node-id="aEjXB92vEc4CRdIZ3Hq2CF">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="b322GCejgkTOuS1aFyegBA">
+<title>评审标记 & 意见栏 · 重设计稿 v3</title>
+<style>
+  :root {
+    --app-canvas: #f3f3f1;
+    --app-surface: #ffffff;
+    --app-border: #dedfdd;
+    --app-text: #23262c;
+    --app-text-2: #6b7077;
+    --app-text-3: #8a8e94;
+    --app-accent: #5869cf;
+    --app-radius: 10px;
+    --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  }
+  :root[data-theme="coral"] {
+    --mark-primary: #e5484d;
+    --mark-primary-deep: #c73538;
+    --mark-primary-soft: rgba(229, 72, 77, 0.07);
+    --mark-halo: rgba(255, 255, 255, 0.92);
+    --mark-badge-top: #ff7066;
+    --mark-badge-mid: #ee4d42;
+    --mark-badge-bottom: #d63a2e;
+  }
+  :root[data-theme="indigo"] {
+    --mark-primary: #5869cf;
+    --mark-primary-deep: #4152b4;
+    --mark-primary-soft: rgba(88, 105, 207, 0.07);
+    --mark-halo: rgba(255, 255, 255, 0.92);
+    --mark-badge-top: #7d8ee8;
+    --mark-badge-mid: #5a6cd4;
+    --mark-badge-bottom: #4657bd;
+  }
+  :root[data-theme="amber"] {
+    --mark-primary: #d97706;
+    --mark-primary-deep: #b45309;
+    --mark-primary-soft: rgba(217, 119, 6, 0.08);
+    --mark-halo: rgba(255, 255, 255, 0.92);
+    --mark-badge-top: #f6a723;
+    --mark-badge-mid: #e08708;
+    --mark-badge-bottom: #c26f05;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--font); background: #e8e8e6; color: var(--app-text); padding: 20px; -webkit-font-smoothing: antialiased; }
+  .page-title { text-align: center; font-size: 15px; color: var(--app-text-2); margin-bottom: 14px; }
+  .page-title strong { color: var(--app-text); font-size: 17px; }
+
+  .controls { display: flex; gap: 16px; justify-content: center; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  .ctrl-group { display: flex; align-items: center; gap: 8px; }
+  .ctrl-label { font-size: 12px; color: var(--app-text-3); }
+  .seg { display: flex; background: #dddedd; border-radius: 8px; padding: 3px; gap: 2px; }
+  .seg button {
+    border: 0; background: transparent; font-family: var(--font); font-size: 12.5px;
+    padding: 5px 13px; border-radius: 6px; cursor: pointer; color: var(--app-text-2);
+    transition: all .15s ease; white-space: nowrap;
+  }
+  .seg button.on { background: #fff; color: var(--app-text); font-weight: 600; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .seg button .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+
+  .app-window {
+    max-width: 1180px; margin: 0 auto; height: 760px;
+    background: var(--app-canvas); border-radius: 12px; overflow: hidden;
+    display: flex; flex-direction: column;
+    box-shadow: 0 24px 64px rgba(30,34,44,.18);
+    border: 1px solid #d4d5d3;
+  }
+  .topbar {
+    height: 44px; background: var(--app-surface); border-bottom: 1px solid var(--app-border);
+    display: flex; align-items: center; padding: 0 14px; gap: 12px; flex-shrink: 0;
+  }
+  .traffic { display: flex; gap: 7px; }
+  .traffic i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .traffic i:nth-child(1){background:#ff5f57}.traffic i:nth-child(2){background:#febc2e}.traffic i:nth-child(3){background:#28c840}
+  .filename { font-size: 13px; font-weight: 600; }
+  .filemeta { font-size: 11px; color: var(--app-text-3); }
+  .toolbar-spacer { flex: 1; }
+  .tool-pill { display: flex; align-items: center; gap: 4px; background: var(--app-canvas); border: 1px solid var(--app-border); border-radius: 7px; padding: 3px 8px; font-size: 12px; color: var(--app-text-2); }
+
+  .main { flex: 1; display: flex; min-height: 0; }
+
+  .stage { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; background: var(--app-canvas); overflow: hidden; transition: background .2s; }
+  :root[data-stage="dark"] .stage { background: #2e3138; }
+  .photo {
+    width: 400px; height: 580px; border-radius: 4px; position: relative;
+    box-shadow: 0 8px 28px rgba(34,42,53,.14);
+    background: linear-gradient(160deg, #b8d8d4 0%, #a5cdd6 34%, #d9c9dd 68%, #c4b6d8 100%);
+  }
+  .photo::before {
+    content: ""; position: absolute; inset: 0; border-radius: 4px;
+    background:
+      radial-gradient(circle at 50% 38%, rgba(255,255,255,.35) 0%, transparent 42%),
+      radial-gradient(circle at 50% 82%, rgba(70,60,90,.18) 0%, transparent 38%);
+  }
+  :root[data-stage="dark"] .photo { filter: brightness(.6) saturate(.9); }
+  .photo-label { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 10.5px; color: rgba(255,255,255,.75); letter-spacing: .04em; }
+  .page-nav {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
+    border-radius: 999px; padding: 5px 14px; font-size: 12px; color: var(--app-text-2);
+    display: flex; gap: 12px; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,.1);
+  }
+
+  .anno-layer { position: absolute; inset: 0; pointer-events: none; }
+  .anno-layer svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .shape-main { fill: none; stroke: var(--mark-primary); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .shape-halo { fill: none; stroke: var(--mark-halo); stroke-width: 4.8; stroke-linecap: round; stroke-linejoin: round; }
+  .shape-fill { fill: var(--mark-primary-soft); stroke: none; }
+  .shape-dash-main { stroke-dasharray: 0.1 8; }
+  .shape-dash-halo { stroke-dasharray: 0.1 8; }
+  .arrow-head { fill: var(--mark-primary); stroke: var(--mark-halo); stroke-width: 1; }
+
+  .badge-wrap { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; cursor: pointer; }
+  .badge-wrap:hover .badge { transform: scale(1.12); }
+  .badge-wrap:hover .badge-tip { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  .badge {
+    display: none; align-items: center; justify-content: center;
+    font-weight: 700; user-select: none;
+    transition: transform .16s cubic-bezier(.2,0,0,1.4);
+    position: relative;
+  }
+  :root[data-badge="solid"] .badge--solid { display: flex; }
+  .badge--solid {
+    width: 28px; height: 28px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 32% 24%, rgba(255,255,255,.42) 0%, rgba(255,255,255,0) 42%),
+      linear-gradient(180deg, var(--mark-badge-top) 0%, var(--mark-badge-mid) 52%, var(--mark-badge-bottom) 100%);
+    color: #fff; font-size: 13.5px; line-height: 1;
+    border: 2.5px solid #fff;
+    box-shadow: 0 3px 9px rgba(0,0,0,.30), 0 1px 2.5px rgba(0,0,0,.22), inset 0 -1.5px 3px rgba(0,0,0,.14);
+    text-shadow: 0 1px 1.5px rgba(0,0,0,.28);
+  }
+  .badge-wrap.resolved .badge--solid {
+    background:
+      radial-gradient(circle at 32% 24%, rgba(255,255,255,.4) 0%, rgba(255,255,255,0) 42%),
+      linear-gradient(180deg, #9aa39d, #79837c);
+    box-shadow: 0 2px 6px rgba(0,0,0,.2), inset 0 -1.5px 3px rgba(0,0,0,.12);
+  }
+  :root[data-badge="light"] .badge--light { display: flex; }
+  .badge--light {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #fff;
+    color: var(--mark-primary-deep); font-size: 13.5px; line-height: 1;
+    border: 2.5px solid var(--mark-primary);
+    box-shadow: 0 3px 9px rgba(0,0,0,.26), 0 1px 2.5px rgba(0,0,0,.18);
+  }
+  .badge-wrap.resolved .badge--light { color: #79837c; border-color: #9aa39d; }
+  :root[data-badge="pin"] .badge--pin { display: flex; }
+  .badge--pin {
+    width: 30px; height: 38px; color: #fff; font-size: 13.5px;
+    padding-bottom: 15px; font-weight: 700;
+    filter: drop-shadow(0 3px 6px rgba(0,0,0,.32));
+    text-shadow: 0 1px 1.5px rgba(0,0,0,.28);
+  }
+  .badge--pin svg { position: absolute; inset: 0; z-index: -1; }
+  .badge--pin .pin-body { fill: url(#pinGrad); }
+  .badge-wrap.resolved .badge--pin .pin-body { fill: url(#pinGradGray); }
+
+  .badge-tip {
+    position: absolute; bottom: calc(100% + 9px); left: 50%;
+    transform: translate(-50%, 4px) scale(.96);
+    background: rgba(28, 30, 34, .92); backdrop-filter: blur(6px);
+    color: #fff; font-size: 11.5px; font-weight: 500; white-space: nowrap;
+    padding: 5px 10px; border-radius: 7px;
+    opacity: 0; transition: all .15s ease; pointer-events: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,.28);
+  }
+  .badge-tip::after {
+    content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    border: 4.5px solid transparent; border-top-color: rgba(28, 30, 34, .92);
+  }
+  .badge-wrap.active .badge::after {
+    content: ""; position: absolute; inset: -7px; border-radius: 50%;
+    border: 2px solid var(--mark-primary); opacity: .55;
+    animation: pulse 1.6s ease-out infinite;
+  }
+  @keyframes pulse {
+    0% { transform: scale(.82); opacity: .6; }
+    70% { transform: scale(1.12); opacity: 0; }
+    100% { transform: scale(1.12); opacity: 0; }
+  }
+
+  /* ===== 评审意见栏 ===== */
+  .rail { width: 316px; flex-shrink: 0; background: var(--app-surface); border-left: 1px solid var(--app-border); display: flex; flex-direction: column; }
+  .rail-head { padding: 16px 16px 4px; display: flex; align-items: center; gap: 8px; }
+  .rail-title { font-size: 14.5px; font-weight: 700; letter-spacing: .01em; }
+  .rail-spacer { flex: 1; }
+  .rail-icon-btn {
+    width: 26px; height: 26px; border: 0; background: transparent; border-radius: 6px;
+    color: var(--app-text-3); cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .rail-icon-btn:hover { background: var(--app-canvas); color: var(--app-text); }
+
+  .rail-filters { display: flex; gap: 4px; padding: 8px 16px 10px; border-bottom: 1px solid #f0f0ee; }
+  .filter-tab {
+    border: 0; background: transparent; font-family: var(--font); font-size: 12px;
+    color: var(--app-text-3); padding: 4px 10px; border-radius: 999px; cursor: pointer;
+    transition: all .13s ease;
+  }
+  .filter-tab:hover { color: var(--app-text); background: var(--app-canvas); }
+  .filter-tab.on { background: var(--app-canvas); color: var(--app-text); font-weight: 600; }
+  .filter-tab .n { font-weight: 700; margin-left: 3px; }
+  .filter-tab .n.pending { color: var(--mark-primary-deep); }
+  .filter-tab .n.done { color: #397158; }
+
+  .rail-body { flex: 1; overflow-y: auto; padding: 12px 12px 16px; }
+
+  .whole-card {
+    border: 1px solid color-mix(in srgb, var(--app-accent) 22%, #fff);
+    background: color-mix(in srgb, var(--app-accent) 4%, #fff);
+    border-radius: var(--app-radius);
+    padding: 11px 13px; margin-bottom: 12px; cursor: pointer; transition: all .15s ease;
+  }
+  .whole-card:hover { background: color-mix(in srgb, var(--app-accent) 8%, #fff); }
+  .whole-card-head { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--app-accent); }
+  .whole-card-head svg { flex-shrink: 0; }
+  .whole-card-head .chev { margin-left: auto; color: color-mix(in srgb, var(--app-accent) 55%, #fff); }
+  .whole-card-text {
+    margin-top: 5px; font-size: 12px; line-height: 1.55; color: var(--app-text-2);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  .card {
+    position: relative; background: var(--app-surface);
+    border: 1px solid #e6e6e4; border-radius: var(--app-radius);
+    padding: 11px 12px 9px 15px; margin-bottom: 9px;
+    transition: all .14s ease; cursor: default;
+  }
+  .card::before {
+    content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: linear-gradient(180deg, var(--mark-badge-top), var(--mark-badge-bottom));
+    opacity: 0; transition: opacity .14s;
+  }
+  .card:hover { border-color: #d5d5d3; box-shadow: 0 3px 14px rgba(30,34,44,.07); }
+  .card:hover::before, .card.active::before { opacity: 1; }
+  .card.active { border-color: color-mix(in srgb, var(--mark-primary) 45%, #fff); box-shadow: 0 3px 14px rgba(30,34,44,.08); }
+  .card.resolved { opacity: .66; }
+  .card.resolved::before { background: linear-gradient(180deg, #9aa39d, #79837c); }
+  .card.resolved .card-num { background: linear-gradient(180deg, #9aa39d, #79837c); }
+  .card.resolved .card-title { text-decoration: line-through; text-decoration-color: #b9bdb9; }
+
+  .card-row { display: flex; align-items: flex-start; gap: 9px; }
+  .card-num {
+    flex-shrink: 0; width: 21px; height: 21px; border-radius: 50%; margin-top: 1px;
+    background: linear-gradient(180deg, var(--mark-badge-top), var(--mark-badge-mid) 52%, var(--mark-badge-bottom));
+    color: #fff; font-size: 11.5px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,.22);
+  }
+  .card-title { font-size: 13px; font-weight: 600; line-height: 1.45; flex: 1; }
+  .card-text {
+    margin: 5px 0 0 30px; font-size: 12px; line-height: 1.55; color: var(--app-text-2);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card.resolved .card-text { color: var(--app-text-3); }
+  .card-meta { display: flex; gap: 6px; margin: 6px 0 0 30px; align-items: center; }
+  .meta-tag { font-size: 10.5px; color: var(--app-text-3); background: var(--app-canvas); border-radius: 4px; padding: 1.5px 6px; }
+  .meta-time { font-size: 10.5px; color: var(--app-text-3); }
+
+  .card-actions {
+    display: flex; gap: 2px; margin: 8px 0 0 30px;
+    opacity: 0; transform: translateY(-2px); transition: all .14s ease; height: 0; overflow: hidden;
+  }
+  .card:hover .card-actions, .card.active .card-actions { opacity: 1; transform: none; height: auto; overflow: visible; }
+  .act-btn {
+    display: flex; align-items: center; gap: 4px;
+    border: 0; background: transparent; font-family: var(--font);
+    font-size: 11.5px; color: var(--app-text-2); cursor: pointer;
+    padding: 4px 8px; border-radius: 6px; transition: all .12s;
+  }
+  .act-btn:hover { background: var(--app-canvas); color: var(--app-text); }
+  .act-btn.done:hover { background: #eff7f2; color: #397158; }
+
+  .rail-progress { padding: 12px 16px 14px; border-top: 1px solid #f0f0ee; }
+  .progress-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
+  .progress-label { font-size: 11px; color: var(--app-text-2); font-weight: 600; }
+  .progress-pct { font-size: 11px; color: var(--app-text-3); }
+  .progress-track { height: 4px; border-radius: 999px; background: #ececea; overflow: hidden; }
+  .progress-bar {
+    height: 100%; width: 20%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--mark-badge-top), var(--mark-badge-bottom));
+  }
+  .nav-row { display: flex; gap: 6px; margin-top: 10px; }
+  .nav-btn {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+    border: 1px solid #e6e6e4; background: var(--app-surface); border-radius: 7px;
+    font-family: var(--font); font-size: 11.5px; color: var(--app-text-2);
+    padding: 5px 0; cursor: pointer; transition: all .13s ease;
+  }
+  .nav-btn:hover { border-color: #d5d5d3; color: var(--app-text); background: var(--app-canvas); }
+
+  .notes { max-width: 1180px; margin: 18px auto 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .note { background: #fff; border: 1px solid #e2e2e0; border-radius: 10px; padding: 14px 16px; }
+  .note h4 { font-size: 12.5px; margin-bottom: 8px; }
+  .note p { font-size: 12px; color: var(--app-text-2); line-height: 1.65; }
+  .note b { color: var(--app-text); }
+  h3.section { max-width: 1180px; margin: 26px auto 10px; font-size: 13px; color: var(--app-text-2); font-weight: 600; }
+</style>
+</head>
+<body data-page-node-id="juKmPuGXRlHAxHFEai4PCE">
+  <p class="page-title" data-page-node-id="6GbamORUsq7NNatVrthF53"><strong data-page-node-id="kZy1ajuImGTdZBR2QNadkf">评审标记 & 评审意见栏 · 重设计稿 v3</strong>　—　箭头已修正 · 意见栏新增摘要/筛选/进度</p>
+
+  <div class="controls" data-page-node-id="rLcTgGR5KoA27KmAm3OUYo">
+    <div class="ctrl-group" data-page-node-id="5zH4CYFF3V44u5EGwiNhAG">
+      <span class="ctrl-label" data-page-node-id="6fJeEIXnsjEWi6un8s5S7t">配色方案</span>
+      <div class="seg" id="themeSeg" data-page-node-id="KdD3ENpvj8IKrQMj94cjoQ">
+        <button data-v="coral" class="on" data-page-node-id="23MqKl58FWLH2LhGXtcfNN"><span class="swatch" style="background:#e5484d" data-page-node-id="IOP9b8oSU3tggDyQDC3fHC"></span>珊瑚红</button>
+        <button data-v="indigo" data-page-node-id="B1nQ6Hr6FRL64rH7nk0In2"><span class="swatch" style="background:#5869cf" data-page-node-id="73oEHBUtB1qihpFkiOaFab"></span>靛蓝</button>
+        <button data-v="amber" data-page-node-id="S20cd6wtpAZt2gJMB1uCMR"><span class="swatch" style="background:#d97706" data-page-node-id="FXEDyXjN1NpG2Ssd1MI2nX"></span>琥珀橙</button>
+      </div>
+    </div>
+    <div class="ctrl-group" data-page-node-id="skqdhvuhPZ1sb5F2cQelBL">
+      <span class="ctrl-label" data-page-node-id="b1SnNJJHKNVjISDNCFNCxF">徽章风格</span>
+      <div class="seg" id="badgeSeg" data-page-node-id="BJ14UNkGgX87dGfYFYVRmh">
+        <button data-v="solid" class="on" data-page-node-id="yOx9LZ5Y4pjewqDjRktcZJ">渐变实心</button>
+        <button data-v="light" data-page-node-id="EbUCwUyHAb3HDueYprnEX7">白底彩环</button>
+        <button data-v="pin" data-page-node-id="StZUAqfit0fDnpN7cOUCP3">水滴 Pin</button>
+      </div>
+    </div>
+    <div class="ctrl-group" data-page-node-id="5Ec3go8IZMlOo7p0q6Pn5B">
+      <span class="ctrl-label" data-page-node-id="HipO1mqxEVYmzpdGWcDKhF">图片明暗</span>
+      <div class="seg" id="stageSeg" data-page-node-id="Qm0iGiCPLwE5qK2CRlmBEg">
+        <button data-v="light" class="on" data-page-node-id="Oeti0xKOMrWrerGJLGwFYR">浅色</button>
+        <button data-v="dark" data-page-node-id="B1XekicpuxbfKrQFungTHk">深色</button>
+      </div>
+    </div>
+  </div>
+
+  <svg width="0" height="0" style="position:absolute" data-page-node-id="58hJz0e2neeFWvEkqMTKUK">
+    <defs data-page-node-id="gV4xF6VAXotQvjSNTK1GNG">
+      <linearGradient id="pinGrad" x1="0" y1="0" x2="0" y2="1" data-page-node-id="c5ScE0kw8an3NzLbQJezXq">
+        <stop offset="0%" stop-color="var(--mark-badge-top)" data-page-node-id="0z4a5WWw7VLVSSlq9BTDpM"/>
+        <stop offset="55%" stop-color="var(--mark-badge-mid)" data-page-node-id="Zs0OjkNlDLFJmAlmAPzoiX"/>
+        <stop offset="100%" stop-color="var(--mark-badge-bottom)" data-page-node-id="CQt5HuQUZq5NDNlPyzxCOJ"/>
+      </linearGradient>
+      <linearGradient id="pinGradGray" x1="0" y1="0" x2="0" y2="1" data-page-node-id="APKCABPw9roeBWeQdOeyaF">
+        <stop offset="0%" stop-color="#9aa39d" data-page-node-id="mZNDmhPIOevDKOWs5AVWMW"/>
+        <stop offset="100%" stop-color="#79837c" data-page-node-id="PKkL2ZIz9usGJ3GGtWDYLJ"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <div class="app-window" data-page-node-id="JoeLcZcPJvI8SBIUYAKS3m">
+    <div class="topbar" data-page-node-id="JFCPdBHynjWHZ4DwaT163L">
+      <div class="traffic" data-page-node-id="OQCDsp9K6IR9CPjLrtEMF0"><i data-page-node-id="nk9mevJQcbB9TcyrSSMBDL"></i><i data-page-node-id="9IWrVq8vTtSVIviLEo3gyZ"></i><i data-page-node-id="cuYL3i7CNkufoUEAK1RhXV"></i></div>
+      <div class="filename" data-page-node-id="ryNGU1qRTGOu6hlhXrGRKw">2C2A7413.JPG</div>
+      <span class="filemeta" data-page-node-id="iCfNgKY5omrHLAAWE2t17B">6720 × 4480 px · 5.5 MB</span>
+      <div class="toolbar-spacer" data-page-node-id="kUWommm2Vwk68KiUkiDhIB"></div>
+      <div class="tool-pill" data-page-node-id="bf8fAhP93kgLZwoG1OcmTx">适应窗口</div>
+      <div class="tool-pill" data-page-node-id="WSPmrgXad5wZMktSyGAQq5">129%</div>
+      <div class="tool-pill" data-page-node-id="vDwNapW4KGHRqzHz8vCFiX">✏️ 标记</div>
+    </div>
+
+    <div class="main" data-page-node-id="rk0RrOsENm41T1uyOcgK3j">
+      <div class="stage" data-page-node-id="0qZDonCcwXDRdwDO5LgmdK">
+        <div class="photo" data-page-node-id="zNh3pJEOeL7EWN9fiD9N5f">
+          <div class="anno-layer" data-page-node-id="5sGX6sr1WRBPi8C6LZOcvP">
+            <svg viewBox="0 0 400 580" data-page-node-id="CoJVLHQ1MqqSklmraTzqGB">
+              <!-- 矩形标注 ① -->
+              <g data-page-node-id="lAjMGCpAvSDYhFZR1csT5E">
+                <rect class="shape-fill" x="252" y="84" width="112" height="96" rx="2" data-page-node-id="HuiFLddhkuhu5h5QURBoic"/>
+                <rect class="shape-halo" x="252" y="84" width="112" height="96" rx="2" data-page-node-id="jmX0qsil7gw1uTwwFh5JzR"/>
+                <rect class="shape-main" x="252" y="84" width="112" height="96" rx="2" data-page-node-id="sp8xIripxTddNfd1mafHiN"/>
+              </g>
+              <!-- 箭头 ④：整组旋转，头部与杆严格同轴 -->
+              <g transform="translate(46 104) rotate(32)" data-page-node-id="6gXOXQnGFNjIQNcsBjPCG8">
+                <line class="shape-halo" x1="0" y1="0" x2="94.3" y2="0" data-page-node-id="EiJAd7iHbyDw1kAoRgnGZB"/>
+                <line class="shape-main" x1="0" y1="0" x2="94.3" y2="0" data-page-node-id="X3TquTiq51SDrsSjk6sjsi"/>
+                <path class="arrow-head" d="M 109.5 0 L 94.3 -7.2 L 94.3 7.2 Z" data-page-node-id="FRQlHFs3FHasSmL7L2RTIF"/>
+              </g>
+              <!-- 手绘圈 ③（袖口，圆点虚线=待调整区域） -->
+              <g data-page-node-id="SF1aEB3Pn7IuiEslmY3HSp">
+                <path class="shape-halo shape-dash-halo" d="M 52 436 C 44 444, 42 458, 50 468 C 60 480, 84 482, 96 474 C 106 466, 106 450, 96 442 C 86 435, 62 431, 52 440" data-page-node-id="jRJE1Mhv3B8Uxahfy5mqUe"/>
+                <path class="shape-main shape-dash-main" d="M 52 436 C 44 444, 42 458, 50 468 C 60 480, 84 482, 96 474 C 106 466, 106 450, 96 442 C 86 435, 62 431, 52 440" data-page-node-id="tdI5EnImn8cQ8EAvtQc2uB"/>
+              </g>
+              <!-- 椭圆 ②（印花） -->
+              <g data-page-node-id="muJdqNmOQQI1KYLYIcD7XU">
+                <ellipse class="shape-fill" cx="252" cy="440" rx="38" ry="30" data-page-node-id="3LPH5QZLMWlaDLJN0CnzK7"/>
+                <ellipse class="shape-halo" cx="252" cy="440" rx="38" ry="30" data-page-node-id="pl5cKDNPol5vEggru3jqhU"/>
+                <ellipse class="shape-main" cx="252" cy="440" rx="38" ry="30" data-page-node-id="VJIXApzjwKjzk6JOQ8RNnK"/>
+              </g>
+            </svg>
+
+            <div class="badge-wrap" style="left: 364px; top: 84px;" data-page-node-id="sIcsCJJk9u2T8is11gEUpF">
+              <div class="badge badge--solid" data-page-node-id="QD8n3BwKerRfKQ1zCNkZ2v">1</div>
+              <div class="badge badge--light" data-page-node-id="4ZFBKrY6bDOgqbbc50AbP6">1</div>
+              <div class="badge badge--pin" data-page-node-id="ewSqyaDTPNUlFQR8XMNESk">
+                <svg viewBox="0 0 30 38" data-page-node-id="CvWUrvtjHBcrSUvNQYEAcT"><path class="pin-body" d="M15 0C6.7 0 0 6.7 0 15c0 10 10.9 17.8 13.7 24.2.6 1.3 2 1.3 2.6 0C19.1 32.8 30 25 30 15 30 6.7 23.3 0 15 0z" data-page-node-id="yMMONDKhDlNwKvDVtYoqSK"/></svg>
+                <span style="position:relative" data-page-node-id="5DVg3N2OTGCIiYPrkxLeQg">1</span>
+              </div>
+              <span class="badge-tip" data-page-node-id="ZB8yR1Bq9yuCxCLMlGcwoa">有褶皱 — 右肩袖窿</span>
+            </div>
+
+            <div class="badge-wrap" style="left: 290px; top: 440px;" data-page-node-id="CfzBHx48j9TFYitURQGZp9">
+              <div class="badge badge--solid" data-page-node-id="VFkfogSL8P4hFYtxBpcs0n">2</div>
+              <div class="badge badge--light" data-page-node-id="u7zpCRAZHbo320T1RNCLSg">2</div>
+              <div class="badge badge--pin" data-page-node-id="5EeZgThgkA3uqZfjHro4eG">
+                <svg viewBox="0 0 30 38" data-page-node-id="c6Yu6CvebNfMU7oLIBHy57"><path class="pin-body" d="M15 0C6.7 0 0 6.7 0 15c0 10 10.9 17.8 13.7 24.2.6 1.3 2 1.3 2.6 0C19.1 32.8 30 25 30 15 30 6.7 23.3 0 15 0z" data-page-node-id="1cSZH9EHbHq8BB3CykQ93E"/></svg>
+                <span style="position:relative" data-page-node-id="gi2Lcai1Va0AeKjkGCpTNA">2</span>
+              </div>
+              <span class="badge-tip" data-page-node-id="pP5R20PsOqEBT2A5AT7uLa">印花不清晰 — 下摆花朵</span>
+            </div>
+
+            <div class="badge-wrap active" style="left: 52px; top: 420px;" data-page-node-id="BjuEHbXByYUP1ikK4fRu4t">
+              <div class="badge badge--solid" data-page-node-id="aPRUmwVGIqFnHdGvoHyP4w">3</div>
+              <div class="badge badge--light" data-page-node-id="Qq08B0GDpzhfEeScUBIyfF">3</div>
+              <div class="badge badge--pin" data-page-node-id="n2fK3EfdTVwjp2s6qCxwi5">
+                <svg viewBox="0 0 30 38" data-page-node-id="knQj3DRW2WnRuASICuZk5O"><path class="pin-body" d="M15 0C6.7 0 0 6.7 0 15c0 10 10.9 17.8 13.7 24.2.6 1.3 2 1.3 2.6 0C19.1 32.8 30 25 30 15 30 6.7 23.3 0 15 0z" data-page-node-id="3PepyZphN0JRDNJ5DL9GYm"/></svg>
+                <span style="position:relative" data-page-node-id="dQ3UjuHeUXMIayv0ylt1sB">3</span>
+              </div>
+              <span class="badge-tip" data-page-node-id="FOlYm1tVJVzx1wHuNABxTM">袖口太大 — 左袖口</span>
+            </div>
+
+            <div class="badge-wrap" style="left: 46px; top: 104px;" data-page-node-id="lDSK9XQG6FIrR4IdjhL5aD">
+              <div class="badge badge--solid" data-page-node-id="eHL3if6bk9A67XKNSveg4a">4</div>
+              <div class="badge badge--light" data-page-node-id="MFckYvRwMKecNnU3zrmOdn">4</div>
+              <div class="badge badge--pin" data-page-node-id="SRYxIzqkvrOSwJe2IZvDXo">
+                <svg viewBox="0 0 30 38" data-page-node-id="sP8dVLQaebKn5ldBAgB2uI"><path class="pin-body" d="M15 0C6.7 0 0 6.7 0 15c0 10 10.9 17.8 13.7 24.2.6 1.3 2 1.3 2.6 0C19.1 32.8 30 25 30 15 30 6.7 23.3 0 15 0z" data-page-node-id="CclUS0pQmwX5UT7Xf6e3Oh"/></svg>
+                <span style="position:relative" data-page-node-id="e0DQa6ppfTLSNCacLaGvfb">4</span>
+              </div>
+              <span class="badge-tip" data-page-node-id="QC3YAVdE9aRrv6CR1pGZZj">饱和度太低 — 紫色袖子</span>
+            </div>
+
+            <div class="badge-wrap resolved" style="left: 330px; top: 326px;" data-page-node-id="fZrPwHVGOVsGw3VDauGnYz">
+              <div class="badge badge--solid" data-page-node-id="4I7NmuXmu1tHhrB7AaCq7N">✓</div>
+              <div class="badge badge--light" data-page-node-id="AcXf0LVGaVWwOjSqKHyAPm">✓</div>
+              <div class="badge badge--pin" data-page-node-id="zqYYNo3BxAsRqM7s0fAjid">
+                <svg viewBox="0 0 30 38" data-page-node-id="cwt1GjRm5S26QoaboE38b8"><path class="pin-body" d="M15 0C6.7 0 0 6.7 0 15c0 10 10.9 17.8 13.7 24.2.6 1.3 2 1.3 2.6 0C19.1 32.8 30 25 30 15 30 6.7 23.3 0 15 0z" data-page-node-id="a5PO84RPI55lje0Xn5YB5P"/></svg>
+                <span style="position:relative" data-page-node-id="6S8bQ7RJPTquSjXLLM7rbE">✓</span>
+              </div>
+              <span class="badge-tip" data-page-node-id="ljN8arDhiFRDYRAib9wawe">已解决 · 领口颜色</span>
+            </div>
+          </div>
+          <div class="photo-label" data-page-node-id="cUIwt876rrncSFgm8gTQtq">示例图片占位</div>
+        </div>
+        <div class="page-nav" data-page-node-id="CmO1GKz1Q6c3Lqx0Npt6rZ"><span data-page-node-id="HopWGDJ66uKAMQqVDlu9n3">‹</span><span data-page-node-id="UNMVuCS5gYbVN7muFqABCW">1 / 30</span><span data-page-node-id="i7q8FDAHlwYlMvlb31EJQx">›</span></div>
+      </div>
+
+      <aside class="rail" data-page-node-id="FW97FXZGUVPNCkwbw9zTmW">
+        <div class="rail-head" data-page-node-id="RkNUnynBf0ZcNxfLNp33A3">
+          <span class="rail-title" data-page-node-id="byZsuJZbJohXri3tubewTD">评审意见</span>
+          <span class="rail-spacer" data-page-node-id="xi31P7LnmmQBvovnRiFLHl"></span>
+          <button class="rail-icon-btn" title="收起" data-page-node-id="8RIbnpKhNh72grR8CquiPm">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" data-page-node-id="nwnOfYIPpWufRPfSo6MHsq"><rect x="1.5" y="2" width="11" height="10" rx="2" data-page-node-id="PopPZ9ACzegJ2tLYllvDTB"/><line x1="9.5" y1="2" x2="9.5" y2="12" data-page-node-id="WFHc2k9bBPOBNkSsUYmEaS"/></svg>
+          </button>
+        </div>
+
+        <div class="rail-filters" data-page-node-id="fp37jBAW2ylxeVePB2MA3L">
+          <button class="filter-tab on" data-page-node-id="WVBmduKmqV1DGqAKL9dYKt">待处理<span class="n pending" data-page-node-id="gBR6DpbFu9lQbYi1AGuybh">4</span></button>
+          <button class="filter-tab" data-page-node-id="FItXOu0wRJb7XS1IXPdum7">已解决<span class="n done" data-page-node-id="1oCAFTSZsHgmiOOJRwslZ3">1</span></button>
+          <button class="filter-tab" data-page-node-id="ZW4X9aZaWoP8NGkyFRzDry">全部<span class="n" data-page-node-id="l5xZeSxXrwuh0DR2tujgl8">5</span></button>
+        </div>
+
+        <div class="rail-body" data-page-node-id="IrtY4mYQYzZBvSqJh72KDa">
+          <div class="whole-card" data-page-node-id="YqSSUKsD2AQ66kNUqkjxGc">
+            <div class="whole-card-head" data-page-node-id="7CExAnCluidc3FcZIBi75d">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" data-page-node-id="C6UL56ouW7HcaaGCWmMUX4"><rect x="1.8" y="1.8" width="10.4" height="10.4" rx="2" data-page-node-id="k4FkN5UtoRcrHYxRwGLA7o"/><line x1="1.8" y1="5" x2="12.2" y2="5" data-page-node-id="8dob0vM2o5DUubdXNw3HwM"/></svg>
+              整图意见
+              <svg class="chev" width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" data-page-node-id="K7A6sTUPcVTokDauMJUaQX"><path d="M4 2.5 L7.5 5.5 L4 8.5" data-page-node-id="vAmiTlMg7JbCXhAIUzHmcj"/></svg>
+            </div>
+            <p class="whole-card-text" data-page-node-id="jxCtfJiZdKlIuj7n7TsEPh">整体色调偏灰，建议提高 8% 饱和度并统一背景白平衡；模特肤色可以再暖一点。</p>
+          </div>
+
+          <div class="card" id="card1" data-page-node-id="VMZynt2JPz7S7FaSdEMcMD">
+            <div class="card-row" data-page-node-id="b6LP6PAGk5Ao7lhTvW6OLX">
+              <span class="card-num" data-page-node-id="UcUEC2DEAMOhHwURpERUoN">1</span>
+              <span class="card-title" data-page-node-id="hZlbafhEFDTbF3clpBLr47">有褶皱</span>
+            </div>
+            <p class="card-text" data-page-node-id="rQtPCU6vjBCVN2hn7Tohr8">右肩袖窿处有明显褶皱，拉扯面料版型，建议重新生成时提高肩部贴合度。</p>
+            <div class="card-meta" data-page-node-id="NIHE607faaqiYbz0Vs7i6o">
+              <span class="meta-tag" data-page-node-id="xDXPm34doL0ZnPZaQ9UUx7">矩形区域</span><span class="meta-time" data-page-node-id="ZdftFmmydzU0HSK2DsRjT8">14:32</span>
+            </div>
+            <div class="card-actions" data-page-node-id="T0oSMBmgDUGAiPP23oYh9G">
+              <button class="act-btn" data-page-node-id="RaVRlQi52NBwZjmCOrv0lm"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" data-page-node-id="2ODBYxmc48IK6EOYExvRgt"><path d="M8.3 1.8l1.9 1.9L4 10H2V8z" data-page-node-id="9weNS4kr6HUj0xiabxv6Nh"/></svg>编辑文字</button>
+              <button class="act-btn" data-page-node-id="EJPKAcBXuZcghZg7hWCcq3"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" data-page-node-id="pQgYRB178BiUODDy47YkG1"><rect x="1.5" y="2.5" width="9" height="7" rx="1.5" data-page-node-id="n6rAWvvx9FEHYTpG6sVcva"/></svg>调整区域</button>
+              <button class="act-btn done" data-page-node-id="Pcefr0dSzTorf7cxLkxL5d"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" data-page-node-id="wiyAtqORs0oL0FDNq2lsf3"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" data-page-node-id="MoShf6wCZ6eu8U1ghTYl1y"/></svg>解决</button>
+            </div>
+          </div>
+
+          <div class="card" id="card2" data-page-node-id="5IlWidC7bvenT4zsuoCnnU">
+            <div class="card-row" data-page-node-id="N3OF4QFJJvDiyzS3Vv448I">
+              <span class="card-num" data-page-node-id="nSUgh68zbhZIvcW5ExySPQ">2</span>
+              <span class="card-title" data-page-node-id="w7FENQokzQzzkCQ7HTR4EB">印花不清晰</span>
+            </div>
+            <p class="card-text" data-page-node-id="EtHBwdnfSO67xyF2sqQHF3">下摆花朵印花边缘发虚，花瓣轮廓与底色粘连，需要重绘该局部。</p>
+            <div class="card-meta" data-page-node-id="t5tDbhY05k67Kzs4zQG4Mo">
+              <span class="meta-tag" data-page-node-id="mcHvSxySgrIgaCKt4Ns904">椭圆区域</span><span class="meta-time" data-page-node-id="SCjaWMiHZncepdxGIFYbBV">14:33</span>
+            </div>
+            <div class="card-actions" data-page-node-id="chkSncJic2bu7ZuhPsAmU3">
+              <button class="act-btn" data-page-node-id="0p5n9qBLNwaYHlw0usEtCp"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" data-page-node-id="8jWzEJLzuIIpqZ3ueQbN7d"><path d="M8.3 1.8l1.9 1.9L4 10H2V8z" data-page-node-id="VHuuGNod0EEsRsQ74b2Y8P"/></svg>编辑文字</button>
+              <button class="act-btn" data-page-node-id="Q8FHDy51Vfx0b2H5z3wEv8"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" data-page-node-id="tf9AQ9ASSKD93NWf4qv8tv"><path d="M2 8 C3 4, 6 9, 8 4" data-page-node-id="JhnB8KFhv4MB7KU74xsMjk"/></svg>重绘</button>
+              <button class="act-btn done" data-page-node-id="sQnhCj9JCSPJmeuxObnf4A"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" data-page-node-id="ugD9EQsqKtCHtdKa33O6xt"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" data-page-node-id="hpijg12WE5FVqsn5jZt021"/></svg>解决</button>
+            </div>
+          </div>
+
+          <div class="card active" id="card3" data-page-node-id="AYsMU0PJCgnvjxAHv974pO">
+            <div class="card-row" data-page-node-id="W0biZQtQzO72w4BdNCEVlZ">
+              <span class="card-num" data-page-node-id="TAcJPBVXoJntxTgIlCrw8f">3</span>
+              <span class="card-title" data-page-node-id="hJcb7qVCxXuf6aZHNNVk2J">袖口太大</span>
+            </div>
+            <p class="card-text" data-page-node-id="0JN2ZXd194qEvHB8W89Brv">左袖口围度超出版型约 4cm，垂坠感过强，收窄至与右袖一致。</p>
+            <div class="card-meta" data-page-node-id="yFIiG5maM7JcowY21A8EZB">
+              <span class="meta-tag" data-page-node-id="pL1OFFYtuEWOdJCDhJ2m9W">手绘区域</span><span class="meta-time" data-page-node-id="hLflNbeCthC2QGqaFg2Vdr">14:35</span>
+            </div>
+            <div class="card-actions" data-page-node-id="y8h26acPSr1yttD5EN0YNz">
+              <button class="act-btn" data-page-node-id="jDesB3IQABsJmWhHGRMdrb"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" data-page-node-id="pHLsTCWk6T8daLYeD7B91x"><path d="M8.3 1.8l1.9 1.9L4 10H2V8z" data-page-node-id="zA0YHhCJl27EtPJ0pUF8Tg"/></svg>编辑文字</button>
+              <button class="act-btn" data-page-node-id="zzgw4itrjO36k3QSmg0snk"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" data-page-node-id="Lr7JN5XniLlx9DgWMeU4LM"><path d="M2 8 C3 4, 6 9, 8 4" data-page-node-id="ys1yYwh7tAAW26BcluxAOF"/></svg>重绘</button>
+              <button class="act-btn done" data-page-node-id="dLjmhfCk1GBhr9kRbM4uGY"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" data-page-node-id="DOFoBPrSxdYMT1DsrN7zGE"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" data-page-node-id="Zcf8xMNh5iAPYUWKrlKOHn"/></svg>解决</button>
+            </div>
+          </div>
+
+          <div class="card" id="card4" data-page-node-id="VQECRd1z2xFJqs6De1Yqqx">
+            <div class="card-row" data-page-node-id="8jTtm7P5OkoT7gpXGw4J3p">
+              <span class="card-num" data-page-node-id="FD0QvWNthheuSpJJjUpEuY">4</span>
+              <span class="card-title" data-page-node-id="NLJ85Nidp9nrYqrsChFXOX">饱和度太低</span>
+            </div>
+            <p class="card-text" data-page-node-id="VTWolZ9oHLGrdptNvY6FVs">紫色袖子区域饱和度明显低于主图基调，与其他批次出图不一致。</p>
+            <div class="card-meta" data-page-node-id="esEdVlOuEFSIx8DItPPelI">
+              <span class="meta-tag" data-page-node-id="FNE3XONcxldZgYyzEeAdG4">箭头指向</span><span class="meta-time" data-page-node-id="VokVJCVZbMvNY5FZf3cV3Y">14:36</span>
+            </div>
+            <div class="card-actions" data-page-node-id="PAhiM0xoPWPhBqXLBYo34e">
+              <button class="act-btn" data-page-node-id="8oxnW4bykCJTmbbg4hpYjo"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" data-page-node-id="Oj5Oznzw3LErSusWWAQiPK"><path d="M8.3 1.8l1.9 1.9L4 10H2V8z" data-page-node-id="6cJ0nVzXuDu25hxH2na4rk"/></svg>编辑文字</button>
+              <button class="act-btn done" data-page-node-id="B6b5usnb58vuGnebpCeguy"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" data-page-node-id="dDZbZ7kF17HaPoXUGgC5Hz"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" data-page-node-id="BZU66CHAzoG8lCyBbrC0NU"/></svg>解决</button>
+            </div>
+          </div>
+
+          <div class="card resolved" id="card5" data-page-node-id="N1EG3nF9aWbiTI9aPKNtpF">
+            <div class="card-row" data-page-node-id="bcgR69UKqQbTB85BUq3D4b">
+              <span class="card-num" data-page-node-id="488jZyFDpEnbDTC6oxJBg6">✓</span>
+              <span class="card-title" data-page-node-id="3PfGZPmPHJCLv81I9WhvT4">领口颜色</span>
+            </div>
+            <p class="card-text" data-page-node-id="b4LvBDpMo57olQ3R2BI7fQ">领口粉色过深，已按参考色卡 #F4C2C2 调整。</p>
+            <div class="card-meta" data-page-node-id="qolEAmbczVz83MBq8sD7ey">
+              <span class="meta-tag" data-page-node-id="LCXXpHI8G5DgJEIFGYzBgx">已解决</span><span class="meta-time" data-page-node-id="P6xlShXlRLHZz3uRDZYTgJ">14:38</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="rail-progress" data-page-node-id="SuPYJr9RWlYdjgxDo2UtMl">
+          <div class="progress-row" data-page-node-id="gyxrTbFqf9BmvaDXgHu3t5">
+            <span class="progress-label" data-page-node-id="wICSNCC0AkekJO9xF4KOyO">解决进度</span>
+            <span class="progress-pct" data-page-node-id="HHQCDJrNmmzTuTQhnz9yan">1 / 5 · 20%</span>
+          </div>
+          <div class="progress-track" data-page-node-id="fVzFxiB9pjUQo58piufv5I"><div class="progress-bar" data-page-node-id="m6mh35eF3u7bU5NDCpvOHr"></div></div>
+          <div class="nav-row" data-page-node-id="0MhRaacUm3PKoRC7kd7TqR">
+            <button class="nav-btn" data-page-node-id="F9CA9xO1wKTBFrv5waHpn5">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" data-page-node-id="7e36eQklICfVA3q00kCTMa"><path d="M6.5 2 L3.5 5 L6.5 8" data-page-node-id="Id3lqvOkXpJx5VBqCxRqcK"/></svg>
+              上一条
+            </button>
+            <button class="nav-btn" data-page-node-id="rnCKoDAHMelozesmSpuZ7p">
+              下一条
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" data-page-node-id="hFbAzTgFC1JtLPv4O2lpAp"><path d="M3.5 2 L6.5 5 L3.5 8" data-page-node-id="65CtotxB72uxEd1ymsWCaD"/></svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <h3 class="section" data-page-node-id="s2LcCUid03XM4VTzXf6djL">v3 更新</h3>
+  <div class="notes" data-page-node-id="cczorZNorJfqOooJy2lti1">
+    <div class="note" data-page-node-id="DcivMNfxFr6OzGQ5rgqzLB">
+      <h4 data-page-node-id="CKwPftny8CYmD4nZwZz71c">① 箭头修正</h4>
+      <p data-page-node-id="kcvbPnQpEQSFH2iRk9MDqa">v2 中箭头三角形的底点坐标手算有误（未垂直于杆的方向对称），视觉上"歪"。v3 改用<b data-page-node-id="11Y68FSMtTlOQ0qXawPaL5">整组旋转变换</b>绘制（平移到起点 + 旋转 32°，在局部坐标系里画水平杆和对称三角形），数学上严格同轴。</p>
+    </div>
+    <div class="note" data-page-node-id="RlZtfaIjzmaAs2V3JZdShM">
+      <h4 data-page-node-id="X6icwWAVuy30haOXC7UAdS">② 意见栏内容充实</h4>
+      <p data-page-node-id="uJnMWubBnRHS6DK0jPBQLa">每条意见增加<b data-page-node-id="GX8Ms7GCu9mWzLu5JblNR2">两行正文摘要</b>（超出截断），扫一眼即可了解意见内容而无需逐条点开；"整图意见"从按钮升级为<b data-page-node-id="slChAumUFzQxHcPClYeGQF">带摘要的卡片</b>；头部新增<b data-page-node-id="tzNC1s47A1gqTxxb8tqbjf">筛选标签</b>（待处理 4 / 已解决 1 / 全部 5）。</p>
+    </div>
+    <div class="note" data-page-node-id="bd5oAa9fh5F8uFCCMqz5St">
+      <h4 data-page-node-id="nFsIn3bnzWhz0DX0XVkxzO">③ 进度与导航</h4>
+      <p data-page-node-id="RK1g5ByCdb5SuRHIed7loY">底部新增<b data-page-node-id="XzpfLboNgk4qtWy69GTfc9">解决进度条</b>（1/5 · 20%，渐变色与标记同源）和<b data-page-node-id="s8aLzY9ICvsjZ0hzY6p1oh">上一条/下一条</b>导航按钮——批量过意见时不用来回滚动，配合图上徽章呼吸环逐条定位。</p>
+    </div>
+  </div>
+
+<script>
+  function wire(segId, attr) {
+    const seg = document.getElementById(segId);
+    seg.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+      document.documentElement.setAttribute(attr, btn.dataset.v);
+    });
+  }
+  wire('themeSeg', 'data-theme');
+  wire('badgeSeg', 'data-badge');
+  wire('stageSeg', 'data-stage');
+
+  document.querySelectorAll('.badge-wrap').forEach(w => {
+    w.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.badge-wrap').forEach(b => b.classList.toggle('active', b === w));
+    });
+  });
+  document.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.card').forEach(c => c.classList.toggle('active', c === card));
+    });
+  });
+  document.querySelectorAll('.filter-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.filter-tab').forEach(t => t.classList.toggle('on', t === tab));
+      const mode = tab.textContent.trim()[0];
+      document.querySelectorAll('.card.resolved').forEach(c => {
+        c.style.display = (mode === '待') ? 'none' : '';
+      });
+      document.querySelectorAll('.card:not(.resolved)').forEach(c => {
+        c.style.display = (mode === '已') ? 'none' : '';
+      });
+    });
+  });
+</script>
+</body>
+</html>

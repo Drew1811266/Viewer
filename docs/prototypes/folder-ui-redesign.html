@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>侧栏与文件夹区块 · 细节微调稿 v3（更窄）</title>
+<style>
+  :root {
+    --canvas: #f3f3f1;
+    --app: #fafaf8;
+    --surface: #ffffff;
+    --sidebar: #eff0ef;
+    --border: #dedfdd;
+    --border-soft: #e9eae8;
+    --text: #23262c;
+    --text-2: #6b7077;
+    --text-3: #8a8e94;
+    --accent: #5869cf;
+    --accent-soft: #eceeff;
+    --coral: #e8604c;
+    --coral-strong: #d54b37;
+    --coral-soft: #fdefec;
+    --review: #714d00;
+    --shadow-card: 0 1px 2px rgb(35 38 44 / 5%), 0 4px 16px rgb(35 38 44 / 6%);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: var(--canvas); color: var(--text);
+    font-size: 14px; line-height: 1.5;
+  }
+  .page { max-width: 1240px; margin: 0 auto; padding: 48px 32px 96px; }
+
+  .hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+  .hero p.lede { color: var(--text-2); margin-top: 8px; max-width: 720px; }
+  .hero p.principle {
+    margin-top: 14px; display: inline-flex; gap: 8px; align-items: center;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; font-size: 12.5px; color: var(--text-2); box-shadow: var(--shadow-card);
+  }
+  .hero p.principle b { color: var(--text); }
+
+  .section { margin-top: 52px; }
+  .section > h2 { font-size: 16px; font-weight: 750; letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 10px; }
+  .section > h2 .tag {
+    font-size: 11px; font-weight: 700; color: var(--accent);
+    background: var(--accent-soft); border-radius: 99px; padding: 2px 10px;
+  }
+  .section > .desc { color: var(--text-2); margin-top: 6px; max-width: 760px; font-size: 13px; }
+
+  /* ---------- 局部对比 ---------- */
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 20px; }
+  .duo-col { min-width: 0; }
+  .col-label { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--text-2); margin-bottom: 10px; }
+  .col-label .pill { border-radius: 99px; padding: 2px 10px; font-weight: 700; font-size: 11px; }
+  .col-label .pill.before { background: #f0f0ee; color: var(--text-2); border: 1px solid var(--border); }
+  .col-label .pill.after { background: var(--accent-soft); color: var(--accent); }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow-card); }
+
+  /* ---------- 区块头：现状 ---------- */
+  .identity-old {
+    width: 142px; background: #f8f9fb; border-right: 1px solid var(--border);
+    padding: 14px 12px; display: flex; flex-direction: column; gap: 5px;
+    align-items: flex-start;
+  }
+  .identity-old strong { font-size: 17px; font-weight: 750; letter-spacing: 0; }
+  .identity-old span { font-size: 11px; color: var(--text-secondary, #6b7077); }
+  .identity-old .mk { color: var(--review); font-weight: 600; }
+  .identity-old .rv { color: var(--text-2); }
+
+  /* ---------- 区块头：微调后 ---------- */
+  .identity-new {
+    width: 112px; background: #f8f9fb; border-right: 1px solid var(--border);
+    padding: 12px 10px 11px; display: flex; flex-direction: column; gap: 0;
+    align-items: flex-start;
+  }
+  .identity-new .name-row { display: flex; align-items: baseline; gap: 5px; max-width: 100%; min-width: 0; }
+  .identity-new strong { font-size: 14px; font-weight: 750; letter-spacing: 0.01em; flex: none; }
+  .identity-new .path { font-size: 10.5px; color: var(--text-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .identity-new .sub { margin-top: 4px; font-size: 10.5px; color: var(--text-2); }
+  .identity-new .sub b { color: var(--text); font-weight: 650; }
+  .identity-new .divider { width: 100%; height: 1px; background: var(--border-soft); margin: 7px 0; }
+  .identity-new .stat-line { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+  .identity-new .stat { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-2); min-width: 0; }
+  .identity-new .stat .swatch { width: 6px; height: 6px; border-radius: 2px; flex: none; }
+  .identity-new .stat .num { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 650; font-size: 10px; white-space: nowrap; }
+  .identity-new .pbar { width: 100%; height: 3px; border-radius: 99px; background: #e2e3e1; overflow: hidden; margin-top: 2px; }
+  .identity-new .pbar i { display: block; height: 100%; border-radius: 99px; }
+
+  /* ---------- 徽标 ---------- */
+  .count-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 99px;
+  }
+  .count-chip.coral { background: var(--coral-soft); color: var(--coral-strong); }
+  .count-chip.coral::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--coral); }
+  .count-chip.gray { background: #f0f0ee; color: var(--text-3); }
+  .count-chip.gray::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #c2c3c1; }
+
+  /* ---------- 侧栏对比 ---------- */
+  .sidebar-old, .sidebar-new { padding: 8px; }
+  .proj-row { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-weight: 700; font-size: 13.5px; }
+  .proj-row .chev { color: var(--text-3); font-size: 10px; margin-left: auto; }
+  .side-label { color: var(--text-3); font-size: 10px; font-weight: 750; letter-spacing: .07em; margin: 10px 8px 4px; }
+  .tree-row {
+    display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px;
+    border-radius: 5px; font-size: 12.5px; white-space: nowrap;
+  }
+  .tree-row .disclosure { width: 10px; color: var(--text-3); font-size: 9px; flex: none; }
+  .tree-row.selected { background: var(--accent-soft); box-shadow: inset 2px 0 var(--accent); color: var(--accent); font-weight: 600; }
+  .tree-row .cnt { margin-left: auto; font-size: 10.5px; color: var(--text-3); }
+  .indent { padding-left: 26px; }
+
+  .sidebar-new { background: var(--sidebar); }
+  .sidebar-new .proj-row { font-size: 13px; font-weight: 750; padding: 2px 8px 6px; }
+  .sidebar-new .side-label { margin: 8px 8px 5px; letter-spacing: .08em; color: #9a9ea4; }
+  .sidebar-new .tree-row {
+    height: 22px; font-size: 11.5px; border-radius: 6px; color: var(--text);
+    transition: none;
+  }
+  .sidebar-new .tree-row .disclosure { color: #a8acb2; }
+  .sidebar-new .tree-row.selected {
+    background: var(--surface); box-shadow: 0 1px 2px rgb(35 38 44 / 8%), 0 0 0 1px rgb(35 38 44 / 6%);
+    color: var(--text); font-weight: 650;
+  }
+  .sidebar-new .tree-row.selected::before { content: ""; width: 3px; height: 12px; border-radius: 99px; background: var(--accent); margin-left: -4px; margin-right: 1px; flex: none; }
+  .sidebar-new .tree-row .cnt { font-variant-numeric: tabular-nums; }
+  .sidebar-new .fb { margin-left: auto; display: inline-flex; align-items: center; }
+  .sidebar-new .sep { height: 1px; background: rgb(35 38 44 / 6%); margin: 7px 8px; }
+
+  /* ---------- 变更明细表 ---------- */
+  .spec-table { margin-top: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow-card); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th {
+    text-align: left; font-size: 11px; font-weight: 750; color: var(--text-3);
+    letter-spacing: .05em; padding: 10px 16px; background: #fafaf9;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  td { padding: 9px 16px; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.item { font-weight: 650; width: 22%; }
+  td.old-v { color: var(--text-3); width: 30%; }
+  td.new-v { width: 34%; }
+  td.new-v b { color: var(--text); }
+  td.why { color: var(--text-2); font-size: 12px; }
+  code { font-size: 11px; background: #f3f3f1; border: 1px solid var(--border-soft); border-radius: 4px; padding: 0 5px; }
+
+  /* ---------- 完整界面预览 ---------- */
+  .win { background: #e8e8e6; border-radius: 12px; padding: 10px; box-shadow: var(--shadow-card); overflow: hidden; margin-top: 20px; }
+  .win-titlebar { display: flex; align-items: center; gap: 8px; padding: 0 6px 8px; }
+  .dots { display: flex; gap: 5px; }
+  .dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .dots i:nth-child(1) { background: #ff5f57; } .dots i:nth-child(2) { background: #febc2e; } .dots i:nth-child(3) { background: #28c840; }
+  .win-title { font-size: 11.5px; font-weight: 650; color: var(--text-2); }
+  .app { display: grid; grid-template-columns: 136px 1fr; background: var(--app); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); font-size: 12px; }
+  .toolbar {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 7px 12px; height: 40px;
+  }
+  .searchbox {
+    flex: 0 1 300px; display: flex; align-items: center; gap: 6px;
+    background: #f5f5f3; border: 1px solid var(--border-soft); border-radius: 7px;
+    padding: 4px 10px; color: var(--text-3); font-size: 11.5px;
+  }
+  .toolbar .spacer { flex: 1; }
+  .review-status { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
+  .review-status strong { color: var(--text); font-weight: 700; }
+  .tbtn { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; padding: 4px 11px; font-size: 11.5px; }
+
+  .thumb {
+    aspect-ratio: 3/4; border-radius: 6px; position: relative; overflow: hidden;
+    background: var(--thumbnail, #eee); border: 1px solid rgb(35 38 44 / 6%);
+  }
+  .rework-badge {
+    position: absolute; top: 6px; left: 6px; z-index: 2;
+    background: rgb(255 255 255 / 92%); border: 1.5px solid var(--coral);
+    color: var(--coral-strong); font-size: 9.5px; font-weight: 750;
+    padding: 1px 7px; border-radius: 99px;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .rework-badge::before { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--coral); background: #fff; flex: none; }
+  .strip { display: flex; gap: 10px; }
+  .filmstrip-body { flex: 1; padding: 12px; min-width: 0; }
+  .filmstrip { display: flex; }
+  .filmstrip + .filmstrip { border-top: 1px solid var(--border-soft); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <h1>侧栏与文件夹区块 · 细节微调稿 v3（更窄）</h1>
+    <p class="lede">应你的反馈重做：<b>版式完全不动</b>——侧栏仍是「项目标题 + 项目目录 + 目录树」，区块头仍是左侧竖排信息列。只对字号、间距、层级、颜色和对齐做克制的打磨。</p>
+    <p class="principle">微调原则：<b>结构不动</b> · 每处改动都给出前后值和理由 · 不新增任何功能</p>
+  </header>
+
+  <!-- ================= 区块头微调 ================= -->
+  <section class="section">
+    <h2><span class="tag">细节 1</span>文件夹信息列：五段平铺 → 有主次的两组</h2>
+    <p class="desc">宽度从 142px 收到 112px（归还给缩略图），其余全部是排版层面：把「名称/路径」提为标题组，「数量/标记/已审阅」归入统计组，中间加一条极细分隔线，信息有了呼吸但总高不变。</p>
+    <div class="duo">
+      <div class="duo-col">
+        <div class="col-label"><span class="pill before">现状</span>142px · 五段等权平铺</div>
+        <div class="panel" style="display:flex; min-height:210px;">
+          <div class="identity-old">
+            <strong>A01</strong>
+            <span>衣服/A01</span>
+            <span>30 张图片 · 0 个其它文件</span>
+            <span class="mk">文件夹：未标记</span>
+            <span class="rv">已审阅 0 / 30</span>
+          </div>
+          <div style="flex:1"></div>
+        </div>
+      </div>
+      <div class="duo-col">
+        <div class="col-label"><span class="pill after">微调后</span>112px · 标题组 + 统计组</div>
+        <div class="panel" style="display:flex; min-height:210px;">
+          <div class="identity-new">
+            <div class="name-row"><strong>A01</strong><span class="path">衣服/A01</span></div>
+            <div class="sub"><b>30</b> 张图片</div>
+            <div class="divider"></div>
+            <div class="stat-line">
+              <div class="stat"><span class="swatch" style="background:#c2c3c1"></span>未标记<span class="num">0 / 30</span></div>
+              <div class="pbar"><i style="width:0%; background:var(--accent)"></i></div>
+            </div>
+          </div>
+          <div style="flex:1"></div>
+        </div>
+        <p class="desc" style="margin-top:10px; font-size:12px;">「0 个其它文件」为 0 时不显示（无信息量的数字不上屏）；「文件夹：未标记」简化为「未标记」+ 状态点——标签前缀是给自己看的说明文字，不是给用户看的。</p>
+      </div>
+    </div>
+
+    <div class="duo">
+      <div class="duo-col">
+        <div class="col-label"><span class="pill before">现状</span>有返工时的信息列</div>
+        <div class="panel" style="display:flex; min-height:210px;">
+          <div class="identity-old">
+            <strong>A01</strong>
+            <span>衣服/A01</span>
+            <span>30 张图片 · 0 个其它文件</span>
+            <span class="mk">文件夹：未标记</span>
+            <span class="rv">已审阅 12 / 30</span>
+          </div>
+          <div style="flex:1"></div>
+        </div>
+      </div>
+      <div class="duo-col">
+        <div class="col-label"><span class="pill after">微调后</span>返工数用评审珊瑚红承载</div>
+        <div class="panel" style="display:flex; min-height:210px;">
+          <div class="identity-new">
+            <div class="name-row"><strong>A01</strong><span class="path">衣服/A01</span></div>
+            <div class="sub"><b>30</b> 张图片</div>
+            <div class="divider"></div>
+            <div class="stat-line">
+              <div class="stat"><span class="swatch" style="background:var(--coral)"></span>未标记<span class="num" style="color:var(--coral-strong)">12</span></div>
+              <div class="pbar"><i style="width:40%; background:var(--coral)"></i></div>
+              <div class="stat"><span class="num" style="margin-left:0; font-weight:400; color:var(--text-2);">已审阅</span><span class="num">12 / 30</span></div>
+            </div>
+          </div>
+          <div style="flex:1"></div>
+        </div>
+        <p class="desc" style="margin-top:10px; font-size:12px;">进度条颜色跟随状态：含返工 = 珊瑚，正常审阅 = 蓝色 accent，与图片角标同色系，整个页面只有这一种强调色。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 侧栏微调 ================= -->
+  <section class="section">
+    <h2><span class="tag">细节 2</span>目录树：行高、选中态与数字对齐</h2>
+    <p class="desc">层级和标签全部保留，只动观感：选中态从「色块 + 左侧硬色条」改为「白底浮起卡片 + 圆头小色条」；行高 26 → 22px；计数右对齐并使用等宽数字。</p>
+    <div class="duo">
+      <div class="duo-col">
+        <div class="col-label"><span class="pill before">现状</span>160px · 26px 行高</div>
+        <div class="panel sidebar-old" style="width:160px;">
+          <div class="proj-row">测试图 <span class="chev">‹</span></div>
+          <div class="side-label">项目目录</div>
+          <div class="tree-row"><span class="disclosure">▾</span>角色</div>
+          <div class="tree-row indent">B01<span class="cnt">30</span></div>
+          <div class="tree-row indent">B02<span class="cnt">30</span></div>
+          <div class="tree-row indent">B03<span class="cnt">30</span></div>
+          <div class="tree-row selected indent">A01<span class="cnt">30</span></div>
+          <div class="tree-row indent">A02<span class="cnt">30</span></div>
+          <div class="tree-row indent">A03<span class="cnt">9</span></div>
+        </div>
+      </div>
+      <div class="duo-col">
+        <div class="col-label"><span class="pill after">微调后</span>136px · 22px 行高 · 浮起选中态</div>
+        <div class="panel sidebar-new" style="width:136px;">
+          <div class="proj-row">测试图 <span class="chev">‹</span></div>
+          <div class="side-label">项目目录</div>
+          <div class="tree-row"><span class="disclosure">▾</span>角色</div>
+          <div class="tree-row indent">B01<span class="cnt">30</span></div>
+          <div class="tree-row indent">B02<span class="cnt">30</span></div>
+          <div class="tree-row indent">B03<span class="cnt">30</span></div>
+          <div class="sep"></div>
+          <div class="tree-row selected indent">A01<span class="cnt">30</span></div>
+          <div class="tree-row indent">A02<span class="cnt">30</span></div>
+          <div class="tree-row indent">A03<span class="cnt">9</span></div>
+        </div>
+        <p class="desc" style="margin-top:10px; font-size:12px;">「项目标题」和「目录树」之间加一条 6% 透明度的极细分隔（上例中的 sep），避免标题行和第一个分组挤在一起；其余 spacing 全部随行高收紧。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 整体预览 ================= -->
+  <section class="section">
+    <h2><span class="tag">预览</span>微调后的整体效果</h2>
+    <div class="win">
+      <div class="win-titlebar"><span class="dots"><i></i><i></i><i></i></span><span class="win-title">Viewer — 测试图</span></div>
+      <div class="app">
+        <div class="toolbar">
+          <div class="searchbox">搜索名称、路径或文本</div>
+          <div class="spacer"></div>
+          <span class="review-status">持续评审 <strong>当前意见 34</strong></span>
+          <span class="tbtn">存储意见</span>
+        </div>
+        <div class="sidebar-new" style="border-right:1px solid var(--border);">
+          <div class="proj-row">测试图 <span class="chev">‹</span></div>
+          <div class="side-label">项目目录</div>
+          <div class="tree-row"><span class="disclosure">▾</span>角色</div>
+          <div class="tree-row indent">B01<span class="cnt">30</span></div>
+          <div class="tree-row indent">B02<span class="cnt">30</span></div>
+          <div class="tree-row indent">B03<span class="cnt">30</span></div>
+          <div class="tree-row indent">B04<span class="cnt">30</span></div>
+          <div class="tree-row indent">B05<span class="cnt">30</span></div>
+          <div class="sep"></div>
+          <div class="tree-row"><span class="disclosure">▾</span>衣服</div>
+          <div class="tree-row selected indent">A01<span class="cnt">30</span></div>
+          <div class="tree-row indent">A02<span class="cnt">30</span></div>
+          <div class="tree-row indent">A03<span class="cnt">9</span></div>
+        </div>
+        <div>
+          <div class="filmstrip">
+            <div class="identity-new">
+              <div class="name-row"><strong>A01</strong><span class="path">衣服/A01</span></div>
+              <div class="sub"><b>30</b> 张图片</div>
+              <div class="divider"></div>
+              <div class="stat-line">
+                <div class="stat"><span class="swatch" style="background:var(--coral)"></span>未标记<span class="num" style="color:var(--coral-strong)">12</span></div>
+                <div class="pbar"><i style="width:40%; background:var(--coral)"></i></div>
+                <div class="stat"><span style="color:var(--text-2)">已审阅</span><span class="num">12 / 30</span></div>
+              </div>
+            </div>
+            <div class="filmstrip-body">
+              <div class="strip">
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#bfe8ef,#7fd0d8)"><span class="rework-badge">返工 · 7 条</span></div>
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#ffe3ea,#f7b8c8)"><span class="rework-badge">返工 · 5 条</span></div>
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#e8e0ff,#c9baf2)"></div>
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#ffd9d0,#f4a99a)"></div>
+              </div>
+            </div>
+          </div>
+          <div class="filmstrip">
+            <div class="identity-new">
+              <div class="name-row"><strong>A02</strong><span class="path">衣服/A02</span></div>
+              <div class="sub"><b>30</b> 张图片</div>
+              <div class="divider"></div>
+              <div class="stat-line">
+                <div class="stat"><span class="swatch" style="background:#c2c3c1"></span>未标记<span class="num">0 / 30</span></div>
+                <div class="pbar"><i style="width:0%; background:var(--accent)"></i></div>
+                <div class="stat"><span style="color:var(--text-2)">已审阅</span><span class="num">0 / 30</span></div>
+              </div>
+            </div>
+            <div class="filmstrip-body">
+              <div class="strip">
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#ffe9f3,#f6c9e0)"><span class="rework-badge">返工 · 3 条</span></div>
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#cfe9fb,#8fc6ec)"><span class="rework-badge">返工 · 3 条</span></div>
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#fdf3d1,#f4dd9a)"></div>
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#d8f0dc,#a5d8b0)"></div>
+              </div>
+            </div>
+          </div>
+          <div class="filmstrip">
+            <div class="identity-new">
+              <div class="name-row"><strong>A03</strong><span class="path">衣服/A03</span></div>
+              <div class="sub"><b>9</b> 张图片</div>
+              <div class="divider"></div>
+              <div class="stat-line">
+                <div class="stat"><span class="swatch" style="background:#c2c3c1"></span>未标记<span class="num">0 / 9</span></div>
+                <div class="pbar"><i style="width:0%; background:var(--accent)"></i></div>
+                <div class="stat"><span style="color:var(--text-2)">已审阅</span><span class="num">0 / 9</span></div>
+              </div>
+            </div>
+            <div class="filmstrip-body">
+              <div class="strip">
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#2e3548,#4a5570)"></div>
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#cfe4f7,#a3c9ec)"></div>
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#fde5ee,#f2bed2)"></div>
+                <div class="thumb" style="--thumbnail:linear-gradient(150deg,#f9d8cf,#eda795)"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 变更明细 ================= -->
+  <section class="section">
+    <h2><span class="tag">规格</span>逐项变更明细</h2>
+    <div class="spec-table">
+      <table>
+        <tr><th>位置</th><th>现状</th><th>微调后</th><th>理由</th></tr>
+        <tr>
+          <td class="item">信息列宽度</td><td class="old-v">142px</td><td class="new-v"><b>112px</b></td>
+          <td class="why">收窄 30px 还给缩略图；路径超宽时省略号截断</td>
+        </tr>
+        <tr>
+          <td class="item">文件夹名 + 路径</td><td class="old-v">17px 独占一行；路径另起一行</td><td class="new-v"><b>14px + 路径同排</b>（基线对齐，路径 10.5px 弱灰）</td>
+          <td class="why">省一行；名称仍是视觉锚点</td>
+        </tr>
+        <tr>
+          <td class="item">图片统计</td><td class="old-v">「30 张图片 · 0 个其它文件」整串灰字</td><td class="new-v"><b>「30 张图片」</b>（数字加重）；其它文件为 0 时不显示</td>
+          <td class="why">0 是噪音；唯一有信息量的数字值得加重</td>
+        </tr>
+        <tr>
+          <td class="item">标记状态</td><td class="old-v">「文件夹：未标记」棕色文字</td><td class="new-v"><b>「未标记」+ 状态点，行尾只放一个珊瑚色数字</b>（不带底色胶囊）</td>
+          <td class="why">去掉「文件夹：」前缀；窄列里胶囊太挤，纯数字最省空间</td>
+        </tr>
+        <tr>
+          <td class="item">已审阅进度</td><td class="old-v">「已审阅 0 / 30」纯文字</td><td class="new-v"><b>3px 迷你进度条 + 等宽数字</b>；含返工时珊瑚色</td>
+          <td class="why">进度可被"看见"而非"读出"；颜色与图片角标呼应</td>
+        </tr>
+        <tr>
+          <td class="item">信息列分隔</td><td class="old-v">五段文字 gap:5px 平铺</td><td class="new-v"><b>标题组 / 统计组间加 1px hairline</b>（border-soft，间距 8→7px）</td>
+          <td class="why">分组产生呼吸感，总高不变</td>
+        </tr>
+        <tr>
+          <td class="item">侧栏选中态</td><td class="old-v">accent-soft 色块 + inset 2px 硬色条</td><td class="new-v"><b>白底浮起卡片（浅阴影 + 1px 描边）+ 圆头 3px 色条</b></td>
+          <td class="why">更轻盈；色条从"贴边"变"悬停"，减少生硬感</td>
+        </tr>
+        <tr>
+          <td class="item">侧栏行高 / 字号 / 宽度</td><td class="old-v">26px / 12.5px / 160px</td><td class="new-v"><b>22px / 11.5px / 136px</b></td>
+          <td class="why">密度提升，纵向多显示约 6 行</td>
+        </tr>
+        <tr>
+          <td class="item">侧栏分组间距</td><td class="old-v">无</td><td class="new-v"><b>分组间 6% 透明度细分隔线</b></td>
+          <td class="why">标题、分组、文件三种层级拉开</td>
+        </tr>
+        <tr>
+          <td class="item">行尾计数</td><td class="old-v">无（或左对齐灰字）</td><td class="new-v"><b>右对齐 + tabular-nums</b></td>
+          <td class="why">数字纵向对齐成列，扫读更快</td>
+        </tr>
+      </table>
+    </div>
+    <p class="desc" style="margin-top:12px;">落地范围：<code>FolderFilmstripRow.tsx</code> 的信息列 JSX 顺序微调 + <code>app.css</code> 中 <code>folder-filmstrip-identity</code> / <code>folder-tree</code> 两段样式，<b>不新增组件、不动数据流、不新增颜色 token（进度色复用 accent 与 annotation）</b>。</p>
+  </section>
+
+</div>
+</body>
+</html>

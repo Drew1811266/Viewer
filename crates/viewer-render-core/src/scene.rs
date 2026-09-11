@@ -32,11 +32,34 @@ pub struct AnnotationStyle {
     pub dashed: bool,
 }
 
+/// Coral red #E8644D as authored in sRGB. Colors handed to the annotation
+/// pipeline must be linear-encoded: the renderer targets a `Bgra8UnormSrgb`
+/// surface, so an sRGB value written as-is gets gamma-encoded a second time
+/// and appears washed out (pale salmon instead of coral).
+const ANNOTATION_CORAL_SRGB: [f32; 4] = [0.91, 0.39, 0.30, 1.0];
+
+fn srgb_channel_to_linear(channel: f32) -> f32 {
+    if channel <= 0.040_45 {
+        channel / 12.92
+    } else {
+        ((channel + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn linear_from_srgb(color: [f32; 4]) -> [f32; 4] {
+    [
+        srgb_channel_to_linear(color[0]),
+        srgb_channel_to_linear(color[1]),
+        srgb_channel_to_linear(color[2]),
+        color[3],
+    ]
+}
+
 impl Default for AnnotationStyle {
     fn default() -> Self {
         Self {
-            color: [0.70, 0.13, 0.09, 1.0],
-            line_width_px: 2.0,
+            color: linear_from_srgb(ANNOTATION_CORAL_SRGB),
+            line_width_px: 2.4,
             dashed: false,
         }
     }

@@ -18,7 +18,10 @@ fn main() {
     for glyph in ['2', '5'] {
         let metrics = atlas.metrics(glyph).unwrap();
         let left = (metrics.uv_min[0] * atlas.width() as f32).round() as usize;
-        let width = metrics.size_px[0] as usize;
+        // The atlas rasterizes at a supersampled ratio; derive the glyph's
+        // physical extent from its uv span instead of the logical size_px.
+        let width = ((metrics.uv_max[0] - metrics.uv_min[0]) * atlas.width() as f32).round()
+            as usize;
         let rows = atlas
             .pixels()
             .chunks_exact(atlas.width() as usize)
@@ -124,7 +127,10 @@ fn capture_orientation(atlas: &OrdinalGlyphAtlas, scale: f64) {
                     (left..left + width)
                         .map(|x| {
                             let offset = ((y * physical.width + x) * 4) as usize;
-                            u64::from(pixels[offset].saturating_sub(100))
+                            // The badge is a white disc with colored digits, so
+                            // digit ink is the *absence* of green: invert the
+                            // green channel to keep strokes as the strong signal.
+                            u64::from(255u8.saturating_sub(pixels[offset + 1]))
                         })
                         .sum()
                 })

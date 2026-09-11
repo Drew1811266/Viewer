@@ -161,6 +161,9 @@ pub enum ImageRenderAnnotationGeometryDto {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageRenderAnnotationStyleDto {
+    /// Linear-encoded RGBA. The renderer targets a `Bgra8UnormSrgb` surface,
+    /// so senders must convert sRGB-authored colors to linear before sending
+    /// or they get gamma-encoded twice and appear washed out.
     pub color: [f32; 4],
     pub line_width_px: f32,
     pub dashed: bool,

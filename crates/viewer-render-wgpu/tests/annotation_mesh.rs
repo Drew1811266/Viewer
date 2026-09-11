@@ -98,9 +98,15 @@ fn selected_geometry_adds_four_fixed_screen_handles() {
     assert!(
         mesh.vertices()
             .iter()
+            .any(|vertex| vertex.kind == VertexKind::ScreenSquare),
+        "rectangle handles rasterize as AA-ramped screen squares"
+    );
+    assert!(
+        mesh.vertices()
+            .iter()
             .filter(|vertex| vertex.kind == VertexKind::ScreenOffset)
-            .all(|vertex| vertex.screen_offset_px[0].abs() <= 14.0
-                && vertex.screen_offset_px[1].abs() <= 14.0)
+            .all(|vertex| vertex.screen_offset_px[0].abs() <= 15.0
+                && vertex.screen_offset_px[1].abs() <= 15.0)
     );
 }
 
@@ -149,8 +155,9 @@ fn selected_handles_have_visible_white_interiors_and_full_size_hit_targets() {
     assert!(
         mesh.vertices()
             .iter()
-            .any(|vertex| vertex.screen_offset_px[0] == 12.0),
-        "handle diameter must remain 24 logical pixels"
+            .any(|vertex| vertex.edge_px == 12.0),
+        "handle solid core must remain 24 logical pixels in diameter; the \
+         rasterized rim only carries the 0.5px antialiasing outset"
     );
 }
 
@@ -217,8 +224,10 @@ fn maximum_length_stroke_stays_within_linear_mesh_bounds() {
 
     let mesh = AnnotationMeshBuilder::default().build(&scene).unwrap();
 
-    assert!(mesh.vertices().len() <= 2_047 * 4 + 64);
-    assert!(mesh.indices().len() <= 2_047 * 6 + 96);
+    // 2047 stroke quads (4 verts / 6 indices each) plus one ordinal badge:
+    // two AA circles of 16 segments (96 verts / 96 indices).
+    assert!(mesh.vertices().len() <= 2_047 * 4 + 128);
+    assert!(mesh.indices().len() <= 2_047 * 6 + 144);
 }
 
 #[test]

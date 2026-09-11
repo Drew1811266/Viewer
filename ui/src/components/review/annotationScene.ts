@@ -242,15 +242,31 @@ function paintOrdinal(
   if (!isImageAnchor(anchor)) return
   const projected = annotationOrdinalPoint(anchor, projection, options)
   if (projected === null) return
+  // White disc with a colored ring, matching the native badge style: one arc
+  // path is filled (with a soft shadow) and then stroked as the ring. Stroke
+  // state is restored explicitly afterwards so subsequent geometry keeps the
+  // caller's line width and dash.
+  const previousLineWidth = context.lineWidth
+  const previousStrokeStyle = context.strokeStyle
   context.beginPath()
-  context.fillStyle = options.color
   context.arc(projected.x, projected.y, options.ordinalRadius, 0, Math.PI * 2)
-  context.fill()
+  context.save()
+  context.shadowColor = 'rgba(0, 0, 0, 0.22)'
+  context.shadowBlur = 5
+  context.shadowOffsetY = 1
   context.fillStyle = '#fff'
+  context.fill()
+  context.restore()
+  context.lineWidth = 2.5
+  context.strokeStyle = options.color
+  context.stroke()
+  context.fillStyle = options.color
   context.font = '700 12px system-ui, sans-serif'
   context.textAlign = 'center'
   context.textBaseline = 'middle'
   context.fillText(String(ordinal), projected.x, projected.y)
+  context.lineWidth = previousLineWidth
+  context.strokeStyle = previousStrokeStyle
 }
 
 type ProjectedGeometry =

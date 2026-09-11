@@ -195,111 +195,193 @@ function FeedbackList({
   nativeGeometryEditing: boolean
 }) {
   return (
-    <ol className="review-feedback-rail__list" aria-label="本图意见">
-      {controller.feedback.map((feedback) => {
-        const label = feedback.ordinal === null ? '整图' : String(feedback.ordinal)
-        const editing = editingItemId === feedback.itemId
-        return (
-          <li
-            key={feedback.itemId}
-            aria-label={`意见 ${label}`}
-            data-selected={controller.selectedItemId === feedback.itemId || undefined}
-          >
-            <button
-              type="button"
-              className="review-feedback-rail__selection"
-              aria-label={`选择意见 ${label}：${feedback.text}`}
-              onClick={() => controller.selectFeedback(feedback.itemId)}
+    <>
+      <ol className="review-feedback-rail__list" aria-label="本图意见">
+        {controller.feedback.map((feedback) => {
+          const label = feedback.ordinal === null ? '整图' : String(feedback.ordinal)
+          const editing = editingItemId === feedback.itemId
+          return (
+            <li
+              key={feedback.itemId}
+              aria-label={`意见 ${label}`}
+              data-selected={controller.selectedItemId === feedback.itemId || undefined}
+              data-whole-image={feedback.ordinal === null || undefined}
             >
-              <span>{feedback.ordinal === null ? '整图' : feedback.ordinal}</span>
-              <strong>{feedback.text}</strong>
-            </button>
-            {editing ? (
-              <div className="review-feedback-rail__text-editor">
-                <textarea
-                  ref={input}
-                  aria-label={`意见 ${label} 文字`}
-                  value={editingText}
-                  disabled={saving}
-                  onChange={(event) => controller.updateDraftText(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.nativeEvent.isComposing) return
-                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                      event.preventDefault()
-                      if (editingText.trim().length > 0) void controller.saveDraft()
-                    }
-                  }}
-                />
-                <ViewerButton
-                  aria-label={`保存意见 ${label} 文字`}
-                  loading={saving}
-                  disabled={editingText.trim().length === 0}
-                  onClick={() => void controller.saveDraft()}
-                >
-                  保存
-                </ViewerButton>
-                <ViewerButton
-                  tone="quiet"
-                  disabled={saving}
-                  onClick={() => {
-                    controller.cancelDraft()
-                    clearError()
-                  }}
-                >
-                  取消
-                </ViewerButton>
-              </div>
-            ) : (
-              <div className="review-feedback-rail__item-actions">
-                <ViewerButton
-                  tone="quiet"
-                  aria-label={`编辑意见 ${label} 文字`}
-                  disabled={readOnly || controller.dirty}
-                  onClick={() => {
-                    controller.beginFeedbackTextEdit(feedback.itemId)
-                    clearError()
-                  }}
-                >
-                  编辑文字
-                </ViewerButton>
-                {feedback.anchor.kind === 'image_rect' && (
+              <button
+                type="button"
+                className="review-feedback-rail__selection"
+                aria-label={`选择意见 ${label}：${feedback.text}`}
+                onClick={() => controller.selectFeedback(feedback.itemId)}
+              >
+                <span className="review-feedback-rail__ordinal">
+                  {feedback.ordinal === null ? '全' : feedback.ordinal}
+                </span>
+                <span className="review-feedback-rail__summary">
+                  <strong>{feedback.text}</strong>
+                  <span className="review-feedback-rail__meta">
+                    <em>{anchorLabel(feedback.anchor.kind)}</em>
+                    <time dateTime={new Date(feedback.createdAtMs).toISOString()}>
+                      {formatFeedbackTime(feedback.createdAtMs)}
+                    </time>
+                  </span>
+                </span>
+              </button>
+              {editing ? (
+                <div className="review-feedback-rail__text-editor">
+                  <textarea
+                    ref={input}
+                    aria-label={`意见 ${label} 文字`}
+                    value={editingText}
+                    disabled={saving}
+                    onChange={(event) => controller.updateDraftText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing) return
+                      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                        event.preventDefault()
+                        if (editingText.trim().length > 0) void controller.saveDraft()
+                      }
+                    }}
+                  />
+                  <ViewerButton
+                    aria-label={`保存意见 ${label} 文字`}
+                    loading={saving}
+                    disabled={editingText.trim().length === 0}
+                    onClick={() => void controller.saveDraft()}
+                  >
+                    保存
+                  </ViewerButton>
                   <ViewerButton
                     tone="quiet"
-                    aria-label={`调整意见 ${label} 区域`}
-                    disabled={readOnly || controller.dirty}
+                    disabled={saving}
                     onClick={() => {
-                      controller.selectFeedback(feedback.itemId)
-                      controller.setTool(nativeGeometryEditing ? 'browse' : 'rectangle')
+                      controller.cancelDraft()
+                      clearError()
                     }}
                   >
-                    调整区域
+                    取消
                   </ViewerButton>
-                )}
-                {feedback.anchor.kind === 'image_stroke' && (
+                </div>
+              ) : (
+                <div className="review-feedback-rail__item-actions">
                   <ViewerButton
                     tone="quiet"
-                    aria-label={`重绘意见 ${label}`}
+                    aria-label={`编辑意见 ${label} 文字`}
                     disabled={readOnly || controller.dirty}
-                    onClick={() => controller.beginRedraw(feedback.itemId)}
+                    onClick={() => {
+                      controller.beginFeedbackTextEdit(feedback.itemId)
+                      clearError()
+                    }}
                   >
-                    重绘
+                    编辑文字
                   </ViewerButton>
-                )}
-                <ViewerButton
-                  tone="quiet"
-                  aria-label={`删除意见 ${label}`}
-                  disabled={readOnly || controller.dirty}
-                  onClick={() => void runMutation(() => controller.deleteFeedback(feedback.itemId))}
-                >
-                  删除
-                </ViewerButton>
-              </div>
-            )}
-          </li>
-        )
-      })}
-    </ol>
+                  {feedback.anchor.kind === 'image_rect' && (
+                    <ViewerButton
+                      tone="quiet"
+                      aria-label={`调整意见 ${label} 区域`}
+                      disabled={readOnly || controller.dirty}
+                      onClick={() => {
+                        controller.selectFeedback(feedback.itemId)
+                        controller.setTool(nativeGeometryEditing ? 'browse' : 'rectangle')
+                      }}
+                    >
+                      调整区域
+                    </ViewerButton>
+                  )}
+                  {feedback.anchor.kind === 'image_stroke' && (
+                    <ViewerButton
+                      tone="quiet"
+                      aria-label={`重绘意见 ${label}`}
+                      disabled={readOnly || controller.dirty}
+                      onClick={() => controller.beginRedraw(feedback.itemId)}
+                    >
+                      重绘
+                    </ViewerButton>
+                  )}
+                  <ViewerButton
+                    tone="quiet"
+                    aria-label={`删除意见 ${label}`}
+                    disabled={readOnly || controller.dirty}
+                    onClick={() =>
+                      void runMutation(() => controller.deleteFeedback(feedback.itemId))
+                    }
+                  >
+                    删除
+                  </ViewerButton>
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ol>
+      <FeedbackNavigator controller={controller} />
+    </>
   )
+}
+
+function FeedbackNavigator({ controller }: { controller: ImageReviewWorkbenchController }) {
+  const total = controller.feedback.length
+  if (total < 2) return null
+  const selectedIndex = controller.feedback.findIndex(
+    (feedback) => feedback.itemId === controller.selectedItemId,
+  )
+  const previous =
+    selectedIndex <= 0 ? controller.feedback.at(-1) : controller.feedback[selectedIndex - 1]
+  const next =
+    selectedIndex === -1 || selectedIndex === total - 1
+      ? controller.feedback[0]
+      : controller.feedback[selectedIndex + 1]
+  return (
+    <footer className="review-feedback-rail__nav">
+      <span className="review-feedback-rail__nav-position">
+        {selectedIndex === -1 ? '–' : selectedIndex + 1} / {total}
+      </span>
+      <ViewerIconButton
+        icon="chevron-up"
+        label="上一条意见"
+        tone="quiet"
+        disabled={previous === undefined}
+        onClick={() => {
+          if (previous !== undefined) controller.selectFeedback(previous.itemId)
+        }}
+      />
+      <ViewerIconButton
+        icon="chevron-down"
+        label="下一条意见"
+        tone="quiet"
+        disabled={next === undefined}
+        onClick={() => {
+          if (next !== undefined) controller.selectFeedback(next.itemId)
+        }}
+      />
+    </footer>
+  )
+}
+
+function anchorLabel(kind: ImageReviewWorkbenchController['feedback'][number]['anchor']['kind']) {
+  switch (kind) {
+    case 'image_rect':
+      return '矩形区域'
+    case 'image_ellipse':
+      return '椭圆区域'
+    case 'image_stroke':
+      return '手绘区域'
+    case 'image_arrow':
+      return '箭头指向'
+    case 'image_point':
+      return '点位'
+    case 'asset':
+      return '整图意见'
+    case 'video_point':
+      return '视频点位'
+    case 'video_range':
+      return '视频片段'
+  }
+}
+
+function formatFeedbackTime(createdAtMs: number) {
+  const date = new Date(createdAtMs)
+  if (Number.isNaN(date.getTime())) return null
+  return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(date)
 }
 
 function readOnlyMessage(reason: ImageReviewWorkbenchController['readOnlyReason']) {

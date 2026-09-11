@@ -8,7 +8,23 @@ import type {
 import type { AnnotationEditorAction, AnnotationInteractionState } from './annotationModel'
 import type { ImageReviewWorkbenchFeedback } from './imageReviewWorkbenchAdapter'
 
-const REVIEW_COLOR: [number, number, number, number] = [0.7, 0.13, 0.09, 1]
+// Coral red shared with the canvas overlay (`--viewer-annotation`) and the
+// review rail badges: white disc + coral ring + coral digits on the image.
+const REVIEW_COLOR_SRGB: [number, number, number, number] = [0.91, 0.39, 0.3, 1]
+
+// The native renderer targets a Bgra8UnormSrgb surface, so vertex colors must
+// be linear-encoded; an sRGB value written as-is gets gamma-encoded a second
+// time and appears washed out (pale salmon instead of coral).
+const srgbChannelToLinear = (channel: number): number =>
+  channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+
+const REVIEW_COLOR: [number, number, number, number] = [
+  srgbChannelToLinear(REVIEW_COLOR_SRGB[0]),
+  srgbChannelToLinear(REVIEW_COLOR_SRGB[1]),
+  srgbChannelToLinear(REVIEW_COLOR_SRGB[2]),
+  REVIEW_COLOR_SRGB[3],
+]
+const REVIEW_LINE_WIDTH_PX = 2.4
 
 export interface NativeReviewSceneVersion {
   revision: number
@@ -168,7 +184,7 @@ function annotationNode(input: {
     id: input.id,
     ordinal: input.ordinal,
     geometry: input.geometry,
-    style: { color: REVIEW_COLOR, lineWidthPx: 2, dashed: input.dashed },
+    style: { color: REVIEW_COLOR, lineWidthPx: REVIEW_LINE_WIDTH_PX, dashed: input.dashed },
     selected: input.selected,
     draft: input.draft,
     visible: true,

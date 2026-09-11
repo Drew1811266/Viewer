@@ -11,7 +11,7 @@ use crate::{
     VertexKind,
 };
 
-const ANNOTATION_VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 7] = [
+const ANNOTATION_VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 8] = [
     wgpu::VertexAttribute {
         format: wgpu::VertexFormat::Float32x2,
         offset: 0,
@@ -46,6 +46,11 @@ const ANNOTATION_VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 7] = [
         format: wgpu::VertexFormat::Float32,
         offset: 48,
         shader_location: 6,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32,
+        offset: 52,
+        shader_location: 7,
     },
 ];
 
@@ -98,7 +103,7 @@ struct GpuAnnotationVertex {
     kind: f32,
     dashed: f32,
     segment_factor: f32,
-    _padding: f32,
+    edge_px: f32,
 }
 
 #[repr(C)]
@@ -1005,19 +1010,21 @@ impl AnnotationPass {
                 let right = left + metrics.size_px[0];
                 let bottom = top + metrics.size_px[1];
                 let quad = [
-                    glyph_vertex(label.anchor, [left, top], metrics.uv_min),
+                    glyph_vertex(label.anchor, [left, top], metrics.uv_min, label.color),
                     glyph_vertex(
                         label.anchor,
                         [right, top],
                         [metrics.uv_max[0], metrics.uv_min[1]],
+                        label.color,
                     ),
-                    glyph_vertex(label.anchor, [right, bottom], metrics.uv_max),
-                    glyph_vertex(label.anchor, [left, top], metrics.uv_min),
-                    glyph_vertex(label.anchor, [right, bottom], metrics.uv_max),
+                    glyph_vertex(label.anchor, [right, bottom], metrics.uv_max, label.color),
+                    glyph_vertex(label.anchor, [left, top], metrics.uv_min, label.color),
+                    glyph_vertex(label.anchor, [right, bottom], metrics.uv_max, label.color),
                     glyph_vertex(
                         label.anchor,
                         [left, bottom],
                         [metrics.uv_min[0], metrics.uv_max[1]],
+                        label.color,
                     ),
                 ];
                 vertices.extend(quad);
@@ -1079,11 +1086,14 @@ fn gpu_vertices(vertices: &[AnnotationVertex]) -> Vec<GpuAnnotationVertex> {
             kind: match vertex.kind {
                 VertexKind::Segment => 0.0,
                 VertexKind::ScreenOffset => 1.0,
+                // Distinct from ScreenOffset only for the fragment AA ramp;
+                // both use the same vertex-shader offset path (1.0..1.5).
+                VertexKind::ScreenSquare => 1.25,
                 VertexKind::ArrowHead => 2.0,
             },
             dashed: if vertex.dashed { 1.0 } else { 0.0 },
             segment_factor: vertex.segment_factor,
-            _padding: 0.0,
+            edge_px: vertex.edge_px,
         })
         .collect()
 }
@@ -1190,12 +1200,13 @@ fn glyph_vertex(
     source: viewer_render_core::NormalizedPoint,
     screen_offset_px: [f32; 2],
     uv: [f32; 2],
+    color: [f32; 4],
 ) -> GpuGlyphVertex {
     GpuGlyphVertex {
         source_position: [source.x as f32, source.y as f32],
         screen_offset_px,
         uv,
-        color: [1.0, 1.0, 1.0, 1.0],
+        color,
     }
 }
 

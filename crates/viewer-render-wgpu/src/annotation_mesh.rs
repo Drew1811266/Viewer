@@ -9,12 +9,19 @@ use viewer_render_core::{
 const ELLIPSE_SEGMENTS: usize = 48;
 const CIRCLE_SEGMENTS: usize = 16;
 const BADGE_RADIUS_PX: f32 = ORDINAL_RADIUS_PX as f32;
+const BADGE_RING_WIDTH_PX: f32 = 2.5;
 const POINT_RADIUS_PX: f32 = 7.0;
+/// Logical-pixel outset added around every solid shape so the fragment shader
+/// has room for its analytic antialiasing ramp. Must match `AA_FEATHER` in
+/// `shaders/annotation.wgsl`. 0.5 logical px equals 1 physical px at 2x
+/// Retina scale, which is the minimum ramp width that survives 1x displays.
+const EDGE_FEATHER_PX: f32 = 0.5;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VertexKind {
     Segment,
     ScreenOffset,
+    ScreenSquare,
     ArrowHead,
 }
 
@@ -27,6 +34,11 @@ pub struct AnnotationVertex {
     pub kind: VertexKind,
     pub dashed: bool,
     pub segment_factor: f32,
+    /// Nominal solid half extent in logical px (half stroke width for
+    /// segments, shape radius for screen circles/squares). The rasterized
+    /// geometry is outset by [`EDGE_FEATHER_PX`]; the fragment shader ramps
+    /// coverage from full at this extent out to zero at the rasterized edge.
+    pub edge_px: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -36,6 +48,9 @@ pub struct OrdinalLabel {
     pub geometry: AnnotationGeometry,
     pub badge_vertices: Range<usize>,
     pub badge_indices: Range<usize>,
+    /// Tint for the ordinal digits drawn over the badge disc. The badge itself
+    /// is a white disc with a colored ring, so digits share the ring color.
+    pub color: [f32; 4],
 }
 
 impl OrdinalLabel {
@@ -155,7 +170,8 @@ impl AnnotationMeshBuilder {
                 )?;
             }
             AnnotationGeometry::Arrow { tail, head } => {
-                push_segment(&mut fragment, *tail, *head, style)?;
+                // The shaft's head cap stays flush with the arrowhead apex.
+                push_segment_with_caps(&mut fragment, *tail, *head, style, true, false)?;
                 push_arrow_head(&mut fragment, *tail, *head, style.color)?;
             }
             AnnotationGeometry::Rectangle { rect } => {
@@ -269,11 +285,22 @@ impl AnnotationMeshBuilder {
             let badge_start = mesh.vertices.len();
             let badge_index_start = mesh.indices.len();
             let mut badge = AnnotationMeshFragment::default();
+            // White disc with a colored ring: the ring is the full-radius disc
+            // in the node color, overpainted by a smaller white disc. Both
+            // edges get the shader's analytic AA ramp, so the ring stays crisp
+            // on any backdrop.
             push_screen_circle(
                 &mut badge,
                 anchor,
                 BADGE_RADIUS_PX,
                 node.style.color,
+                self.circle_segments,
+            )?;
+            push_screen_circle(
+                &mut badge,
+                anchor,
+                BADGE_RADIUS_PX - BADGE_RING_WIDTH_PX,
+                [1.0; 4],
                 self.circle_segments,
             )?;
             append_fragment(mesh, badge)?;
@@ -283,6 +310,7 @@ impl AnnotationMeshBuilder {
                 geometry: node.geometry.clone(),
                 badge_vertices: badge_start..mesh.vertices.len(),
                 badge_indices: badge_index_start..mesh.indices.len(),
+                color: node.style.color,
             });
         }
         Ok(())
@@ -311,18 +339,58 @@ fn push_segment(
     end: NormalizedPoint,
     style: AnnotationStyle,
 ) -> Result<(), MeshError> {
+    push_segment_with_caps(fragment, start, end, style, true, true)
+}
+
+/// Emits one stroke quad. Both ends are extended along the segment direction
+/// by half a stroke width plus the AA feather so adjacent segments overlap
+/// and corners stay solid under the coverage ramp (flat caps would leave a
+/// visible notch at every joint). The arrow shaft keeps its head cap flush
+/// with the arrowhead apex so the extension cannot poke past the triangle.
+fn push_segment_with_caps(
+    fragment: &mut AnnotationMeshFragment,
+    start: NormalizedPoint,
+    end: NormalizedPoint,
+    style: AnnotationStyle,
+    extend_start: bool,
+    extend_end: bool,
+) -> Result<(), MeshError> {
     if start == end {
         return Err(MeshError::DegenerateSegment);
     }
     let half_width = style.line_width_px.max(1.0) / 2.0;
+    // The quad is outset so the fragment AA ramp has room beyond the nominal
+    // edge; `edge_px` carries the un-outset half width for the ramp.
+    let side = half_width + EDGE_FEATHER_PX;
+    // Offsets are expressed in the global start→end segment frame (the
+    // vertex shader un-flips the tangent for the end pair via segment_factor,
+    // keeping screen_offset_px linear against the true geometry). The ends
+    // extend past their segment endpoints so adjacent segments overlap and
+    // corners stay solid under the coverage ramp; the arrow shaft's head end
+    // stays flush with the arrowhead apex.
+    let along = if extend_start {
+        half_width + EDGE_FEATHER_PX
+    } else {
+        0.0
+    };
+    let along_end = if extend_end {
+        half_width + EDGE_FEATHER_PX
+    } else {
+        0.0
+    };
     let base = u32::try_from(fragment.vertices.len()).map_err(|_| MeshError::MeshTooLarge)?;
     let start = [start.x as f32, start.y as f32];
     let end = [end.x as f32, end.y as f32];
     fragment.vertices.extend([
-        segment_vertex(start, end, -half_width, style.color, style.dashed, 0.0),
-        segment_vertex(start, end, half_width, style.color, style.dashed, 0.0),
-        segment_vertex(end, start, -half_width, style.color, style.dashed, 1.0),
-        segment_vertex(end, start, half_width, style.color, style.dashed, 1.0),
+        segment_vertex(start, end, -side, -along, style.color, style.dashed, 0.0, half_width),
+        segment_vertex(start, end, side, -along, style.color, style.dashed, 0.0, half_width),
+        // Perimeter order matters for the [0,1,2, 0,2,3] triangulation: the
+        // end pair lists the +side corner first so the shared diagonal runs
+        // start(-side) → end(+side). Pair it with the vertex shader's
+        // segment_factor tangent un-flip, which keeps screen_offset_px linear
+        // against the real geometry for the fragment AA ramp.
+        segment_vertex(end, start, side, along_end, style.color, style.dashed, 1.0, half_width),
+        segment_vertex(end, start, -side, along_end, style.color, style.dashed, 1.0, half_width),
     ]);
     fragment
         .indices
@@ -330,22 +398,26 @@ fn push_segment(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn segment_vertex(
     source_position: [f32; 2],
     neighbor_position: [f32; 2],
     side_px: f32,
+    along_px: f32,
     color: [f32; 4],
     dashed: bool,
     segment_factor: f32,
+    edge_px: f32,
 ) -> AnnotationVertex {
     AnnotationVertex {
         source_position,
         neighbor_position,
-        screen_offset_px: [side_px, 0.0],
+        screen_offset_px: [side_px, along_px],
         color,
         kind: VertexKind::Segment,
         dashed,
         segment_factor,
+        edge_px,
     }
 }
 
@@ -382,6 +454,7 @@ fn arrow_head_vertex(
         kind: VertexKind::ArrowHead,
         dashed: false,
         segment_factor: 0.0,
+        edge_px: 0.0,
     }
 }
 
@@ -395,27 +468,31 @@ fn push_screen_circle(
     if segments < 3 {
         return Err(MeshError::InvalidTessellation);
     }
+    // Rim outset provides the fragment AA ramp room beyond the nominal edge.
+    let rim = radius_px + EDGE_FEATHER_PX;
     for index in 0..segments {
         let start_angle = TAU * index as f64 / segments as f64;
         let end_angle = TAU * (index + 1) as f64 / segments as f64;
         let base = u32::try_from(fragment.vertices.len()).map_err(|_| MeshError::MeshTooLarge)?;
         fragment.vertices.extend([
-            fixed_vertex(center, [0.0, 0.0], color),
+            fixed_vertex(center, [0.0, 0.0], color, radius_px),
             fixed_vertex(
                 center,
                 [
-                    radius_px * start_angle.cos() as f32,
-                    radius_px * start_angle.sin() as f32,
+                    rim * start_angle.cos() as f32,
+                    rim * start_angle.sin() as f32,
                 ],
                 color,
+                radius_px,
             ),
             fixed_vertex(
                 center,
                 [
-                    radius_px * end_angle.cos() as f32,
-                    radius_px * end_angle.sin() as f32,
+                    rim * end_angle.cos() as f32,
+                    rim * end_angle.sin() as f32,
                 ],
                 color,
+                radius_px,
             ),
         ]);
         fragment.indices.extend([base, base + 1, base + 2]);
@@ -429,12 +506,13 @@ fn push_screen_square(
     radius_px: f32,
     color: [f32; 4],
 ) -> Result<(), MeshError> {
+    let rim = radius_px + EDGE_FEATHER_PX;
     let base = u32::try_from(fragment.vertices.len()).map_err(|_| MeshError::MeshTooLarge)?;
     fragment.vertices.extend([
-        fixed_vertex(center, [-radius_px, -radius_px], color),
-        fixed_vertex(center, [radius_px, -radius_px], color),
-        fixed_vertex(center, [radius_px, radius_px], color),
-        fixed_vertex(center, [-radius_px, radius_px], color),
+        screen_square_vertex(center, [-rim, -rim], color, radius_px),
+        screen_square_vertex(center, [rim, -rim], color, radius_px),
+        screen_square_vertex(center, [rim, rim], color, radius_px),
+        screen_square_vertex(center, [-rim, rim], color, radius_px),
     ]);
     fragment
         .indices
@@ -442,7 +520,12 @@ fn push_screen_square(
     Ok(())
 }
 
-fn fixed_vertex(center: NormalizedPoint, offset: [f32; 2], color: [f32; 4]) -> AnnotationVertex {
+fn fixed_vertex(
+    center: NormalizedPoint,
+    offset: [f32; 2],
+    color: [f32; 4],
+    edge_px: f32,
+) -> AnnotationVertex {
     let source_position = [center.x as f32, center.y as f32];
     AnnotationVertex {
         source_position,
@@ -452,7 +535,19 @@ fn fixed_vertex(center: NormalizedPoint, offset: [f32; 2], color: [f32; 4]) -> A
         kind: VertexKind::ScreenOffset,
         dashed: false,
         segment_factor: 0.0,
+        edge_px,
     }
+}
+
+fn screen_square_vertex(
+    center: NormalizedPoint,
+    offset: [f32; 2],
+    color: [f32; 4],
+    edge_px: f32,
+) -> AnnotationVertex {
+    let mut vertex = fixed_vertex(center, offset, color, edge_px);
+    vertex.kind = VertexKind::ScreenSquare;
+    vertex
 }
 
 fn geometry_anchor(geometry: &AnnotationGeometry) -> NormalizedPoint {

@@ -256,8 +256,9 @@ impl NativeImageRenderDriver {
                 .surface()
                 .renderer_surface_handles()
                 .map_err(|_| ImageRenderRuntimeError::DriverFailed)?;
-            let glyph_atlas = system_ordinal_glyph_atlas_with_memory(&atlas_memory)
-                .map_err(|_| ImageRenderRuntimeError::DriverFailed)?;
+            let glyph_atlas =
+                system_ordinal_glyph_atlas_with_memory(&atlas_memory, layout.scale_factor)
+                    .map_err(|_| ImageRenderRuntimeError::DriverFailed)?;
             Ok::<_, ImageRenderRuntimeError>((
                 MainThreadBound::new(host, main_thread),
                 handles,

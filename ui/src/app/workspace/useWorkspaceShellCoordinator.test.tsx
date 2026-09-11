@@ -74,7 +74,7 @@ describe('useWorkspaceShellCoordinator', () => {
       } as unknown as Parameters<typeof hook.result.current.resizeSidebarFromKeyboard>[0]),
     )
     expect(preventDefault).toHaveBeenCalledOnce()
-    expect(hook.result.current.sidebarWidth).toBe(236)
+    expect(hook.result.current.sidebarWidth).toBe(168)
 
     act(() => hook.result.current.toggleSidebar())
     expect(hook.result.current.effectiveSidebarCollapsed).toBe(true)

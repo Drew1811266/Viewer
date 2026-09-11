@@ -110,7 +110,7 @@ describe('workspace style contracts', () => {
   it('keeps folder rows at the approved compact density', () => {
     const rules = parseRules(appCss)
 
-    expect(winningDeclaration(rules, new Set(['.folder-tree-row']), 'height')).toBe('24px')
+    expect(winningDeclaration(rules, new Set(['.folder-tree-row']), 'height')).toBe('22px')
   })
 
   it('separates the radial command layer from the workspace with a subtle scrim', () => {
@@ -525,7 +525,7 @@ describe('workspace style contracts', () => {
 
     expect(row?.declarations).toMatchObject({
       display: 'grid',
-      'grid-template-columns': '184px minmax(0, 1fr)',
+      'grid-template-columns': '112px minmax(0, 1fr)',
     })
     expect(shell?.declarations).toMatchObject({
       'min-width': '0',
@@ -717,7 +717,7 @@ describe('workspace style contracts', () => {
     expect(violations).toEqual([])
   })
 
-  it('marks selected sidebar rows with the approved leading accent indicator and text', () => {
+  it('marks selected sidebar rows with the approved floating card and accent pill', () => {
     const rules = parseRules(appCss)
     for (const selector of [
       '.project-root-button[aria-pressed="true"]',
@@ -725,9 +725,13 @@ describe('workspace style contracts', () => {
     ]) {
       const selectedRule = rules.find((rule) => rule.selector === selector)
       expect(selectedRule?.declarations, selector).toMatchObject({
-        background: 'var(--viewer-accent-soft)',
-        'box-shadow': 'inset 2px 0 var(--viewer-accent)',
-        color: 'var(--viewer-accent-text)',
+        background: 'var(--viewer-surface)',
+        color: 'var(--viewer-text)',
+      })
+      const pillRule = rules.find((rule) => rule.selector === `${selector}::before`)
+      expect(pillRule?.declarations, `${selector}::before`).toMatchObject({
+        background: 'var(--viewer-accent)',
+        content: "''",
       })
     }
   })
@@ -917,7 +921,9 @@ describe('workspace style contracts', () => {
     expect(annotation?.declarations['z-index']).toBe('3')
     expect(lens?.declarations['z-index']).toBe('4')
     expect(editor?.declarations['z-index']).toBe('5')
-    expect(reviewOverlay?.declarations['--review-annotation']).toBe('var(--viewer-danger-strong)')
+    expect(reviewOverlay?.declarations['--review-annotation']).toBe(
+      'var(--viewer-annotation-strong)',
+    )
   })
 
   it('renders image comparison from the shared light preview theme', () => {

@@ -175,10 +175,10 @@ describe('FolderFilmstripRow', () => {
     expect(intersectionOptions).toEqual({ rootMargin: '240px 0px' })
     expect(observedTargets).toEqual(new Set([filmstrip.closest('article')]))
     expect(filmstrip).toHaveAttribute('data-state', 'idle')
-    expect(screen.getByText('3 张图片')).toBeVisible()
-    expect(screen.getByText('1 个其它文件')).toBeVisible()
-    expect(screen.getByText('文件夹：未标记')).toBeVisible()
-    expect(screen.getByText('已审阅 1 / 4')).toBeVisible()
+    expect(screen.getByText('张图片')).toBeVisible()
+    expect(screen.getByText('· 1 个其它文件')).toBeVisible()
+    expect(screen.getByText('未标记')).toBeVisible()
+    expect(screen.getByText('1 / 4')).toBeVisible()
 
     act(revealRow)
 

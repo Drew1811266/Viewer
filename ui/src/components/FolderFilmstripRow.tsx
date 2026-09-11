@@ -210,6 +210,8 @@ export default function FolderFilmstripRow({
   )
 
   const reviewed = folder.reviewProgress.total - folder.reviewProgress.unmarked
+  const reviewedPercent =
+    folder.reviewProgress.total > 0 ? Math.round((reviewed / folder.reviewProgress.total) * 100) : 0
   const scrollbar = overlayScrollbarMetrics(
     viewport.width,
     geometry.totalWidth,
@@ -228,14 +230,53 @@ export default function FolderFilmstripRow({
         aria-label={`打开 ${folder.name}`}
         onClick={() => onSelect(folder.entityId)}
       >
-        <strong>{folder.name}</strong>
-        <span>{folder.relativePath}</span>
-        <span className="folder-filmstrip-counts">
-          <span>{`${folder.imageCount} 张图片`}</span> ·{' '}
-          <span>{`${folder.otherFileCount} 个其它文件`}</span>
+        <span className="folder-filmstrip-title">
+          <strong>{folder.name}</strong>
+          <span className="folder-filmstrip-path" title={folder.relativePath}>
+            {folder.relativePath}
+          </span>
         </span>
-        <span className="folder-filmstrip-marker">{`文件夹：${markerLabel(folder.marker)}`}</span>
-        <span>{`已审阅 ${reviewed} / ${folder.reviewProgress.total}`}</span>
+        <span className="folder-filmstrip-counts">
+          <strong>{folder.imageCount}</strong> 张图片
+          {folder.otherFileCount > 0 && (
+            <>
+              {' '}
+              <span className="folder-filmstrip-extra">
+                {`· ${folder.otherFileCount} 个其它文件`}
+              </span>
+            </>
+          )}
+        </span>
+        <span className="folder-filmstrip-divider" aria-hidden="true" />
+        <span
+          className="folder-filmstrip-marker"
+          data-marker={folder.marker.reviewState ?? 'unmarked'}
+        >
+          <span className="folder-filmstrip-marker-dot" aria-hidden="true" />
+          {markerLabel(folder.marker)}
+          {folder.reviewProgress.reject > 0 && (
+            <span
+              className="folder-filmstrip-reject"
+              title={`淘汰 ${folder.reviewProgress.reject} 张`}
+            >
+              {folder.reviewProgress.reject}
+            </span>
+          )}
+        </span>
+        <span className="folder-filmstrip-progress">
+          <span className="folder-filmstrip-bar" aria-hidden="true">
+            <i
+              style={{ width: `${reviewedPercent}%` }}
+              data-reject={folder.reviewProgress.reject > 0 || undefined}
+            />
+          </span>
+          <span className="folder-filmstrip-reviewed">
+            <span>已审阅</span>
+            <span className="folder-filmstrip-reviewed-num">
+              {`${reviewed} / ${folder.reviewProgress.total}`}
+            </span>
+          </span>
+        </span>
       </button>
       <div className="folder-filmstrip-shell">
         <div

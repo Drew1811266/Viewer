@@ -13,7 +13,7 @@ export interface AppShellState {
 
 export function useAppShellState(projectSessionId: string): AppShellState {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [sidebarWidth, setSidebarWidth] = useState(220)
+  const [sidebarWidth, setSidebarWidth] = useState(152)
   const [projectMenuOpen, setProjectMenuOpen] = useState(false)
   const stopSidebarResize = useRef<(() => void) | null>(null)
 
@@ -28,7 +28,7 @@ export function useAppShellState(projectSessionId: string): AppShellState {
       const startX = event.clientX
       const startWidth = sidebarWidth
       const move = (next: PointerEvent) => {
-        setSidebarWidth(Math.max(200, Math.min(420, startWidth + next.clientX - startX)))
+        setSidebarWidth(Math.max(120, Math.min(420, startWidth + next.clientX - startX)))
       }
       const stop = () => {
         window.removeEventListener('pointermove', move)
@@ -54,7 +54,7 @@ export function useAppShellState(projectSessionId: string): AppShellState {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
     const delta = event.key === 'ArrowLeft' ? -16 : 16
-    setSidebarWidth((width) => Math.max(200, Math.min(420, width + delta)))
+    setSidebarWidth((width) => Math.max(120, Math.min(420, width + delta)))
   }, [])
 
   return {

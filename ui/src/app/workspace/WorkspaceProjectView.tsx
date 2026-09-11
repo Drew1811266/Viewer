@@ -335,7 +335,7 @@ function WorkspaceColumns({
             role="separator"
             aria-label="调整文件夹栏宽度"
             aria-orientation="vertical"
-            aria-valuemin={200}
+            aria-valuemin={120}
             aria-valuemax={420}
             aria-valuenow={shell.sidebarWidth}
             onPointerDown={shell.startSidebarResize}

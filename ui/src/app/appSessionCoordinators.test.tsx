@@ -128,16 +128,16 @@ describe('App shell coordinator internals', () => {
     const firstKey = createEvent.keyDown(first, { key: 'ArrowLeft' })
     fireEvent(first, firstKey)
     expect(firstKey.defaultPrevented).toBe(true)
-    expect(screen.getByRole('status', { name: 'first width' })).toHaveTextContent('204')
-    expect(screen.getByRole('status', { name: 'second width' })).toHaveTextContent('220')
+    expect(screen.getByRole('status', { name: 'first width' })).toHaveTextContent('136')
+    expect(screen.getByRole('status', { name: 'second width' })).toHaveTextContent('152')
 
     fireEvent.keyDown(unrelated, { key: 'ArrowLeft' })
-    expect(screen.getByRole('status', { name: 'first width' })).toHaveTextContent('204')
-    expect(screen.getByRole('status', { name: 'second width' })).toHaveTextContent('220')
+    expect(screen.getByRole('status', { name: 'first width' })).toHaveTextContent('136')
+    expect(screen.getByRole('status', { name: 'second width' })).toHaveTextContent('152')
 
     fireEvent.keyDown(second, { key: 'ArrowRight' })
-    expect(screen.getByRole('status', { name: 'first width' })).toHaveTextContent('204')
-    expect(screen.getByRole('status', { name: 'second width' })).toHaveTextContent('236')
+    expect(screen.getByRole('status', { name: 'first width' })).toHaveTextContent('136')
+    expect(screen.getByRole('status', { name: 'second width' })).toHaveTextContent('168')
   })
 })
 

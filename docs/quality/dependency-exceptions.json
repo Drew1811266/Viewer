@@ -2,7 +2,7 @@
   {
     "id": "RUSTSEC-2025-0075",
     "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain",
-    "chain": "viewer-desktop 0.1.8 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-char-property 0.9.0 > unic-char-range 0.9.0",
+    "chain": "viewer-desktop 0.1.9 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-char-property 0.9.0 > unic-char-range 0.9.0",
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
     "reviewAfter": "2026-10-23",
@@ -12,7 +12,7 @@
   {
     "id": "RUSTSEC-2025-0080",
     "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain",
-    "chain": "viewer-desktop 0.1.8 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-ucd-version 0.9.0 > unic-common 0.9.0",
+    "chain": "viewer-desktop 0.1.9 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-ucd-version 0.9.0 > unic-common 0.9.0",
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
     "reviewAfter": "2026-10-23",
@@ -22,7 +22,7 @@
   {
     "id": "RUSTSEC-2025-0081",
     "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain",
-    "chain": "viewer-desktop 0.1.8 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-char-property 0.9.0",
+    "chain": "viewer-desktop 0.1.9 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-char-property 0.9.0",
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
     "reviewAfter": "2026-10-23",
@@ -32,7 +32,7 @@
   {
     "id": "RUSTSEC-2025-0098",
     "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain",
-    "chain": "viewer-desktop 0.1.8 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-ucd-version 0.9.0",
+    "chain": "viewer-desktop 0.1.9 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-ucd-version 0.9.0",
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
     "reviewAfter": "2026-10-23",
@@ -42,7 +42,7 @@
   {
     "id": "RUSTSEC-2025-0100",
     "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain",
-    "chain": "viewer-desktop 0.1.8 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0",
+    "chain": "viewer-desktop 0.1.9 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0",
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
     "reviewAfter": "2026-10-23",

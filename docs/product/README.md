@@ -2,14 +2,14 @@
 
 > Status: Current
 >
-> 当前开发版本：`0.1.8`
+> 当前开发版本：`0.1.9`
 >
 > 事实日期：2026-09-01
 >
 > 版本标识同步：2026-09-09；原生预览回归验证见[专项记录](../reviews/2026-09-09-image-preview-regression.md)。
 
-这里是 Viewer 0.1.8 当前产品文档入口。文档面向开发版使用者、产品维护者和开发测试
-人员，内容以 `v0.1.8` 对应的实际代码与测试为准，不把历史规划描述成已实现功能。
+这里是 Viewer 0.1.9 当前产品文档入口。文档面向开发版使用者、产品维护者和开发测试
+人员，内容以 `v0.1.9` 对应的实际代码与测试为准，不把历史规划描述成已实现功能。
 
 ## 当前阶段约束
 
@@ -22,7 +22,7 @@ Viewer 目前处于开发初期，只以源码开发和内部开发验证为当�
 
 文档内容发生冲突时，按以下顺序判断当前行为：
 
-1. `v0.1.8` 的运行代码、类型定义和实际用户界面；
+1. `v0.1.9` 的运行代码、类型定义和实际用户界面；
 2. UI 测试、Rust 单元/集成测试和原生验收测试；
 3. Tauri、Cargo、能力权限和媒体运行时配置；
 4. 已完成的验收记录和仍生效的架构决策；
@@ -48,14 +48,14 @@ Viewer 目前处于开发初期，只以源码开发和内部开发验证为当�
 
 | 文档 | 状态 | 职责 |
 | --- | --- | --- |
-| [软件产品规格](../PRODUCT_SPEC.md) | Current / 0.1.8 | 产品定位、边界、信息架构与功能总览 |
-| [完整用户指南](USER_GUIDE.md) | Current / 0.1.8 | 从打开项目到关闭会话的操作流程 |
-| [详细功能参考](FEATURE_REFERENCE.md) | Current / 0.1.8 | 功能状态、行为、边界和维护证据 |
-| [快捷键、鼠标与触控板](SHORTCUTS.md) | Current / 0.1.8 | 所有经过代码核对的交互入口 |
-| [支持格式与限制](SUPPORTED_FORMATS.md) | Current / 0.1.8 | 扫描候选、预览能力和内容限制 |
-| [数据、隐私与安全](DATA_PRIVACY.md) | Current / 0.1.8 | 本地数据、缓存、网络和安全边界 |
-| [故障排除](TROUBLESHOOTING.md) | Current / 0.1.8 | 症状、原因、恢复方法和影响范围 |
-| [文档维护规范](DOCUMENTATION_MAINTENANCE.md) | Current / 0.1.8 | 后续版本的同步和验证流程 |
+| [软件产品规格](../PRODUCT_SPEC.md) | Current / 0.1.9 | 产品定位、边界、信息架构与功能总览 |
+| [完整用户指南](USER_GUIDE.md) | Current / 0.1.9 | 从打开项目到关闭会话的操作流程 |
+| [详细功能参考](FEATURE_REFERENCE.md) | Current / 0.1.9 | 功能状态、行为、边界和维护证据 |
+| [快捷键、鼠标与触控板](SHORTCUTS.md) | Current / 0.1.9 | 所有经过代码核对的交互入口 |
+| [支持格式与限制](SUPPORTED_FORMATS.md) | Current / 0.1.9 | 扫描候选、预览能力和内容限制 |
+| [数据、隐私与安全](DATA_PRIVACY.md) | Current / 0.1.9 | 本地数据、缓存、网络和安全边界 |
+| [故障排除](TROUBLESHOOTING.md) | Current / 0.1.9 | 症状、原因、恢复方法和影响范围 |
+| [文档维护规范](DOCUMENTATION_MAINTENANCE.md) | Current / 0.1.9 | 后续版本的同步和验证流程 |
 | [开发版本记录](../../CHANGELOG.md) | Current | 从 0.1.6 开始的开发基线变化 |
 | [持续评审验证报告](../quality/2026-08-27-continuous-review-validation.md) | Development evidence | 多轮闭环、原生工作台与旧功能回归证据 |
 | [快速保存与后台发布验证](../reviews/2026-09-01-review-save-pipeline-verification.md) | Development evidence | 作者态延迟、真实素材、故障矩阵与回归证据 |

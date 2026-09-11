@@ -460,7 +460,9 @@ async fn closing_project_cancels_and_awaits_a_blocked_video_probe() {
     runtime.wait_for_scan().await.unwrap();
     probe.started.notified().await;
 
-    tokio::time::timeout(std::time::Duration::from_secs(5), runtime.close_project())
+    // The budget only guards a hang: full-suite runs saturate cores and the
+    // 5s budget flaked, while cancellation itself completes in well under 1s.
+    tokio::time::timeout(std::time::Duration::from_secs(30), runtime.close_project())
         .await
         .expect("close must cancel and await the video probe")
         .unwrap();

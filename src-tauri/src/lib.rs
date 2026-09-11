@@ -27,6 +27,7 @@ pub mod watcher_runtime;
 pub const APP_NAME: &str = "Viewer";
 const EMBEDDED_VIDEO_RUNTIME_SCHEMA_VERSION: &str = env!("VIEWER_VIDEO_RUNTIME_SCHEMA_VERSION");
 const PROJECT_CLOSED_EVENT: &str = "viewer://project-closed";
+const MEMORY_PRESSURE_EVENT: &str = "viewer://memory-pressure";
 const TERMINAL_CLOSE_CACHE_CLEANUP_FAILURE: &str = "project_closed_cache_cleanup_failed";
 const TERMINAL_VIDEO_CLOSE_FAILURE: &str = "video_close_failed";
 const TERMINAL_IMAGE_RENDER_CLOSE_FAILURE: &str = "image_render_close_failed";
@@ -170,6 +171,30 @@ impl state::DesktopEventSink for TauriEventSink {
     }
 }
 
+#[derive(Default)]
+struct MemoryPressureEmitter(OnceLock<tauri::AppHandle>);
+
+impl MemoryPressureEmitter {
+    fn attach(&self, app: tauri::AppHandle) {
+        let _ = self.0.set(app);
+    }
+}
+
+impl state::MemoryPressureEventSink for MemoryPressureEmitter {
+    fn emit_memory_pressure(&self, level: state::MemoryPressureLevel) {
+        if let Some(app) = self.0.get() {
+            let _ = app.emit(
+                MEMORY_PRESSURE_EVENT,
+                dto::MemoryPressureLevelDto::from(level),
+            );
+        }
+    }
+}
+
+/// 让内存压力 dispatch 源存活整个进程生命周期（app.manage 持有）。
+#[allow(dead_code)] // 字段仅为保活 dispatch source，进程退出前无需读取。
+struct MemoryPressureMonitorHandle(viewer_platform_macos::image_render::MacMemoryPressureMonitor);
+
 pub fn sanitize_markdown_html(input: &str) -> String {
     let mut builder = ammonia::Builder::default();
     builder
@@ -298,7 +323,9 @@ pub fn run() {
             commands::video::video_cache_stats,
             commands::video::video_cache_clear,
             #[cfg(all(target_os = "macos", feature = "video-feasibility"))]
-            video_feasibility::run_video_feasibility
+            video_feasibility::run_video_feasibility,
+            #[cfg(debug_assertions)]
+            commands::memory_pressure::debug_simulate_memory_pressure
         ])
         .setup(move |app| {
             validate_embedded_video_runtime_schema()?;
@@ -405,6 +432,33 @@ pub fn run() {
             });
             let video_lifecycle: Arc<dyn state::VideoClosePort> = video_runtime.clone();
             runtime.register_video_lifecycle(video_lifecycle);
+            // 内存压力联动（方案三）：dispatch 源 → runtime 联动 → IPC 事件广播。
+            let pressure_emitter = Arc::new(MemoryPressureEmitter::default());
+            pressure_emitter.attach(app.handle().clone());
+            runtime.set_memory_pressure_sink(pressure_emitter);
+            let pressure_runtime = Arc::clone(&runtime);
+            let memory_pressure_monitor =
+                viewer_platform_macos::image_render::MacMemoryPressureMonitor::install(Arc::new(
+                    move |level| {
+                        let pressure_runtime = Arc::clone(&pressure_runtime);
+                        tauri::async_runtime::spawn(async move {
+                            pressure_runtime
+                                .apply_memory_pressure(match level {
+                                    viewer_render_core::PressureLevel::Normal => {
+                                        viewer_infrastructure::session_cache::MemoryPressureLevel::Normal
+                                    }
+                                    viewer_render_core::PressureLevel::Warning => {
+                                        viewer_infrastructure::session_cache::MemoryPressureLevel::Warning
+                                    }
+                                    viewer_render_core::PressureLevel::Critical => {
+                                        viewer_infrastructure::session_cache::MemoryPressureLevel::Critical
+                                    }
+                                })
+                                .await;
+                        });
+                    },
+                ));
+            app.manage(MemoryPressureMonitorHandle(memory_pressure_monitor));
             app.manage(runtime);
             app.manage(image_render_runtime);
             app.manage(video_runtime);

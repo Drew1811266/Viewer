@@ -1,6 +1,7 @@
 mod browse;
 mod image_render;
 mod markers;
+mod memory_pressure;
 mod operations;
 mod preview;
 mod project;
@@ -13,6 +14,7 @@ mod video;
 pub use browse::*;
 pub use image_render::*;
 pub use markers::*;
+pub use memory_pressure::*;
 pub use operations::*;
 pub use preview::*;
 pub use project::*;

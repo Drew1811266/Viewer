@@ -21,6 +21,7 @@ describe('Viewer visual acceptance bridge', () => {
         'listenCloseBlocked',
         'listenImageRender',
         'listenIndexProgress',
+        'listenMemoryPressure',
         'listenOperationProgress',
         'listenProjectChanged',
         'listenProjectClosed',

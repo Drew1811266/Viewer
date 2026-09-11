@@ -21,6 +21,7 @@ pub(crate) use scan_index::rebuild_derived_nodes;
 use scan_index::run_scan;
 pub use video_index::register_video_png_url;
 pub(crate) use video_index::{VideoIndexRuntime, cancel_video_worker_before_session_teardown};
+pub use viewer_infrastructure::session_cache::MemoryPressureLevel;
 
 use crate::{
     dto::{
@@ -329,6 +330,22 @@ struct OrganizationServices {
     recovery_report: Option<RecoveryReportDto>,
 }
 
+/// 内存压力事件出口（desktop 层负责把等级转成 IPC 事件）。
+pub trait MemoryPressureEventSink: Send + Sync {
+    fn emit_memory_pressure(&self, level: MemoryPressureLevel);
+}
+
+/// warn 级收缩的冷却窗口：dispatch 源的 OR-coalesced flags 可能在短时间内
+/// 重复触发 warn，避免反复淘汰正在使用的缓存；critical 不冷却。
+pub const MEMORY_PRESSURE_WARN_SHRINK_COOLDOWN: std::time::Duration =
+    std::time::Duration::from_secs(30);
+
+#[derive(Debug, Default)]
+struct MemoryPressureState {
+    level: MemoryPressureLevel,
+    last_warn_shrink: Option<Instant>,
+}
+
 pub struct DesktopRuntime {
     cache_base: PathBuf,
     coordinator: Arc<TaskCoordinator>,
@@ -344,6 +361,8 @@ pub struct DesktopRuntime {
     video_probe: Arc<dyn VideoMetadataProbe>,
     derived_scheduler: Arc<DerivedWorkScheduler>,
     decode_scheduler: Arc<DecodeScheduler>,
+    memory_pressure: StdMutex<MemoryPressureState>,
+    memory_pressure_sink: StdMutex<Option<Arc<dyn MemoryPressureEventSink>>>,
     image_requests: Arc<StdMutex<preview::ImageRequestLifecycles>>,
     video_lifecycle: StdMutex<Option<Arc<dyn VideoClosePort>>>,
     image_render_lifecycle: StdMutex<Option<std::sync::Weak<dyn ImageRenderClosePort>>>,
@@ -521,6 +540,8 @@ impl DesktopRuntime {
             video_probe,
             derived_scheduler,
             decode_scheduler: DecodeScheduler::new(DEFAULT_DECODE_CONCURRENCY),
+            memory_pressure: StdMutex::new(MemoryPressureState::default()),
+            memory_pressure_sink: StdMutex::new(None),
             image_requests: Arc::new(StdMutex::new(preview::ImageRequestLifecycles::default())),
             video_lifecycle: StdMutex::new(None),
             image_render_lifecycle: StdMutex::new(None),
@@ -532,6 +553,75 @@ impl DesktopRuntime {
     /// 统一解码调度器（像素管线全局并发闸门）。暴露给测试与遥测。
     pub fn decode_scheduler(&self) -> Arc<DecodeScheduler> {
         Arc::clone(&self.decode_scheduler)
+    }
+
+    /// 注册内存压力事件出口（由 lib.rs 在 setup 阶段挂上 Tauri emitter）。
+    pub fn set_memory_pressure_sink(&self, sink: Arc<dyn MemoryPressureEventSink>) {
+        *self
+            .memory_pressure_sink
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sink);
+    }
+
+    /// 内存压力联动（性能优化方案三，见 docs/architecture/performance-optimization-plan.md §4）：
+    /// 1. 当前会话的派生图像缓存按等级收缩（warn=limit/4、critical=limit/16、normal 恢复），
+    ///    `.viewer/` 元数据与评审数据不受影响；
+    /// 2. 解码调度器并发调整（normal=默认、warn=1、critical=0，交互请求保底 1 槽）；
+    /// 3. 向 UI 广播 `viewer://memory-pressure` 事件。
+    ///
+    /// dispatch 源回调线程调用方应经 `tauri::async_runtime::spawn` 进入本方法
+    /// （session 锁是 tokio 异步锁）。
+    pub async fn apply_memory_pressure(&self, level: MemoryPressureLevel) {
+        {
+            let mut state = self
+                .memory_pressure
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if state.level == level {
+                return;
+            }
+            if level == MemoryPressureLevel::Warning {
+                let cooling = state
+                    .last_warn_shrink
+                    .is_some_and(|last| last.elapsed() < MEMORY_PRESSURE_WARN_SHRINK_COOLDOWN);
+                if cooling {
+                    return;
+                }
+                state.last_warn_shrink = Some(Instant::now());
+            }
+            state.level = level;
+        }
+
+        let session_cache = {
+            let session = self.session.lock().await;
+            session.as_ref().map(|session| Arc::clone(&session.cache))
+        };
+        if let Some(cache) = session_cache {
+            cache.apply_memory_pressure(level);
+        }
+        match level {
+            MemoryPressureLevel::Normal => {
+                self.decode_scheduler.set_limit(DEFAULT_DECODE_CONCURRENCY)
+            }
+            MemoryPressureLevel::Warning => self.decode_scheduler.set_limit(1),
+            MemoryPressureLevel::Critical => self.decode_scheduler.set_limit(0),
+        }
+        if let Some(sink) = self
+            .memory_pressure_sink
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+        {
+            sink.emit_memory_pressure(level);
+        }
+    }
+
+    /// 当前内存压力等级（测试与遥测）。
+    pub fn memory_pressure_level(&self) -> MemoryPressureLevel {
+        self.memory_pressure
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .level
     }
 
     pub fn register_video_lifecycle(&self, lifecycle: Arc<dyn VideoClosePort>) {

@@ -2,6 +2,8 @@ pub(crate) mod browse;
 pub(crate) mod finder_drag;
 pub(crate) mod image_render;
 pub(crate) mod markers;
+#[cfg(debug_assertions)]
+pub(crate) mod memory_pressure;
 pub(crate) mod operations;
 pub(crate) mod preview;
 pub(crate) mod project;

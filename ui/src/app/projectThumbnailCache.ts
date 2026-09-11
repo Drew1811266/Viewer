@@ -15,6 +15,11 @@ export interface ProjectThumbnailCache {
   /** 预取入口：与 request 共享缓存键去重，但以低 IPC 优先级进入解码调度器。 */
   prefetch: ThumbnailLoader
   clear(): void
+  /**
+   * 内存压力收缩：LRU 从最旧端淘汰到 capacity，并更新容量上限；
+   * 不触碰 in-flight 请求。恢复默认容量传 `PROJECT_THUMBNAIL_CACHE_CAPACITY`。
+   */
+  shrink(capacity: number): void
 }
 
 export function abortedThumbnailRequest(): Error {
@@ -28,11 +33,12 @@ function isAbortError(error: unknown): boolean {
 export function createProjectThumbnailCache(
   projectSessionId: string,
   loader: ThumbnailLoader,
-  resolvedCapacity = PROJECT_THUMBNAIL_CACHE_CAPACITY,
+  initialCapacity = PROJECT_THUMBNAIL_CACHE_CAPACITY,
 ): ProjectThumbnailCache {
   const inFlight = new Map<string, Promise<string>>()
   const resolved = new Map<string, string>()
   let generation = 0
+  let resolvedCapacity = initialCapacity
 
   /**
    * 每个调用方独立结算：取消的调用方立即拒绝并让出 in-flight 记录，
@@ -116,6 +122,15 @@ export function createProjectThumbnailCache(
       generation += 1
       inFlight.clear()
       resolved.clear()
+    },
+    shrink(capacity: number) {
+      const target = Math.max(0, Math.floor(capacity))
+      resolvedCapacity = target
+      while (resolved.size > target) {
+        const oldestKey = resolved.keys().next().value
+        if (oldestKey === undefined) break
+        resolved.delete(oldestKey)
+      }
     },
   }
 }

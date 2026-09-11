@@ -4,7 +4,12 @@ export type { ReviewWorkspacePort } from '../../api/reviewWorkspaceTypes'
 
 export type PreviewDataPort = Pick<
   ViewerBridge,
-  'queryFolder' | 'requestImage' | 'previewText' | 'openExternalLink' | 'videoRequestCover'
+  | 'queryFolder'
+  | 'requestImage'
+  | 'previewText'
+  | 'openExternalLink'
+  | 'videoRequestCover'
+  | 'listenMemoryPressure'
 >
 
 export type VideoPlaybackPort = Pick<
@@ -71,6 +76,7 @@ export function createWorkspacePorts(bridge: ViewerBridge): WorkspacePorts {
       previewText: bridge.previewText,
       openExternalLink: bridge.openExternalLink,
       videoRequestCover: bridge.videoRequestCover,
+      listenMemoryPressure: bridge.listenMemoryPressure,
     },
     playback: {
       listenVideo: bridge.listenVideo,

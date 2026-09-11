@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import type { BrowserFile, ImageRepresentationRequest, TextEncoding } from '../../api/types'
-import { createProjectThumbnailCache, type ThumbnailLoader } from '../projectThumbnailCache'
+import {
+  createProjectThumbnailCache,
+  PROJECT_THUMBNAIL_CACHE_CAPACITY,
+  type ThumbnailLoader,
+} from '../projectThumbnailCache'
 import type { PreviewDataPort } from './ports'
+
+/** warn 级压力下前端缩略图缓存收缩目标（方案三 §4.2）。 */
+const MEMORY_PRESSURE_SHRINK_CAPACITY = 128
 
 export interface PreviewDataCoordinator {
   requestThumbnail: ThumbnailLoader
@@ -51,6 +58,25 @@ export function usePreviewData(
     [loadThumbnail, projectSessionId],
   )
   useEffect(() => () => thumbnailCache.clear(), [thumbnailCache])
+  /**
+   * 内存压力联动（方案三）：系统 warn 收缩前端缩略图 LRU、critical 全清；
+   * 恢复 normal 后回到默认容量（已淘汰条目随使用自然回填）。
+   * WKWebView 解码位图缓存无法直接清除，依赖虚拟化卸载 <img> 自然回落，
+   * 该限制见 docs/architecture/performance-optimization-plan.md §4.2。
+   */
+  useEffect(() => {
+    let disposed = false
+    const unlisten = port.listenMemoryPressure(({ level }) => {
+      if (disposed) return
+      if (level === 'critical') thumbnailCache.clear()
+      else if (level === 'warn') thumbnailCache.shrink(MEMORY_PRESSURE_SHRINK_CAPACITY)
+      else thumbnailCache.shrink(PROJECT_THUMBNAIL_CACHE_CAPACITY)
+    })
+    return () => {
+      disposed = true
+      void unlisten.then((dispose) => dispose())
+    }
+  }, [port, thumbnailCache])
   const prefetchThumbnails = useCallback<PreviewDataCoordinator['prefetchThumbnails']>(
     (files, maxPixels, scaleMilli, signal) =>
       Promise.allSettled(

@@ -109,3 +109,7 @@ path = "../tests/image_render_recovery.rs"
 [[test]]
 name = "image_render_performance_gate"
 path = "../tests/image_render_performance_gate.rs"
+
+[[test]]
+name = "perf_memory_pressure"
+path = "../tests/perf_memory_pressure.rs"

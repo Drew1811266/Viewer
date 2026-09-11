@@ -298,6 +298,9 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async listenCloseBlocked() {
       return noOpUnlisten
     },
+    async listenMemoryPressure() {
+      return noOpUnlisten
+    },
     async listenVideo() {
       return noOpUnlisten
     },

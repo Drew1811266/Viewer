@@ -155,6 +155,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     listenOperationProgress: vi.fn().mockResolvedValue(() => undefined),
     listenProjectChanged: vi.fn().mockResolvedValue(() => undefined),
     listenCloseBlocked: vi.fn().mockResolvedValue(() => undefined),
+    listenMemoryPressure: vi.fn().mockResolvedValue(() => undefined),
     listenVideo: vi.fn().mockResolvedValue(() => undefined),
     listenReviewProgress: vi.fn().mockResolvedValue(() => undefined),
     listenImageRender: vi.fn().mockResolvedValue(() => undefined),

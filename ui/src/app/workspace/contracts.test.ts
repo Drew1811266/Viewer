@@ -52,6 +52,7 @@ describe('workspace contracts', () => {
     const ports = createWorkspacePorts(tauriViewerBridge)
 
     expect(Object.keys(ports.preview).sort()).toEqual([
+      'listenMemoryPressure',
       'openExternalLink',
       'previewText',
       'queryFolder',

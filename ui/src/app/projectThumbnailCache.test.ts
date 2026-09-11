@@ -196,4 +196,43 @@ describe('projectThumbnailCache', () => {
     expect(dedupeLoader).toHaveBeenCalledOnce()
     inFlight.resolve('viewer-image://either')
   })
+
+  it('shrinks the resolved LRU from the oldest end and updates the capacity', async () => {
+    const loader = vi
+      .fn()
+      .mockImplementation((file: BrowserFile) => Promise.resolve(`viewer-image://${file.entityId}`))
+    const cache = createProjectThumbnailCache('session-1', loader)
+    await cache.request(image('image-1'), 198, 1_000)
+    await cache.request(image('image-2'), 198, 1_000)
+    await cache.request(image('image-3'), 198, 1_000)
+    expect(loader).toHaveBeenCalledTimes(3)
+
+    cache.shrink(1)
+
+    // 最新条目保留，最旧条目被淘汰后重新发起。
+    await cache.request(image('image-3'), 198, 1_000)
+    expect(loader).toHaveBeenCalledTimes(3)
+    await cache.request(image('image-1'), 198, 1_000)
+    expect(loader).toHaveBeenCalledTimes(4)
+
+    // 收缩后的容量上限生效：解析新条目会淘汰旧条目。
+    await cache.request(image('image-3'), 198, 1_000)
+    expect(loader).toHaveBeenCalledTimes(5)
+
+    cache.shrink(PROJECT_THUMBNAIL_CACHE_CAPACITY)
+  })
+
+  it('keeps in-flight requests during a shrink', async () => {
+    const pending = deferred<string>()
+    const loader = vi.fn().mockImplementation(() => pending.promise)
+    const cache = createProjectThumbnailCache('session-1', loader, 4)
+    const inFlightRequest = cache.request(image('image-1'), 198, 1_000)
+
+    cache.shrink(0)
+    expect(loader).toHaveBeenCalledTimes(1)
+
+    pending.resolve('viewer-image://survivor')
+    await expect(inFlightRequest).resolves.toBe('viewer-image://survivor')
+    cache.shrink(PROJECT_THUMBNAIL_CACHE_CAPACITY)
+  })
 })

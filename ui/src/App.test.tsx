@@ -211,6 +211,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     listenOperationProgress: vi.fn().mockResolvedValue(() => undefined),
     listenProjectChanged: vi.fn().mockResolvedValue(() => undefined),
     listenCloseBlocked: vi.fn().mockResolvedValue(() => undefined),
+    listenMemoryPressure: vi.fn().mockResolvedValue(() => undefined),
     listenVideo: vi.fn().mockResolvedValue(() => undefined),
     listenReviewProgress: vi.fn().mockResolvedValue(() => undefined),
     listenImageRender: vi.fn().mockResolvedValue(() => undefined),
@@ -260,7 +261,7 @@ describe('Viewer empty state', () => {
   })
 
   it('asks the user to import one project folder', () => {
-    render(<App />)
+    render(<App bridge={bridge()} />)
     expect(screen.getByRole('heading', { name: 'Viewer' })).toBeVisible()
     expect(screen.getByText('选择或拖入一个项目文件夹')).toBeVisible()
     expect(screen.queryByRole('button', { name: '软件设置' })).not.toBeInTheDocument()

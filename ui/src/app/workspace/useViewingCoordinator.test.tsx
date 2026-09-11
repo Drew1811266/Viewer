@@ -57,6 +57,7 @@ function previewPort(): PreviewDataPort {
     }),
     openExternalLink: vi.fn().mockResolvedValue(undefined),
     videoRequestCover: vi.fn().mockResolvedValue('viewer-video-cover://video-1'),
+    listenMemoryPressure: vi.fn().mockResolvedValue(() => undefined),
   }
 }
 

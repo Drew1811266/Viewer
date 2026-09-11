@@ -642,6 +642,13 @@ export interface CloseBlockedEvent {
   target: CloseTarget
 }
 
+/** macOS 内存压力联动事件（viewer://memory-pressure）。 */
+export type MemoryPressureLevel = 'normal' | 'warn' | 'critical'
+
+export interface MemoryPressureEvent {
+  level: MemoryPressureLevel
+}
+
 export type CloseChoice = 'wait' | 'cancel_pending' | 'stay'
 
 export type CloseRequestOutcome = 'closed' | 'stayed'

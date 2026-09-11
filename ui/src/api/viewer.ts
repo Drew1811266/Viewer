@@ -53,6 +53,7 @@ import type {
   ImageRequest,
   IndexProgressEvent,
   MarkerBatchResult,
+  MemoryPressureEvent,
   OperationProgressEvent,
   OperationResultPage,
   OperationResultsRequest,
@@ -202,6 +203,7 @@ export interface ViewerBridge {
   listenOperationProgress(handler: (event: OperationProgressEvent) => void): Promise<UnlistenFn>
   listenProjectChanged(handler: (event: ProjectChangedEvent) => void): Promise<UnlistenFn>
   listenCloseBlocked(handler: (event: CloseBlockedEvent) => void): Promise<UnlistenFn>
+  listenMemoryPressure(handler: (event: MemoryPressureEvent) => void): Promise<UnlistenFn>
   listenVideo(handler: (event: VideoEvent) => void): Promise<UnlistenFn>
   listenReviewProgress(handler: (event: ReviewProgress) => void): Promise<UnlistenFn>
   listenImageRender(handler: (event: ImageRendererEvent) => void): Promise<UnlistenFn>
@@ -445,6 +447,11 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   listenCloseBlocked(handler) {
     return listen<CloseBlockedEvent>('viewer://close-blocked', ({ payload }) => handler(payload))
+  },
+  listenMemoryPressure(handler) {
+    return listen<MemoryPressureEvent>('viewer://memory-pressure', ({ payload }) =>
+      handler(payload),
+    )
   },
   listenVideo(handler) {
     return listen<VideoEvent>('viewer://video-event', ({ payload }) => handler(payload))

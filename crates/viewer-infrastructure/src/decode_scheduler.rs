@@ -65,6 +65,16 @@ struct DecodeSchedulerState {
 }
 
 impl DecodeSchedulerState {
+    /// 生效并发上限：交互请求保底 1 个槽位——内存压力联动会把 limit 压到 0
+    /// （暂停全部预取），但正在查看的内容必须仍然可解码，否则界面会冻结。
+    fn effective_limit(&self, priority: DecodePriority) -> usize {
+        if priority == DecodePriority::Interactive {
+            self.limit.max(1)
+        } else {
+            self.limit
+        }
+    }
+
     fn waiting(&self, priority: DecodePriority) -> usize {
         self.waiters
             .iter()
@@ -132,7 +142,9 @@ impl DecodeScheduler {
             changed.as_mut().enable();
             {
                 let mut state = self.lock_state();
-                if state.in_flight < state.limit && state.admission_candidate() == Some(seq) {
+                if state.in_flight < state.effective_limit(priority)
+                    && state.admission_candidate() == Some(seq)
+                {
                     if let Some(position) =
                         state.waiters.iter().position(|ticket| ticket.seq == seq)
                     {
@@ -150,7 +162,8 @@ impl DecodeScheduler {
     }
 
     /// 收缩或放大并发上限（内存压力联动入口）。收缩时在途任务不被打断，
-    /// 只拒绝超出新上限的新任务。
+    /// 只拒绝超出新上限的新任务。`limit` 压到 0 时预取全部暂停，
+    /// 交互请求仍保留 1 个槽位（见 `effective_limit`）。
     pub fn set_limit(&self, limit: usize) {
         {
             let mut state = self.lock_state();
@@ -278,6 +291,37 @@ mod tests {
         tokio::time::timeout(Duration::from_millis(200), prefetch)
             .await
             .expect("prefetch resumes after the interactive slot is released")
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn critical_limit_zero_keeps_one_interactive_slot_and_suspends_prefetch() {
+        let scheduler = DecodeScheduler::new(DEFAULT_DECODE_CONCURRENCY);
+        scheduler.set_limit(0);
+
+        let prefetch = {
+            let scheduler = Arc::clone(&scheduler);
+            tokio::spawn(async move { scheduler.acquire(DecodePriority::Prefetch).await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(
+            !prefetch.is_finished(),
+            "critical pressure must suspend prefetch admission entirely"
+        );
+
+        let interactive = scheduler.acquire(DecodePriority::Interactive).await;
+        assert_eq!(
+            scheduler.snapshot().in_flight,
+            1,
+            "interactive keeps a single guaranteed slot under critical pressure"
+        );
+        drop(interactive);
+
+        // 交互槽释放后，队列里若只有预取，也不得被放行。
+        scheduler.set_limit(DEFAULT_DECODE_CONCURRENCY);
+        tokio::time::timeout(Duration::from_millis(200), prefetch)
+            .await
+            .expect("prefetch resumes once the limit is restored")
             .unwrap();
     }
 

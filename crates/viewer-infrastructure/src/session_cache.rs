@@ -4,12 +4,38 @@ use std::{
     fs,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Mutex,
+    sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 use viewer_application::ImageBackend;
 use viewer_domain::SessionId;
 
 pub const SESSION_CACHE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+/// 系统内存压力等级（macOS dispatch memory-pressure 源的语义化映射）。
+///
+/// 只影响**派生图像缓存**（session cache 的 images LRU）；`.viewer/` 元数据、
+/// 评审数据与评审证据 artifact 均不受压力收缩影响。
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum MemoryPressureLevel {
+    #[default]
+    Normal,
+    Warning,
+    Critical,
+}
+
+impl MemoryPressureLevel {
+    /// 压力生效上限：warn 收缩到配置限额的 1/4，critical 收缩到 1/16。
+    fn ceiling_for(self, configured_limit: u64) -> Option<u64> {
+        match self {
+            Self::Normal => None,
+            Self::Warning => Some((configured_limit / 4).max(1)),
+            Self::Critical => Some((configured_limit / 16).max(1)),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CachedImage {
@@ -52,6 +78,8 @@ pub struct SessionCache {
     root: PathBuf,
     session_id: SessionId,
     limit_bytes: u64,
+    /// 内存压力生效上限（字节）。0 表示无压力（用配置限额）。
+    pressure_ceiling: AtomicU64,
     images: Mutex<ImageLru>,
 }
 
@@ -76,6 +104,7 @@ impl SessionCache {
             root,
             session_id,
             limit_bytes,
+            pressure_ceiling: AtomicU64::new(0),
             images: Mutex::new(ImageLru::default()),
         })
     }
@@ -113,6 +142,47 @@ impl SessionCache {
         let entry = images.entries.get_mut(&key)?;
         entry.last_access = access_epoch;
         Some(entry.image.clone())
+    }
+
+    /// 应用内存压力等级：调整派生图像缓存的生效上限并立即执行一轮淘汰。
+    /// 恢复 normal 后上限回到配置值（已淘汰的条目不回填，随使用自然增长）。
+    pub fn apply_memory_pressure(&self, level: MemoryPressureLevel) {
+        let ceiling = level.ceiling_for(self.limit_bytes);
+        match ceiling {
+            Some(value) => self.pressure_ceiling.store(value, Ordering::Release),
+            None => self.pressure_ceiling.store(0, Ordering::Release),
+        }
+        let mut images = self.lock_images();
+        Self::evict_over_budget(&mut images, self.effective_limit());
+    }
+
+    /// 派生图像缓存当前占用量（字节），供压力收缩测试与遥测使用。
+    pub fn total_image_bytes(&self) -> u64 {
+        self.lock_images().total_bytes
+    }
+
+    fn effective_limit(&self) -> u64 {
+        match self.pressure_ceiling.load(Ordering::Acquire) {
+            0 => self.limit_bytes,
+            ceiling => ceiling.min(self.limit_bytes),
+        }
+    }
+
+    fn evict_over_budget(images: &mut ImageLru, effective_limit: u64) {
+        while images.total_bytes > effective_limit {
+            let Some(eviction_key) = images
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_access)
+                .map(|(key, _)| *key)
+            else {
+                break;
+            };
+            if let Some(evicted) = images.entries.remove(&eviction_key) {
+                images.total_bytes = images.total_bytes.saturating_sub(evicted.bytes);
+                let _ = fs::remove_file(evicted.image.path);
+            }
+        }
     }
 
     pub fn insert_image(
@@ -154,20 +224,7 @@ impl SessionCache {
                 last_access: access_epoch,
             },
         );
-        while images.total_bytes > self.limit_bytes {
-            let Some(eviction_key) = images
-                .entries
-                .iter()
-                .min_by_key(|(_, entry)| entry.last_access)
-                .map(|(key, _)| *key)
-            else {
-                break;
-            };
-            if let Some(evicted) = images.entries.remove(&eviction_key) {
-                images.total_bytes = images.total_bytes.saturating_sub(evicted.bytes);
-                let _ = fs::remove_file(evicted.image.path);
-            }
-        }
+        Self::evict_over_budget(&mut images, self.effective_limit());
         Ok(())
     }
 
@@ -257,7 +314,7 @@ impl SessionCache {
 
 #[cfg(test)]
 mod tests {
-    use super::{CachedImage, SessionCache, SessionCacheError};
+    use super::{CachedImage, MemoryPressureLevel, SessionCache, SessionCacheError};
     use crate::image_cache::{ImageCacheKey, ImageCacheKeyInput};
     use std::{fs, str::FromStr};
     use viewer_application::ImageBackend;
@@ -335,6 +392,58 @@ mod tests {
         assert!(active.root().exists());
         assert!(!stale.root().exists());
         assert!(unrelated.exists());
+    }
+
+    #[test]
+    fn memory_pressure_warning_shrinks_the_derived_image_cache_to_a_quarter() {
+        let base = tempfile::tempdir().unwrap();
+        let cache =
+            SessionCache::create_in_with_limit(base.path(), fixed_session(14), 100).unwrap();
+        // 五条 10 字节 = 50；warn 上限 25 → 逐条淘汰到 20 ≤ 25，最近三条存活。
+        let mut images = Vec::new();
+        for value in 1..=5 {
+            let image = write_image(&cache, &format!("img-{value}.png"), 10);
+            cache.insert_image(key(value), image.clone()).unwrap();
+            images.push(image);
+        }
+        assert_eq!(cache.total_image_bytes(), 50);
+
+        cache.apply_memory_pressure(MemoryPressureLevel::Warning);
+
+        assert_eq!(cache.total_image_bytes(), 20);
+        assert_eq!(cache.lookup_image(key(1)), None);
+        assert_eq!(cache.lookup_image(key(2)), None);
+        assert_eq!(cache.lookup_image(key(3)), None);
+        assert_eq!(cache.lookup_image(key(4)), Some(images[3].clone()));
+        assert_eq!(cache.lookup_image(key(5)), Some(images[4].clone()));
+    }
+
+    #[test]
+    fn memory_pressure_critical_keeps_review_artifacts_and_normal_restores_budget() {
+        let base = tempfile::tempdir().unwrap();
+        let cache =
+            SessionCache::create_in_with_limit(base.path(), fixed_session(15), 100).unwrap();
+        let review_artifact = cache.review_artifact_root().join("evidence.json");
+        fs::write(&review_artifact, b"review data").unwrap();
+        let first = write_image(&cache, "first.png", 40);
+        let second = write_image(&cache, "second.png", 40);
+        cache.insert_image(key(1), first).unwrap();
+        cache.insert_image(key(2), second).unwrap();
+
+        // critical 上限 = limit/16 = 6：单条 40 字节都放不下，派生缓存清空。
+        cache.apply_memory_pressure(MemoryPressureLevel::Critical);
+        assert_eq!(cache.total_image_bytes(), 0);
+        assert_eq!(cache.lookup_image(key(2)), None);
+        assert!(
+            review_artifact.is_file(),
+            "review artifacts must never be touched by pressure shrink"
+        );
+
+        cache.apply_memory_pressure(MemoryPressureLevel::Normal);
+        // 恢复后预算回位：新插入不再被立即淘汰。
+        let third = write_image(&cache, "third.png", 40);
+        cache.insert_image(key(3), third.clone()).unwrap();
+        assert_eq!(cache.lookup_image(key(3)), Some(third));
     }
 
     #[test]

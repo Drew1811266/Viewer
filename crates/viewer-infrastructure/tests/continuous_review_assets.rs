@@ -290,7 +290,7 @@ async fn fresh_video_probe_does_not_pair_new_content_with_cached_duration_or_dim
     );
     assert_eq!(
         catalog
-            .check_sources(&[value.asset], ReviewTaskCancellation::default())
+            .check_sources(&mut [value.asset.clone()], ReviewTaskCancellation::default())
             .await
             .unwrap()[0]
             .status,
@@ -328,7 +328,7 @@ async fn additions_preserve_previous_tracking_and_always_hash_source_content() {
     let original = vec![first_asset.asset, second_asset.asset];
     let before = original.clone();
     let checks = catalog
-        .check_sources(&original, ReviewTaskCancellation::default())
+        .check_sources(&mut original.clone(), ReviewTaskCancellation::default())
         .await
         .unwrap();
     assert_eq!(
@@ -354,7 +354,7 @@ async fn fresh_catalog_reuses_the_checked_current_asset_identity_for_the_same_so
     assert_eq!(
         restarted
             .check_sources(
-                std::slice::from_ref(&captured),
+                std::slice::from_mut(&mut captured.clone()),
                 ReviewTaskCancellation::default(),
             )
             .await
@@ -407,7 +407,7 @@ async fn rename_and_move_require_explicit_locations_and_keep_captured_versions_i
         assert_eq!(
             catalog
                 .check_sources(
-                    std::slice::from_ref(&captured),
+                    std::slice::from_mut(&mut captured.clone()),
                     ReviewTaskCancellation::default()
                 )
                 .await
@@ -437,7 +437,7 @@ async fn rename_and_move_require_explicit_locations_and_keep_captured_versions_i
         assert_eq!(
             catalog
                 .check_sources(
-                    std::slice::from_ref(&captured),
+                    std::slice::from_mut(&mut captured.clone()),
                     ReviewTaskCancellation::default()
                 )
                 .await
@@ -494,7 +494,7 @@ async fn duplicate_content_and_multiple_candidates_never_choose_a_business_ident
     assert_eq!(
         catalog
             .check_sources(
-                std::slice::from_ref(&captured),
+                std::slice::from_mut(&mut captured.clone()),
                 ReviewTaskCancellation::default()
             )
             .await
@@ -513,7 +513,7 @@ async fn duplicate_content_and_multiple_candidates_never_choose_a_business_ident
     assert_eq!(
         catalog
             .check_sources(
-                std::slice::from_ref(&captured),
+                std::slice::from_mut(&mut captured.clone()),
                 ReviewTaskCancellation::default()
             )
             .await
@@ -525,7 +525,7 @@ async fn duplicate_content_and_multiple_candidates_never_choose_a_business_ident
     assert_eq!(
         catalog
             .check_sources(
-                std::slice::from_ref(&captured),
+                std::slice::from_mut(&mut captured.clone()),
                 ReviewTaskCancellation::default()
             )
             .await
@@ -575,7 +575,7 @@ async fn bad_candidates_metadata_only_changes_and_cancellation_do_not_rewrite_fa
     assert_eq!(
         catalog
             .check_sources(
-                std::slice::from_ref(&captured),
+                std::slice::from_mut(&mut captured.clone()),
                 ReviewTaskCancellation::default()
             )
             .await
@@ -602,7 +602,7 @@ async fn bad_candidates_metadata_only_changes_and_cancellation_do_not_rewrite_fa
     );
     assert_eq!(
         catalog
-            .check_sources(std::slice::from_ref(&captured), cancellation)
+            .check_sources(std::slice::from_mut(&mut captured.clone()), cancellation)
             .await,
         Err(ReviewAssetError::Cancelled)
     );
@@ -626,7 +626,7 @@ async fn unreadable_symlinked_and_missing_sources_keep_old_versions() {
     fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
     let status = catalog
         .check_sources(
-            std::slice::from_ref(&captured),
+            std::slice::from_mut(&mut captured.clone()),
             ReviewTaskCancellation::default(),
         )
         .await
@@ -639,7 +639,7 @@ async fn unreadable_symlinked_and_missing_sources_keep_old_versions() {
     assert_eq!(
         catalog
             .check_sources(
-                std::slice::from_ref(&captured),
+                std::slice::from_mut(&mut captured.clone()),
                 ReviewTaskCancellation::default()
             )
             .await
@@ -691,7 +691,7 @@ async fn concurrent_relocation_confirmations_are_cas_guarded_and_input_is_bounde
     assert_eq!(
         catalog
             .check_sources(
-                &[captured.clone(), captured.clone()],
+                &mut [captured.clone(), captured.clone()],
                 ReviewTaskCancellation::default()
             )
             .await,
@@ -701,7 +701,7 @@ async fn concurrent_relocation_confirmations_are_cas_guarded_and_input_is_bounde
     changed.evidence.modified_ns += 1;
     assert_eq!(
         catalog
-            .check_sources(&[changed], ReviewTaskCancellation::default())
+            .check_sources(&mut [changed], ReviewTaskCancellation::default())
             .await,
         Err(ReviewAssetError::InvalidScope)
     );

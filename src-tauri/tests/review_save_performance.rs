@@ -66,7 +66,7 @@ impl ContinuousReviewAssetPort for PreparedAssets {
 
     async fn check_sources(
         &self,
-        _: &[AssetVersion],
+        _: &mut [AssetVersion],
         _: ReviewTaskCancellation,
     ) -> Result<Vec<viewer_domain::review::continuous::SourceCheck>, ReviewAssetError> {
         self.spies.source_reads.fetch_add(1, Ordering::Relaxed);

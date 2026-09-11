@@ -59,7 +59,7 @@ impl ContinuousReviewAssetPort for Assets {
     }
     async fn check_sources(
         &self,
-        _: &[AssetVersion],
+        _: &mut [AssetVersion],
         _: ReviewTaskCancellation,
     ) -> Result<Vec<viewer_domain::review::continuous::SourceCheck>, ReviewAssetError> {
         panic!("materializer uses reopen_exact")
@@ -121,7 +121,7 @@ impl ContinuousReviewAssetPort for PointAssets {
     }
     async fn check_sources(
         &self,
-        _: &[AssetVersion],
+        _: &mut [AssetVersion],
         _: ReviewTaskCancellation,
     ) -> Result<Vec<viewer_domain::review::continuous::SourceCheck>, ReviewAssetError> {
         panic!("materializer uses reopen_exact")

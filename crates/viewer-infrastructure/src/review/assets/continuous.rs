@@ -5,6 +5,7 @@ use viewer_application::review_assets::{
 };
 use viewer_domain::review::continuous::{SourceCheck, SourceCheckStatus};
 mod source;
+use source::SourceCheckOutcome;
 
 #[derive(Default)]
 pub(super) struct CatalogState {
@@ -164,19 +165,31 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
                 })
             }
             .ok_or(ReviewAssetError::Unavailable)?;
-            let status = source::check(
+            let mut locator = locator;
+            let outcome = source::check(
                 self.project_root.clone(),
                 locator.clone(),
                 asset.clone(),
                 cancellation.clone(),
             )
             .await?;
-            if status != SourceCheckStatus::Match {
-                return Err(match status {
+            if outcome.status != SourceCheckStatus::Match {
+                return Err(match outcome.status {
                     SourceCheckStatus::Missing => ReviewAssetError::NotFound,
                     SourceCheckStatus::Changed => ReviewAssetError::SourceChanged,
                     _ => ReviewAssetError::Unavailable,
                 });
+            }
+            if let Some(current) = outcome.current_entity
+                && locator.entity_id != current
+            {
+                // Session identity drifted (e.g. volume device reassignment);
+                // continue with the verified current identity.
+                locator.entity_id = current;
+                let mut state = self.continuous_state()?;
+                state
+                    .locators
+                    .insert(asset.id, locator.clone());
             }
             reopened.push(PreparedReviewAsset {
                 entity_id: locator.entity_id,
@@ -195,7 +208,7 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
 
     async fn check_sources(
         &self,
-        assets: &[AssetVersion],
+        assets: &mut [AssetVersion],
         cancellation: ReviewTaskCancellation,
     ) -> Result<Vec<SourceCheck>, ReviewAssetError> {
         if assets.len() > MAX_ASSETS_PER_ROUND {
@@ -206,10 +219,15 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
             return Err(ReviewAssetError::InvalidScope);
         }
         let mut result = Vec::with_capacity(assets.len());
-        for asset in assets {
+        // Verbatim copies registered into the catalog: the persisted authoring
+        // state keeps its stored identity so repeated loads stay consistent;
+        // live identity drift is tracked through `locators` instead.
+        let mut registered = Vec::with_capacity(assets.len());
+        for asset in assets.iter_mut() {
             if cancellation.is_cancelled() {
                 return Err(ReviewAssetError::Cancelled);
             }
+            registered.push(asset.clone());
             let confirmed = {
                 let state = self.continuous_state()?;
                 if state.assets.get(&asset.id).is_some_and(|old| old != asset) {
@@ -217,7 +235,7 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
                 }
                 state.locators.get(&asset.id).cloned()
             };
-            let status = if let Some(locator) = confirmed {
+            let outcome = if let Some(locator) = confirmed {
                 source::check(
                     self.project_root.clone(),
                     locator,
@@ -231,7 +249,7 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
                     .indexed_node(entity_id)
                     .map_err(|_| ReviewAssetError::IndexUnavailable)?;
                 if current.is_some_and(|n| n.node.relative_path != asset.relative_path) {
-                    SourceCheckStatus::Unverified
+                    SourceCheckOutcome::unchanged(SourceCheckStatus::Unverified)
                 } else {
                     source::check(
                         self.project_root.clone(),
@@ -245,8 +263,37 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
                     .await?
                 }
             } else {
-                SourceCheckStatus::Unverified
+                SourceCheckOutcome::unchanged(SourceCheckStatus::Unverified)
             };
+            if outcome.status == SourceCheckStatus::Match
+                && let Some(current) = outcome.current_entity
+                && asset.source_entity_id != Some(current)
+            {
+                // Refresh the caller's state and the session locator with the
+                // content-verified current identity (ADR 0003 session keys).
+                // Explicitly relocated assets keep their authoritative locator:
+                // their stored identity intentionally lags behind.
+                let mut state = self.continuous_state()?;
+                let relocated = state
+                    .locators
+                    .get(&asset.id)
+                    .is_some_and(|l| l.relative_path != asset.relative_path);
+                if !relocated {
+                    asset.source_entity_id = Some(current);
+                    let relative_path = state
+                        .locators
+                        .get(&asset.id)
+                        .map(|l| l.relative_path.clone())
+                        .unwrap_or_else(|| asset.relative_path.clone());
+                    state.locators.insert(
+                        asset.id,
+                        ReviewSourceLocator {
+                            entity_id: current,
+                            relative_path,
+                        },
+                    );
+                }
+            }
             let checked_at_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_err(|_| ReviewAssetError::Unavailable)?
@@ -256,13 +303,13 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
             result.push(SourceCheck {
                 asset_version_id: asset.id,
                 checked_at_ms,
-                status,
+                status: outcome.status,
             });
         }
         let mut state = self.continuous_state()?;
-        for (asset, check) in assets.iter().zip(&result) {
+        for (original, check) in registered.iter().zip(&result) {
             if check.status == SourceCheckStatus::Match {
-                state.register(asset)?;
+                state.register(original)?;
             }
         }
         Ok(result)
@@ -284,14 +331,14 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
         if self.continuous_state()?.locators.get(&asset.id) != decision.previous.as_ref() {
             return Err(ReviewAssetError::StaleLocator);
         }
-        let status = source::check(
+        let outcome = source::check(
             self.project_root.clone(),
             decision.candidate.clone(),
             asset.clone(),
             cancellation.clone(),
         )
         .await?;
-        if status != SourceCheckStatus::Match {
+        if outcome.status != SourceCheckStatus::Match {
             return Err(ReviewAssetError::SourceChanged);
         }
         if cancellation.is_cancelled() {

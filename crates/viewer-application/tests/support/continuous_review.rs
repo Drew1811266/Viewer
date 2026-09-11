@@ -548,7 +548,7 @@ impl ContinuousReviewAssetPort for Assets {
     }
     async fn check_sources(
         &self,
-        assets: &[AssetVersion],
+        assets: &mut [AssetVersion],
         cancel: ReviewTaskCancellation,
     ) -> Result<Vec<SourceCheck>, ReviewAssetError> {
         self.source_checks.fetch_add(1, Ordering::AcqRel);

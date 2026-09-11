@@ -63,7 +63,7 @@ impl ContinuousReviewService {
         if self.inspect_migration().await?.is_some() {
             return self.view_with_cancellation(stream, cancellation).await;
         }
-        let current = self.view_authoring_current(stream).await?;
+        let mut current = self.view_authoring_current(stream).await?;
         let provider = self.provider.clone();
         let (history_selectors, recovery) = super::service::io(move || {
             let reader = provider.open_reader()?;
@@ -73,10 +73,10 @@ impl ContinuousReviewService {
             ))
         })
         .await?;
-        let (source_checks, projection) = if let Some(current) = &current {
+        let (source_checks, projection) = if let Some(current) = &mut current {
             let checks = self
                 .assets
-                .check_sources(&current.authoring.state.assets, cancellation.clone())
+                .check_sources(&mut current.authoring.state.assets, cancellation.clone())
                 .await?;
             let projection = project_current(&current.authoring.state, &checks)?;
             (checks, projection)
@@ -150,7 +150,7 @@ impl ContinuousReviewService {
             });
         }
         let provider = self.provider.clone();
-        let (current, history_selectors, recovery) = super::service::io(move || {
+        let (mut current, history_selectors, recovery) = super::service::io(move || {
             let reader = provider.open_reader()?;
             let current = reader.load_current(stream)?;
             let history_selectors = reader.load_history_selectors(stream)?;
@@ -164,10 +164,10 @@ impl ContinuousReviewService {
         }) {
             return Err(ReviewWorkspaceError::WrongContext);
         }
-        let (source_checks, projection) = if let Some(current) = &current {
+        let (source_checks, projection) = if let Some(current) = &mut current {
             let checks = self
                 .assets
-                .check_sources(&current.state.assets, cancellation.clone())
+                .check_sources(&mut current.state.assets, cancellation.clone())
                 .await?;
             let projection = project_current(&current.state, &checks)?;
             (checks, projection)

@@ -247,7 +247,7 @@ impl ContinuousReviewService {
                 )
             })
             .await?;
-            let next = transition.next;
+            let mut next = transition.next;
             let repository = writer.clone();
             let recovery = draft.clone();
             io(move || repository.save_recovery(&recovery)).await?;
@@ -270,7 +270,7 @@ impl ContinuousReviewService {
             .await?;
             drop(evidence_span);
             self.assets
-                .check_sources(&next.assets, cancellation.clone())
+                .check_sources(&mut next.assets, cancellation.clone())
                 .await?;
             if cancellation.is_cancelled() {
                 return Err(ReviewWorkspaceError::Cancelled);

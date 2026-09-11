@@ -160,9 +160,13 @@ pub trait ContinuousReviewAssetPort: Send + Sync {
     ) -> Result<Vec<PreparedReviewAsset>, ReviewAssetError> {
         Err(ReviewAssetError::Unavailable)
     }
+    /// Verifies the persisted asset versions against their on-disk sources. Content-verified
+    /// session identity drift (e.g. a reboot reassigning APFS volume device ids) is reported as
+    /// `Match` and the slice entries are refreshed in place with the current identity, so
+    /// callers must pass the live authoring state they intend to keep using.
     async fn check_sources(
         &self,
-        assets: &[AssetVersion],
+        assets: &mut [AssetVersion],
         cancellation: ReviewTaskCancellation,
     ) -> Result<Vec<viewer_domain::review::continuous::SourceCheck>, ReviewAssetError>;
     /// Only call after an explicit user selection. Digest equality alone grants no relocation.

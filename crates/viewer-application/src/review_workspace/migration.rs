@@ -65,7 +65,7 @@ impl ContinuousReviewService {
         }
         let assets = self.prepared.lock().await;
         let versions: Vec<_> = assets.values().map(|a| a.asset.clone()).collect();
-        let state = prepare_migration_state(&inspection, &envelope, &versions)?;
+        let mut state = prepare_migration_state(&inspection, &envelope, &versions)?;
         // Only explicitly rebound, preview-prepared assets can acquire fresh evidence.
         // Legacy image assets retain LegacyAbsent; no current source is passed off as old pixels.
         let mut fresh = state.clone();
@@ -107,7 +107,7 @@ impl ContinuousReviewService {
             }
         }
         self.assets
-            .check_sources(&state.assets, cancellation.clone())
+            .check_sources(&mut state.assets, cancellation.clone())
             .await?;
         if cancellation.is_cancelled() {
             return Err(ReviewWorkspaceError::Cancelled);

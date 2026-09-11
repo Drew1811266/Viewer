@@ -8,9 +8,11 @@ use viewer_application::{
     BrowseIndexPort, ImageArtifact, ImageError, ImagePort, ImageRequest, ReviewAssetCatalogPort,
     ReviewAssetError, ReviewAssetValidation, ReviewProgressPort, ReviewScope,
     ReviewTaskCancellation, ReviewTaskProgress,
+    review_assets::ContinuousReviewAssetPort,
 };
 use viewer_domain::file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata};
 use viewer_domain::image::{ImageFormat, ImageProbe};
+use viewer_domain::review::continuous::SourceCheckStatus;
 use viewer_domain::review::{ReviewMedia, ReviewabilityFailure};
 use viewer_domain::search::Generation;
 use viewer_domain::video::{VideoFailureKind, VideoMetadata, VideoProbeStatus};
@@ -333,6 +335,57 @@ async fn scopes_are_exact_deduplicated_sorted_and_count_exclusions() {
             .candidate_entity_ids
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn source_checks_rebind_session_identity_when_content_verifies_after_device_drift() {
+    let project = ProjectFixture::new();
+    let image_bytes = b"review-source";
+    let image = project.write("drift.png", image_bytes, FileKind::Png);
+    project.publish(std::slice::from_ref(&image));
+    project.ready_image(&image, 8, 8);
+    let catalog = catalog(
+        &project,
+        Arc::new(StaticImageProbe::ready(8, 8)),
+        Arc::new(StaticVideoProbe(VideoAnswer::Ready)),
+        ReviewChangeLedger::default(),
+    );
+    let prepared = catalog
+        .prepare_assets(
+            &[image.entity_id],
+            ReviewTaskCancellation::default(),
+            Arc::new(Progress::default()),
+        )
+        .await
+        .unwrap();
+
+    // A reboot reassigned the volume device id: the persisted session identity
+    // no longer matches the file's current derived identity, but the content
+    // (size + blake3) is unchanged.
+    let drifted = EntityId::from_u128((u128::from(0x77_u32) << 64) | 0xBEEF);
+    assert_ne!(drifted, image.entity_id);
+    let mut assets = vec![prepared[0].asset.clone()];
+    assets[0].source_entity_id = Some(drifted);
+
+    let checks = catalog
+        .check_sources(&mut assets, ReviewTaskCancellation::default())
+        .await
+        .unwrap();
+
+    assert_eq!(checks.len(), 1);
+    assert_eq!(checks[0].asset_version_id, assets[0].id);
+    assert_eq!(checks[0].status, SourceCheckStatus::Match);
+    assert_eq!(assets[0].source_entity_id, Some(image.entity_id));
+
+    // A later load from the persisted state repeats the pattern and stays stable.
+    let mut reloaded = vec![prepared[0].asset.clone()];
+    reloaded[0].source_entity_id = Some(drifted);
+    let repeated = catalog
+        .check_sources(&mut reloaded, ReviewTaskCancellation::default())
+        .await
+        .unwrap();
+    assert_eq!(repeated[0].status, SourceCheckStatus::Match);
+    assert_eq!(reloaded[0].source_entity_id, Some(image.entity_id));
 }
 
 #[tokio::test]

@@ -20,8 +20,8 @@ fn main() {
         let left = (metrics.uv_min[0] * atlas.width() as f32).round() as usize;
         // The atlas rasterizes at a supersampled ratio; derive the glyph's
         // physical extent from its uv span instead of the logical size_px.
-        let width = ((metrics.uv_max[0] - metrics.uv_min[0]) * atlas.width() as f32).round()
-            as usize;
+        let width =
+            ((metrics.uv_max[0] - metrics.uv_min[0]) * atlas.width() as f32).round() as usize;
         let rows = atlas
             .pixels()
             .chunks_exact(atlas.width() as usize)

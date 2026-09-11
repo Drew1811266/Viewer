@@ -290,7 +290,10 @@ async fn fresh_video_probe_does_not_pair_new_content_with_cached_duration_or_dim
     );
     assert_eq!(
         catalog
-            .check_sources(&mut [value.asset.clone()], ReviewTaskCancellation::default())
+            .check_sources(
+                &mut [value.asset.clone()],
+                ReviewTaskCancellation::default()
+            )
             .await
             .unwrap()[0]
             .status,

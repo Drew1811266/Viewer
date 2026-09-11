@@ -187,9 +187,7 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
                 // continue with the verified current identity.
                 locator.entity_id = current;
                 let mut state = self.continuous_state()?;
-                state
-                    .locators
-                    .insert(asset.id, locator.clone());
+                state.locators.insert(asset.id, locator.clone());
             }
             reopened.push(PreparedReviewAsset {
                 entity_id: locator.entity_id,

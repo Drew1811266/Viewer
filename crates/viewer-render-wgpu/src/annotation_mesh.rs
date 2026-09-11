@@ -382,15 +382,51 @@ fn push_segment_with_caps(
     let start = [start.x as f32, start.y as f32];
     let end = [end.x as f32, end.y as f32];
     fragment.vertices.extend([
-        segment_vertex(start, end, -side, -along, style.color, style.dashed, 0.0, half_width),
-        segment_vertex(start, end, side, -along, style.color, style.dashed, 0.0, half_width),
+        segment_vertex(
+            start,
+            end,
+            -side,
+            -along,
+            style.color,
+            style.dashed,
+            0.0,
+            half_width,
+        ),
+        segment_vertex(
+            start,
+            end,
+            side,
+            -along,
+            style.color,
+            style.dashed,
+            0.0,
+            half_width,
+        ),
         // Perimeter order matters for the [0,1,2, 0,2,3] triangulation: the
         // end pair lists the +side corner first so the shared diagonal runs
         // start(-side) → end(+side). Pair it with the vertex shader's
         // segment_factor tangent un-flip, which keeps screen_offset_px linear
         // against the real geometry for the fragment AA ramp.
-        segment_vertex(end, start, side, along_end, style.color, style.dashed, 1.0, half_width),
-        segment_vertex(end, start, -side, along_end, style.color, style.dashed, 1.0, half_width),
+        segment_vertex(
+            end,
+            start,
+            side,
+            along_end,
+            style.color,
+            style.dashed,
+            1.0,
+            half_width,
+        ),
+        segment_vertex(
+            end,
+            start,
+            -side,
+            along_end,
+            style.color,
+            style.dashed,
+            1.0,
+            half_width,
+        ),
     ]);
     fragment
         .indices
@@ -487,10 +523,7 @@ fn push_screen_circle(
             ),
             fixed_vertex(
                 center,
-                [
-                    rim * end_angle.cos() as f32,
-                    rim * end_angle.sin() as f32,
-                ],
+                [rim * end_angle.cos() as f32, rim * end_angle.sin() as f32],
                 color,
                 radius_px,
             ),

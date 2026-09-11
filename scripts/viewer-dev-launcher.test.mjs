@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import {
   access,
   copyFile,
@@ -285,6 +286,11 @@ describe('createSystemRuntime', () => {
       await writeFile(path.join(legacyWrapperPath, 'Viewer.app', 'sentinel'), 'legacy\n')
       await writeFile(preservedPath, 'keep\n')
       await copyFile('/bin/sleep', executablePath)
+      // macOS 26 kills copies of system-vault binaries (SIGKILL, exit 137).
+      // Re-sign ad hoc so the fake viewer executable is allowed to run.
+      if (process.platform === 'darwin') {
+        execFileSync('codesign', ['--force', '--sign', '-', executablePath], { stdio: 'ignore' })
+      }
       await writeFile(
         path.join(fakeBin, 'pnpm'),
         `#!/bin/sh\necho "fake pnpm started"\n"${executablePath}" 30\n`,

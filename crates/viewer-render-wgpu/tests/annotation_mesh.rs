@@ -153,9 +153,7 @@ fn selected_handles_have_visible_white_interiors_and_full_size_hit_targets() {
         "handles need a contrasting white interior"
     );
     assert!(
-        mesh.vertices()
-            .iter()
-            .any(|vertex| vertex.edge_px == 12.0),
+        mesh.vertices().iter().any(|vertex| vertex.edge_px == 12.0),
         "handle solid core must remain 24 logical pixels in diameter; the \
          rasterized rim only carries the 0.5px antialiasing outset"
     );

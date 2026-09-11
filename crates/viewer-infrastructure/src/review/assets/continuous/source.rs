@@ -164,7 +164,10 @@ mod tests {
                 fs::write(root.path().join("a.png"), b"modified").unwrap();
             },
         );
-        assert_eq!(result.unwrap(), SourceCheckOutcome::unchanged(SourceCheckStatus::Changed));
+        assert_eq!(
+            result.unwrap(),
+            SourceCheckOutcome::unchanged(SourceCheckStatus::Changed)
+        );
     }
     #[test]
     fn cancellation_after_hash_cannot_return_a_stale_match() {
@@ -216,6 +219,9 @@ mod tests {
             || {},
         )
         .unwrap();
-        assert_eq!(result, SourceCheckOutcome::unchanged(SourceCheckStatus::Changed));
+        assert_eq!(
+            result,
+            SourceCheckOutcome::unchanged(SourceCheckStatus::Changed)
+        );
     }
 }

@@ -7,8 +7,7 @@ use tokio_util::sync::CancellationToken;
 use viewer_application::{
     BrowseIndexPort, ImageArtifact, ImageError, ImagePort, ImageRequest, ReviewAssetCatalogPort,
     ReviewAssetError, ReviewAssetValidation, ReviewProgressPort, ReviewScope,
-    ReviewTaskCancellation, ReviewTaskProgress,
-    review_assets::ContinuousReviewAssetPort,
+    ReviewTaskCancellation, ReviewTaskProgress, review_assets::ContinuousReviewAssetPort,
 };
 use viewer_domain::file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata};
 use viewer_domain::image::{ImageFormat, ImageProbe};

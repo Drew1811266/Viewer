@@ -33,7 +33,7 @@
     "video:runtime:stage": "scripts/video/stage-tauri-resources.sh",
     "video:runtime:verify": "VIEWER_VIDEO_STAGE_DIR=target/viewer-video-runtime/universal-apple-darwin/ViewerVideoRuntime scripts/video/verify-runtime.sh",
     "video:licenses:verify": "scripts/video/verify-licenses.sh",
-    "test:video:packaging": "node --test scripts/video/runtime-lock.test.mjs scripts/video/runtime-verifier.test.mjs scripts/video/release-packaging.test.mjs",
+    "test:video:packaging": "node --test scripts/video/runtime-lock.test.mjs scripts/video/runtime-verifier.test.mjs scripts/video/release-packaging.test.mjs scripts/video/build-attestation.test.mjs scripts/video/collect-development-evidence.test.mjs scripts/video/emit-development-smoke.test.mjs scripts/video/generate-performance-samples.test.mjs scripts/video/network-launch-artifact.test.mjs scripts/video/run-clean-machine-smoke.test.mjs scripts/video/test-fixture-contract.test.mjs",
     "test:dev-launcher": "node --test scripts/development-video-runtime.test.mjs scripts/viewer-dev-launcher.test.mjs scripts/run-managed-native-acceptance.test.mjs",
     "test:policy": "node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs && node scripts/check-scope-coverage.mjs",
     "build:review-reader": "cargo build --locked --offline -p viewer-infrastructure --bin viewer-review-reader",

@@ -59,14 +59,32 @@ let lastObservedTarget: Element | null = null
 let intersectionOptions: IntersectionObserverInit | undefined
 let observedTargets = new Set<Element>()
 const originalIntersectionObserver = globalThis.IntersectionObserver
+const originalRequestAnimationFrame = globalThis.requestAnimationFrame
+
+let queuedAnimationFrames: Array<() => void> = []
 
 afterEach(() => {
   registeredObservers = []
   lastObservedTarget = null
   intersectionOptions = undefined
   observedTargets = new Set()
+  queuedAnimationFrames = []
   globalThis.IntersectionObserver = originalIntersectionObserver
+  globalThis.requestAnimationFrame = originalRequestAnimationFrame
 })
+
+function installAnimationFrames() {
+  globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    queuedAnimationFrames.push(() => callback(0))
+    return queuedAnimationFrames.length - 1
+  }) as typeof requestAnimationFrame
+}
+
+function flushAnimationFrames() {
+  const queued = queuedAnimationFrames
+  queuedAnimationFrames = []
+  for (const callback of queued) callback()
+}
 
 function installIntersectionObserver() {
   class TestIntersectionObserver {
@@ -277,6 +295,40 @@ describe('FolderFilmstripRow', () => {
     expect(loadImages).toHaveBeenCalledTimes(1)
   })
 
+  // Regression: entering the near range used to mount the entire overscan
+  // window (dozens of <img> elements) in a single commit — one long frame per
+  // row. The mount ramp spreads the burst over consecutive animation frames.
+  it('mounts the visible window first and expands overscan across animation frames', async () => {
+    installAnimationFrames()
+    const files = Array.from({ length: 200 }, (_, index) =>
+      image(
+        index,
+        [
+          { width: 2, height: 3 },
+          { width: 1, height: 1 },
+          { width: 3, height: 2 },
+        ][index % 3],
+      ),
+    )
+    renderRow({ files })
+    const filmstrip = await sizeViewport(420)
+
+    const mountedCount = () => within(filmstrip).getAllByRole('listitem').length
+    const visibleOnly = mountedCount()
+    expect(visibleOnly).toBeGreaterThan(0)
+
+    act(flushAnimationFrames)
+    const firstRamp = mountedCount()
+    expect(firstRamp).toBeGreaterThan(visibleOnly)
+
+    act(flushAnimationFrames)
+    expect(mountedCount()).toBeGreaterThan(firstRamp)
+
+    // Staying near keeps the window at full overscan without further growth.
+    act(flushAnimationFrames)
+    expect(mountedCount()).toBe(mountedCount())
+  })
+
   it('loads near the viewport and preserves folder navigation, source order, and preview context', async () => {
     installIntersectionObserver()
     const loadImages = vi.fn().mockResolvedValue(mixedImages)
@@ -415,6 +467,7 @@ describe('FolderFilmstripRow', () => {
   })
 
   it('keeps a bounded binary-search window for 1,000 mixed ratios and unions focused content', async () => {
+    installAnimationFrames()
     const files = Array.from({ length: 1_000 }, (_, index) =>
       image(
         index,
@@ -431,6 +484,8 @@ describe('FolderFilmstripRow', () => {
     const track = filmstrip.querySelector<HTMLElement>('.folder-filmstrip-track')
 
     expect(track).toHaveStyle({ width: '147298px' })
+    act(flushAnimationFrames)
+    act(flushAnimationFrames)
     expect(within(filmstrip).getAllByRole('listitem')).toHaveLength(17)
     const focused = within(filmstrip).getByRole('button', { name: '预览 image-3.jpg' })
     focused.focus()

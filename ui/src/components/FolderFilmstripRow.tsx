@@ -26,6 +26,13 @@ const FILMSTRIP_INLINE_PADDING = 12
  */
 const OVERSCAN_CELLS = 6
 const OVERSCAN_PIXELS = 1_024
+/**
+ * 渐进挂载（2026-09-15 滚动采样）：行进入近邻时若一次性挂载整个预挂载窗口
+ * （可见 ± 6 格），单次 React 提交要插入几十个 <img>，对应一次长帧（掉帧
+ * 尖峰）。改为先只挂可见窗口，随后每帧扩展一步预挂载，把突发摊到
+ * MOUNT_RAMP_STEPS 帧内；近邻区域内保持满档，不随微小滚动重置。
+ */
+const MOUNT_RAMP_STEPS = 2
 /** 行进入挂载的提前量：整行提前 ~1.5 行挂载，列表 IPC 与首屏解码先于可见发生。 */
 const ROW_ROOT_MARGIN = '600px 0px'
 /**
@@ -123,6 +130,7 @@ export default function FolderFilmstripRow({
   )
   const [state, setState] = useState<RowState>({ status: 'idle' })
   const [viewport, setViewport] = useState({ scrollLeft: 0, width: 0 })
+  const [mountRamp, setMountRamp] = useState(0)
   const [focusedImageIndex, setFocusedImageIndex] = useState<number | null>(null)
   const [recoveredDimensions, setRecoveredDimensions] = useState(
     () => new Map<string, ImageDimensions>(),
@@ -150,6 +158,26 @@ export default function FolderFilmstripRow({
       nearObserver.disconnect()
     }
   }, [])
+
+  // 渐进挂载坡道：进入近邻从 0 开始逐帧升至 MOUNT_RAMP_STEPS；滚出近邻即
+  // 归零。坡道只由近邻翻转驱动，区域内滚动不重置，避免反复突发。
+  useEffect(() => {
+    if (!nearViewport) {
+      setMountRamp(0)
+      return
+    }
+    let frame: number | null = null
+    let step = 0
+    const tick = () => {
+      step += 1
+      setMountRamp(step)
+      if (step < MOUNT_RAMP_STEPS) frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame)
+    }
+  }, [nearViewport])
 
   const requestImages = useCallback(
     (retry: boolean) => {
@@ -256,11 +284,14 @@ export default function FolderFilmstripRow({
     updateViewport()
   }, [geometry, updateViewport])
 
+  const rampCells = Math.round((OVERSCAN_CELLS * mountRamp) / MOUNT_RAMP_STEPS)
+  const rampPixels = Math.round((OVERSCAN_PIXELS * mountRamp) / MOUNT_RAMP_STEPS)
   const imageWindow =
     state.status === 'ready' && nearViewport
       ? expandImageWindow(
-          horizontalVisibleIndexes(geometry, viewport.scrollLeft, viewport.width, OVERSCAN_PIXELS),
+          horizontalVisibleIndexes(geometry, viewport.scrollLeft, viewport.width, rampPixels),
           geometry.items.length,
+          rampCells,
         )
       : null
 
@@ -540,10 +571,11 @@ function captureHorizontalAnchor(
 function expandImageWindow(
   visible: { start: number; end: number },
   imageCount: number,
+  overscanCells: number,
 ): { start: number; end: number } {
   return {
-    start: Math.max(0, visible.start - OVERSCAN_CELLS),
-    end: Math.min(imageCount, visible.end + OVERSCAN_CELLS),
+    start: Math.max(0, visible.start - overscanCells),
+    end: Math.min(imageCount, visible.end + overscanCells),
   }
 }
 

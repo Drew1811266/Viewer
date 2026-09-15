@@ -115,7 +115,7 @@ describe('usePrefetchOnScroll', () => {
     return { prefetches, unmount: rendered.unmount }
   }
 
-  it('prefetches the row below the viewport once scrolling rests', () => {
+  it('prefetches three rows ahead below the viewport once scrolling rests', () => {
     const fixture = createScrollFixture()
     const { prefetches } = setup(fixture)
 
@@ -127,12 +127,11 @@ describe('usePrefetchOnScroll', () => {
       vi.advanceTimersByTime(PREFETCH_REST_MS + 16)
     })
 
-    expect(prefetches).toHaveLength(1)
-    expect(prefetches[0]?.rowIndex).toBe(4)
-    expect(prefetches[0]?.signal.aborted).toBe(false)
+    expect(prefetches.map(({ rowIndex }) => rowIndex)).toEqual([4, 5])
+    expect(prefetches.every(({ signal }) => !signal.aborted)).toBe(true)
   })
 
-  it('prefetches the row above when scrolling up', () => {
+  it('prefetches three rows ahead above when scrolling up', () => {
     const fixture = createScrollFixture()
     fixture.setScrollTop(450)
     const { prefetches } = setup(fixture)
@@ -145,8 +144,7 @@ describe('usePrefetchOnScroll', () => {
       vi.advanceTimersByTime(PREFETCH_REST_MS + 16)
     })
 
-    expect(prefetches).toHaveLength(1)
-    expect(prefetches[0]?.rowIndex).toBe(2)
+    expect(prefetches.map(({ rowIndex }) => rowIndex)).toEqual([2, 1, 0])
   })
 
   it('skips prefetching while the gesture is a fast flick', () => {
@@ -176,16 +174,16 @@ describe('usePrefetchOnScroll', () => {
       fixture.scrollBy(60)
       vi.advanceTimersByTime(PREFETCH_REST_MS + 16)
     })
-    expect(prefetches).toHaveLength(1)
+    expect(prefetches).toHaveLength(2)
 
     act(() => {
       fixture.scrollBy(-20)
       vi.advanceTimersByTime(16)
     })
-    expect(prefetches[0]?.signal.aborted).toBe(true)
+    expect(prefetches.every(({ signal }) => signal.aborted)).toBe(true)
   })
 
-  it('does not repeat the same target until the direction changes', () => {
+  it('does not repeat covered targets until the direction changes', () => {
     const fixture = createScrollFixture()
     const { prefetches } = setup(fixture)
 
@@ -196,19 +194,19 @@ describe('usePrefetchOnScroll', () => {
       fixture.scrollBy(10)
       vi.advanceTimersByTime(PREFETCH_REST_MS + 16)
     })
-    expect(prefetches).toHaveLength(1)
-    expect(prefetches[0]?.signal.aborted).toBe(false)
+    expect(prefetches.map(({ rowIndex }) => rowIndex)).toEqual([4, 5])
+    expect(prefetches.every(({ signal }) => !signal.aborted)).toBe(true)
 
-    // 反向（abort 旧预取）之后再向下，目标行仍是 4，会以新信号重新发起。
+    // 反向（abort 旧预取）之后再向下，覆盖集清空，会以新信号重新发起。
     act(() => {
       fixture.scrollBy(-10)
       vi.advanceTimersByTime(32)
       fixture.scrollBy(10)
       vi.advanceTimersByTime(PREFETCH_REST_MS + 16)
     })
-    expect(prefetches).toHaveLength(2)
-    expect(prefetches[1]?.rowIndex).toBe(4)
+    expect(prefetches.map(({ rowIndex }) => rowIndex)).toEqual([4, 5, 4, 5])
     expect(prefetches[0]?.signal.aborted).toBe(true)
+    expect(prefetches[2]?.signal.aborted).toBe(false)
   })
 
   it('aborts the active prefetch when the hook unmounts', () => {
@@ -220,10 +218,10 @@ describe('usePrefetchOnScroll', () => {
       fixture.scrollBy(60)
       vi.advanceTimersByTime(PREFETCH_REST_MS + 16)
     })
-    expect(prefetches).toHaveLength(1)
-    expect(prefetches[0]?.signal.aborted).toBe(false)
+    expect(prefetches).toHaveLength(2)
+    expect(prefetches.every(({ signal }) => !signal.aborted)).toBe(true)
 
     unmount()
-    expect(prefetches[0]?.signal.aborted).toBe(true)
+    expect(prefetches.every(({ signal }) => signal.aborted)).toBe(true)
   })
 })

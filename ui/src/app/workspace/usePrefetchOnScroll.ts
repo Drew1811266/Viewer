@@ -4,6 +4,12 @@ import { useEffect, useRef } from 'react'
 export const PREFETCH_REST_MS = 120
 /** 快甩速度阈值（px/ms）：超过则判定为甩动，不预取，等静止。 */
 export const PREFETCH_FLICK_SPEED_PX_PER_MS = 2
+/**
+ * 单次静止预取的行数（2026-09-15：从 1 行扩展到 3 行）。滚动停止后沿方向
+ * 连续预热 3 行（目录图片 + 前 6 张缩略图），DecodeScheduler 并发 3 吸收
+ * 请求；配合 ADR 0007 内存缓存，继续滚动时行内容大概率已就绪。
+ */
+export const PREFETCH_ROW_AHEAD = 3
 
 export type ScrollDirection = 'up' | 'down'
 
@@ -62,8 +68,8 @@ export function usePrefetchOnScroll(controller: PrefetchOnScrollController): voi
     let lastEventTime = performance.now()
     let lastVelocity = 0
     let lastDirection: ScrollDirection | null = null
-    let lastPrefetchedTarget: number | null = null
     let activeController: AbortController | null = null
+    let activePrefetchTargets = new Set<number>()
 
     const clearRestTimer = () => {
       if (restTimer !== null) {
@@ -75,26 +81,29 @@ export function usePrefetchOnScroll(controller: PrefetchOnScrollController): voi
     const abortActive = () => {
       activeController?.abort()
       activeController = null
-      lastPrefetchedTarget = null
+      activePrefetchTargets = new Set()
     }
 
     const prefetch = (direction: ScrollDirection) => {
       if (lastVelocity >= PREFETCH_FLICK_SPEED_PX_PER_MS) return
       const { rowCount, rowHeight } = controllerRef.current
-      const target = computePrefetchTarget(
+      const base = computePrefetchTarget(
         container.scrollTop,
         container.clientHeight,
         rowHeight,
         rowCount,
         direction,
       )
-      if (target === null) return
-      if (target === lastPrefetchedTarget && activeController !== null) return
-      abortActive()
-      const signalController = new AbortController()
-      activeController = signalController
-      lastPrefetchedTarget = target
-      controllerRef.current.onPrefetchRow(target, signalController.signal)
+      if (base === null) return
+      const step = direction === 'down' ? 1 : -1
+      for (let offset = 0; offset < PREFETCH_ROW_AHEAD; offset += 1) {
+        const target = base + offset * step
+        if (target < 0 || target >= rowCount) break
+        if (activePrefetchTargets.has(target)) continue
+        if (activeController === null) activeController = new AbortController()
+        activePrefetchTargets.add(target)
+        controllerRef.current.onPrefetchRow(target, activeController.signal)
+      }
     }
 
     const processScroll = () => {

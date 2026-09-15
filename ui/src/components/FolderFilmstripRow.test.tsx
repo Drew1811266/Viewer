@@ -226,7 +226,7 @@ describe('FolderFilmstripRow', () => {
 
     expect(loadImages).not.toHaveBeenCalled()
     const filmstrip = screen.getByRole('region', { name: 'B01 图片' })
-    expect(intersectionOptions).toEqual({ rootMargin: '240px 0px' })
+    expect(intersectionOptions).toEqual({ rootMargin: '600px 0px' })
     expect(observedTargets).toEqual(new Set([filmstrip.closest('article')]))
     expect(filmstrip).toHaveAttribute('data-state', 'idle')
     expect(screen.getByText('张图片')).toBeVisible()
@@ -362,7 +362,7 @@ describe('FolderFilmstripRow', () => {
     const track = filmstrip.querySelector<HTMLElement>('.folder-filmstrip-track')
 
     expect(track).toHaveStyle({ width: '147298px' })
-    expect(within(filmstrip).getAllByRole('listitem')).toHaveLength(7)
+    expect(within(filmstrip).getAllByRole('listitem')).toHaveLength(17)
     const focused = within(filmstrip).getByRole('button', { name: '预览 image-3.jpg' })
     focused.focus()
 
@@ -370,7 +370,7 @@ describe('FolderFilmstripRow', () => {
     fireEvent.scroll(filmstrip)
 
     await within(filmstrip).findByRole('button', { name: '预览 image-501.jpg' })
-    expect(within(filmstrip).getAllByRole('listitem')).toHaveLength(13)
+    expect(within(filmstrip).getAllByRole('listitem')).toHaveLength(30)
     expect(focused).toBeInTheDocument()
     expect(focused).toHaveFocus()
     expect(
@@ -382,7 +382,7 @@ describe('FolderFilmstripRow', () => {
 
     fireEvent.blur(focused)
     await waitFor(() => expect(focused).not.toBeInTheDocument())
-    expect(within(filmstrip).getAllByRole('listitem')).toHaveLength(12)
+    expect(within(filmstrip).getAllByRole('listitem')).toHaveLength(29)
   })
 
   it('preserves the first visible key and inline offset after density changes', async () => {

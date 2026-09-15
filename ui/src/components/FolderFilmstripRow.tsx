@@ -18,8 +18,17 @@ import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
 const THUMBNAIL_GAP = 8
 const FILMSTRIP_INLINE_PADDING = 12
-const OVERSCAN_CELLS = 2
-const OVERSCAN_PIXELS = 256
+/**
+ * 预挂载窗口（2026-09-15 滚动采样后加大）：viewer-image:// 响应是
+ * Cache-Control: no-store（安全边界，见 image_protocol.rs），WebKit 无法跨
+ * 重挂载复用解码位图，绘制期的兜底同步解码落在主线程（TileGrid paint 内
+ * IIO callDecodeImage，约占忙时 30%）。更大的预挂载窗口让异步解码在单元格
+ * 进入视口之前完成，把主线程兜底解码换成后台解码。
+ */
+const OVERSCAN_CELLS = 6
+const OVERSCAN_PIXELS = 1_024
+/** 行进入挂载的提前量：整行提前 ~1.5 行挂载，列表 IPC 与首屏解码先于可见发生。 */
+const ROW_ROOT_MARGIN = '600px 0px'
 const SCROLLBAR_INLINE_INSET = 4
 const SCROLLBAR_MIN_THUMB_WIDTH = 36
 
@@ -111,7 +120,7 @@ export default function FolderFilmstripRow({
         setVisible(true)
         observer.disconnect()
       },
-      { rootMargin: '240px 0px' },
+      { rootMargin: ROW_ROOT_MARGIN },
     )
     observer.observe(row.current)
     return () => observer.disconnect()

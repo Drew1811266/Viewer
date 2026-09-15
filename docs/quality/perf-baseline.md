@@ -26,6 +26,23 @@ Apple GPU 后再提升为必跑）。
 
 ## 基线记录
 
+### 2026-09-15 · WKWebView 总览页 DOM 滚动（手工采样，暂无自动门禁）
+
+`sample <WebContent pid> 25` + cputime 增量，脚本化滚动测量工具与采样文件在
+`target/tmp/`（scroll_viewer.py，CGEvent 注入受辅助权限限制，需用户手动滚动协同）。
+场景：持续评审总览（大密度胶片行）连续上下滚动 25s，Apple M4 / dev 构建。
+
+| 指标 | 优化前（overscan 2 格/256px，行 rootMargin 240px） | 优化后（overscan 6 格/1024px，rootMargin 600px） |
+|---|---|---|
+| WebContent cputime 增量 | +5.5s | +5.0s（冷启动进程） |
+| 主线程忙样本 | 3452 | 3042（-12%） |
+| 绘制内同步解码（IIO callDecodeImage） | 624 | 550（-12%） |
+
+结构限制（待权衡）：`viewer-image://` 响应 `Cache-Control: no-store`
+（安全边界：评审图片字节不得落盘到项目外），WebKit 因此无法跨单元格重挂载
+复用解码位图，绘制主线程承担兜底同步解码。若要消除该项，需要把响应头改为
+`private, max-age=…` 之类并接受 WebKit 磁盘缓存——属安全边界变更，需 ADR。
+
 ### 2026-09-11 · Apple M4（Mac16,12，24GB）· macOS 26.5.2 · debug（cargo test profile）
 
 | 场景 | 数值 | 结论 |

@@ -27,9 +27,9 @@
   "bundle": {
     "active": true,
     "targets": ["app", "dmg"],
-    "resources": [
-      "../target/viewer-video-runtime/universal-apple-darwin/ViewerVideoRuntime"
-    ],
+    "resources": {
+      "../target/viewer-video-runtime/universal-apple-darwin/ViewerVideoRuntime": "ViewerVideoRuntime"
+    },
     "macOS": {
       "minimumSystemVersion": "13.0"
     }

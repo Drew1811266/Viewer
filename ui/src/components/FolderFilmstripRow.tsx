@@ -29,6 +29,13 @@ const OVERSCAN_CELLS = 6
 const OVERSCAN_PIXELS = 1_024
 /** 行进入挂载的提前量：整行提前 ~1.5 行挂载，列表 IPC 与首屏解码先于可见发生。 */
 const ROW_ROOT_MARGIN = '600px 0px'
+/**
+ * 纵向近邻门控（迟滞）：行滚出视口 1.5 行外仍保持挂载，超过 ~3.3 行才卸载
+ * 全部 `<img>`。viewer-image:// 是 no-store（安全边界），WebKit 无法跨重挂载
+ * 复用解码位图——若行滚过后图片永不离场，解码位图随访问行数无界累积
+ * （表现为越滑越卡、持续发热）。卸载把存活图片约束在近邻几行内。
+ */
+const ROW_NEAR_MARGIN = '1500px 0px'
 const SCROLLBAR_INLINE_INSET = 4
 const SCROLLBAR_MIN_THUMB_WIDTH = 36
 
@@ -105,6 +112,9 @@ export default function FolderFilmstripRow({
   const horizontalAnchor = useRef<HorizontalAnchor | null>(null)
   const requestSequence = useRef(0)
   const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined')
+  const [nearViewport, setNearViewport] = useState(
+    () => typeof IntersectionObserver === 'undefined',
+  )
   const [state, setState] = useState<RowState>({ status: 'idle' })
   const [viewport, setViewport] = useState({ scrollLeft: 0, width: 0 })
   const [focusedImageIndex, setFocusedImageIndex] = useState<number | null>(null)
@@ -114,16 +124,25 @@ export default function FolderFilmstripRow({
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined' || row.current === null) return
-    const observer = new IntersectionObserver(
+    const mountObserver = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return
         setVisible(true)
-        observer.disconnect()
+        mountObserver.disconnect()
       },
       { rootMargin: ROW_ROOT_MARGIN },
     )
-    observer.observe(row.current)
-    return () => observer.disconnect()
+    mountObserver.observe(row.current)
+    // 双向跟踪：行滚出近邻范围即卸载图片（解码位图有界），回到近邻即恢复。
+    const nearObserver = new IntersectionObserver(
+      (entries) => setNearViewport(entries.some((entry) => entry.isIntersecting)),
+      { rootMargin: ROW_NEAR_MARGIN },
+    )
+    nearObserver.observe(row.current)
+    return () => {
+      mountObserver.disconnect()
+      nearObserver.disconnect()
+    }
   }, [])
 
   const requestImages = useCallback(
@@ -232,7 +251,7 @@ export default function FolderFilmstripRow({
   }, [geometry, updateViewport])
 
   const imageWindow =
-    state.status === 'ready'
+    state.status === 'ready' && nearViewport
       ? expandImageWindow(
           horizontalVisibleIndexes(geometry, viewport.scrollLeft, viewport.width, OVERSCAN_PIXELS),
           geometry.items.length,

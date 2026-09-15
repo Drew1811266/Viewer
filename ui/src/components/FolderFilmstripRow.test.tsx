@@ -48,13 +48,21 @@ const mixedImages = [
   image(2, { width: 3, height: 2 }),
 ]
 
-let intersectionCallback: IntersectionObserverCallback | null = null
+interface TestObserverInstance {
+  callback: IntersectionObserverCallback
+  options?: IntersectionObserverInit
+  targets: Set<Element>
+}
+
+let registeredObservers: TestObserverInstance[] = []
+let lastObservedTarget: Element | null = null
 let intersectionOptions: IntersectionObserverInit | undefined
 let observedTargets = new Set<Element>()
 const originalIntersectionObserver = globalThis.IntersectionObserver
 
 afterEach(() => {
-  intersectionCallback = null
+  registeredObservers = []
+  lastObservedTarget = null
   intersectionOptions = undefined
   observedTargets = new Set()
   globalThis.IntersectionObserver = originalIntersectionObserver
@@ -63,36 +71,63 @@ afterEach(() => {
 function installIntersectionObserver() {
   class TestIntersectionObserver {
     readonly root = null
-    readonly rootMargin = '240px 0px'
+    readonly rootMargin: string
     readonly thresholds = [0]
+    readonly callback: IntersectionObserverCallback
+    readonly options?: IntersectionObserverInit
+    readonly targets = new Set<Element>()
 
     constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
-      intersectionCallback = callback
-      intersectionOptions = options
+      this.callback = callback
+      this.options = options
+      this.rootMargin = options?.rootMargin ?? '0px'
+      registeredObservers.push(this)
+      if (this.rootMargin === '600px 0px') {
+        intersectionOptions = options
+      }
     }
 
     disconnect() {
-      observedTargets.clear()
+      this.targets.clear()
     }
     observe(target: Element) {
-      observedTargets.add(target)
+      this.targets.add(target)
+      lastObservedTarget = target
+      if (this.rootMargin === '600px 0px') observedTargets.add(target)
     }
     takeRecords(): IntersectionObserverEntry[] {
       return []
     }
     unobserve(target: Element) {
-      observedTargets.delete(target)
+      this.targets.delete(target)
     }
   }
   globalThis.IntersectionObserver =
     TestIntersectionObserver as unknown as typeof IntersectionObserver
 }
 
+function rowTarget(): Element {
+  if (lastObservedTarget === null) throw new Error('No observed row is registered')
+  return lastObservedTarget
+}
+
 function revealRow() {
-  const target = observedTargets.values().next().value
-  if (target === undefined) throw new Error('No observed row is registered')
-  intersectionCallback?.(
-    [{ isIntersecting: true, target } as IntersectionObserverEntry],
+  const target = rowTarget()
+  for (const observer of registeredObservers) {
+    observer.callback(
+      [{ isIntersecting: true, target } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    )
+  }
+}
+
+function setRowNear(near: boolean) {
+  const nearObserver = registeredObservers.find(
+    (observer) => observer.options?.rootMargin === '1500px 0px',
+  )
+  if (nearObserver === undefined) throw new Error('near observer is not registered')
+  nearObserver.callback(
+    [{ isIntersecting: near, target: rowTarget() } as IntersectionObserverEntry],
     {} as IntersectionObserver,
   )
 }
@@ -206,6 +241,29 @@ describe('FolderFilmstripRow', () => {
     await filmstrip.findByRole('button', { name: '预览 image-1.jpg' })
     expect(screen.getByText('返工 · 4 条')).toBeVisible()
     expect(screen.getAllByText(/返工/)).toHaveLength(1)
+  })
+
+  // Regression: rows kept every image they had ever mounted forever (the
+  // image window is horizontal-only), so decoded bitmaps accumulated across
+  // visited rows — jank grew and the machine heated up the longer one
+  // scrolled. Far-offscreen rows must drop their images, and restore them
+  // without re-fetching the folder listing.
+  it('unmounts far-offscreen images and restores them without re-fetching the folder', async () => {
+    installIntersectionObserver()
+    const loadImages = vi.fn().mockResolvedValue(mixedImages)
+    renderRow({ loadImages })
+
+    act(revealRow)
+    const filmstrip = await screen.findByRole('region', { name: 'B01 图片' })
+    await waitFor(() => expect(within(filmstrip).getAllByRole('listitem')).toHaveLength(3))
+    expect(loadImages).toHaveBeenCalledTimes(1)
+
+    act(() => setRowNear(false))
+    expect(within(filmstrip).queryAllByRole('listitem')).toHaveLength(0)
+
+    act(() => setRowNear(true))
+    await waitFor(() => expect(within(filmstrip).getAllByRole('listitem')).toHaveLength(3))
+    expect(loadImages).toHaveBeenCalledTimes(1)
   })
 
   it('loads near the viewport and preserves folder navigation, source order, and preview context', async () => {

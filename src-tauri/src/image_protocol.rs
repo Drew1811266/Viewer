@@ -217,10 +217,18 @@ fn error_response(error: ProtocolError) -> Response<Vec<u8>> {
 }
 
 fn response(status: StatusCode, content_type: &str, body: Vec<u8>) -> Response<Vec<u8>> {
+    // ADR 0007: `private, max-age=60` keeps image reuse inside the WebContent
+    // process memory cache. `viewer-image://` is a custom scheme served by the
+    // WKURLSchemeHandler, which never touches WebKit's on-disk network cache —
+    // so image bytes stay out of persistent storage (the original no-store
+    // security goal) while repeat mounts reuse decoded bitmaps instead of
+    // re-decoding and re-copying them to the GPU process on every scroll pass.
+    // URLs are content-versioned (session + registry token), so a stale entry
+    // can never be served for changed image content.
     Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, content_type)
-        .header(header::CACHE_CONTROL, "no-store")
+        .header(header::CACHE_CONTROL, "private, max-age=60")
         .header("X-Content-Type-Options", "nosniff")
         .body(body)
         .expect("static image protocol response headers must be valid")
@@ -422,7 +430,10 @@ mod tests {
         let response = response_for_request(&resolver.resolver, &request);
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
-        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(
+            response.headers()[header::CACHE_CONTROL],
+            "private, max-age=60"
+        );
         assert_eq!(response.headers()["X-Content-Type-Options"], "nosniff");
         assert_eq!(response.body(), b"fixture artifact");
     }

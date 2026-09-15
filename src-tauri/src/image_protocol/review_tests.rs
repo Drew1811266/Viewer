@@ -140,7 +140,10 @@ fn review_workspace_serves_verified_bytes_even_if_evidence_path_is_replaced() {
     let response = response_for_request(&resolver, &request);
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
-    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    assert_eq!(
+        response.headers()[header::CACHE_CONTROL],
+        "private, max-age=60"
+    );
     assert_eq!(response.body(), verified.png());
 }
 

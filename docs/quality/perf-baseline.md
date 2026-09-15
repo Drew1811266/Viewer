@@ -38,10 +38,11 @@ Apple GPU 后再提升为必跑）。
 | 主线程忙样本 | 3452 | 3042（-12%） |
 | 绘制内同步解码（IIO callDecodeImage） | 624 | 550（-12%） |
 
-结构限制（待权衡）：`viewer-image://` 响应 `Cache-Control: no-store`
-（安全边界：评审图片字节不得落盘到项目外），WebKit 因此无法跨单元格重挂载
-复用解码位图，绘制主线程承担兜底同步解码。若要消除该项，需要把响应头改为
-`private, max-age=…` 之类并接受 WebKit 磁盘缓存——属安全边界变更，需 ADR。
+结构限制（已解决，ADR 0007）：`viewer-image://` 原响应 `Cache-Control:
+no-store`（安全边界：评审图片字节不得落盘到项目外），WebKit 因此无法跨单元格
+重挂载复用解码位图。2026-09-15 改为 `private, max-age=60`：自定义 scheme 不进
+WebKit 磁盘缓存，仅内存复用，落盘安全属性不变；重复滚动的重解码与位图拷贝
+（ShareableBitmap memmove）随之消除。
 
 ### 2026-09-15 · 纵向卸载修复后的累积性验证（60s 反复滚动，手工采样）
 

@@ -20,10 +20,9 @@ const THUMBNAIL_GAP = 8
 const FILMSTRIP_INLINE_PADDING = 12
 /**
  * 预挂载窗口（2026-09-15 滚动采样后加大）：viewer-image:// 响应是
- * Cache-Control: no-store（安全边界，见 image_protocol.rs），WebKit 无法跨
- * 重挂载复用解码位图，绘制期的兜底同步解码落在主线程（TileGrid paint 内
- * IIO callDecodeImage，约占忙时 30%）。更大的预挂载窗口让异步解码在单元格
- * 进入视口之前完成，把主线程兜底解码换成后台解码。
+ * Cache-Control: private, max-age=60（ADR 0007，内存缓存不落盘），重挂载可
+ * 复用已解码位图；更大的预挂载窗口仍让首次解码在单元格进入视口之前完成，
+ * 把主线程兜底解码换成后台解码。
  */
 const OVERSCAN_CELLS = 6
 const OVERSCAN_PIXELS = 1_024
@@ -31,9 +30,8 @@ const OVERSCAN_PIXELS = 1_024
 const ROW_ROOT_MARGIN = '600px 0px'
 /**
  * 纵向近邻门控（迟滞）：行滚出视口 1.5 行外仍保持挂载，超过 ~3.3 行才卸载
- * 全部 `<img>`。viewer-image:// 是 no-store（安全边界），WebKit 无法跨重挂载
- * 复用解码位图——若行滚过后图片永不离场，解码位图随访问行数无界累积
- * （表现为越滑越卡、持续发热）。卸载把存活图片约束在近邻几行内。
+ * 全部 `<img>`。卸载把存活图片约束在近邻几行内，限制实时渲染与请求规模；
+ * 重挂载的解码位图复用由 ADR 0007 的内存缓存承担（private, max-age=60）。
  */
 const ROW_NEAR_MARGIN = '1500px 0px'
 const SCROLLBAR_INLINE_INSET = 4

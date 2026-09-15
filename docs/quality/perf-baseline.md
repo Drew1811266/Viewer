@@ -44,6 +44,25 @@ no-store`（安全边界：评审图片字节不得落盘到项目外），WebKi
 WebKit 磁盘缓存，仅内存复用，落盘安全属性不变；重复滚动的重解码与位图拷贝
 （ShareableBitmap memmove）随之消除。
 
+### 2026-09-15 · 内存缓存协议头（ADR 0007）验证（30s 反复滚动，手工采样）
+
+同一滚动场景、同为 24817/24833 主线程样本的对照（改前 = content-visibility
+版，改后 = ADR 0007 版，用户协同滚动）：
+
+| 指标（30s 主线程样本） | no-store | private, max-age=60 | Δ |
+|---|---|---|---|
+| 主线程忙样本 | 4439 | 3957 | **-11%** |
+| IIO 解码 | 194 | 80 | **-59%** |
+| ShareableBitmap::createFromImagePixels + memmove | 170 | 129 | -24% |
+| TileGrid 绘制（drawInContext） | 418 | 342 | -18% |
+| paintContents | 397 | 306 | -23% |
+| dispatchEvent | 924 | 730 | -21% |
+| 布局（LocalFrameViewLayoutContext::layout） | 469 | 440 | -6% |
+
+WebContent RSS 60s 滚动采样 506→581MB 震荡无单调增长；cputime ~0.31 CPU 秒/
+滚动秒，速率不随时间加快。首次出现的图片仍需一次解码与位图拷贝（memmove
+残余 129），回看区域的复用收益符合预期。
+
 ### 2026-09-15 · 纵向卸载修复后的累积性验证（60s 反复滚动，手工采样）
 
 用户报告"开始丝滑、越滑越掉帧、机身发热"——根因：胶片行图片挂载窗口只按

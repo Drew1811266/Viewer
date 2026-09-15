@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ContentFolderCard, ThumbnailDensity } from '../api/types'
 import { defined } from '../defined'
@@ -159,6 +160,39 @@ describe('FolderFilmstripRow', () => {
 
     filmstrip.unmount()
     expect(signals.every((signal) => signal.aborted)).toBe(true)
+  })
+
+  // Regression: the dev entry renders under <StrictMode>, which runs every
+  // effect with a simulated unmount. A host-owned AbortController memoized
+  // with useMemo survives that simulated remount, so the reused signal is
+  // already aborted and every freshly mounted thumbnail rejected forever.
+  it('re-issues thumbnail requests with a live signal after StrictMode remount', async () => {
+    const signals: AbortSignal[] = []
+    const requestThumbnail = vi
+      .fn()
+      .mockImplementation(
+        (_file: BrowserFile, _maxPixels: number, _scaleMilli: number, signal?: AbortSignal) => {
+          if (signal !== undefined) signals.push(signal)
+          return Promise.resolve('viewer-image://thumbnail')
+        },
+      )
+    render(
+      <StrictMode>
+        <FolderFilmstripRow
+          folder={{ ...folder, imageCount: mixedImages.length }}
+          density="standard"
+          loadImages={vi.fn().mockResolvedValue(mixedImages)}
+          requestThumbnail={requestThumbnail}
+          onSelect={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      </StrictMode>,
+    )
+    const filmstrip = await screen.findByRole('region', { name: 'B01 图片' })
+
+    await waitFor(() => expect(filmstrip.querySelectorAll('img')).toHaveLength(mixedImages.length))
+    expect(requestThumbnail.mock.calls.length).toBeGreaterThan(mixedImages.length)
+    expect(signals.some((signal) => !signal.aborted)).toBe(true)
   })
 
   it('shows feedback counts only on affected filmstrip images', async () => {

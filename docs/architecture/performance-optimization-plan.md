@@ -11,6 +11,13 @@
 挂载项持有 AbortController，卸载即取消；`usePrefetchOnScroll`（rAF 节流 + 120ms
 静止判定 + 快甩不预取 + 反向 abort）接入 `FolderOverview`，预取相邻行前 6 张
 经 IPC `priority:'prefetch'` 进调度器低优先级队列。
+实现修正（2026-09-15）：M2 的"宿主（FilmstripThumbnail）以 useMemo 持有
+AbortController"与 React StrictMode 不兼容——模拟卸载的 effect 清理会 abort 该
+controller，而 useMemo 值跨模拟重挂载存活，重跑的 effect 拿到已 aborted 的信号，
+dev 构建下全部缩略图请求被永久拒绝（仅缓存命中能显示）。修正为
+`AspectThumbnail` 每次请求在 effect 内自持 AbortController（cleanup 中 abort，
+模拟重挂载拿到全新信号），宿主 `signal` 降级为可选的外部取消触发器级联；
+`FilmstripThumbnail` 不再持有 controller。卸载取消/预取取消语义不变。
 落地记录：M3（方案三）已实现 —— 复用 platform 既有 `MacMemoryPressureMonitor`
 （dispatch2 已在依赖树，未新增依赖）：`SessionCache::apply_memory_pressure`
 （warn=limit/4、critical=limit/16、normal 恢复，只收缩派生图像 LRU）+

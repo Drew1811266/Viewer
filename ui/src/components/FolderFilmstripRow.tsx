@@ -46,8 +46,10 @@ interface FilmstripThumbnailProps {
 }
 
 /**
- * 单个挂载缩略图的宿主：为每个挂载项持有一个 AbortController，
- * 卸载（滚出视口 / 行卸载）即取消在途解码请求，把调度器槽位让给新方向。
+ * 单个挂载缩略图的宿主。卸载即取消由 AspectThumbnail 内部的请求控制器完成
+ * （StrictMode 模拟卸载安全）；宿主不再持有可能跨模拟重挂载存活的
+ * AbortController——那会让重跑的 effect 拿到已 aborted 的信号，
+ * 所有缩略图请求被永久拒绝。
  */
 function FilmstripThumbnail({
   file,
@@ -57,9 +59,6 @@ function FilmstripThumbnail({
   requestThumbnail,
   onNaturalDimensions,
 }: FilmstripThumbnailProps) {
-  const identityKey = `${file.entityId}:${file.modifiedNs}`
-  const controller = useMemo(() => new AbortController(), [identityKey])
-  useEffect(() => () => controller.abort(), [controller])
   return (
     <AspectThumbnail
       file={file}
@@ -67,7 +66,6 @@ function FilmstripThumbnail({
       height={imageHeight}
       dimensionsKnown={validDimensions(dimensions)}
       loadThumbnail={requestThumbnail}
-      signal={controller.signal}
       onNaturalDimensions={onNaturalDimensions}
     />
   )

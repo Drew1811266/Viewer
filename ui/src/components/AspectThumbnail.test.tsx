@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile } from '../api/types'
 import AspectThumbnail from './AspectThumbnail'
@@ -201,12 +202,50 @@ describe('AspectThumbnail', () => {
       />,
     )
 
-    await waitFor(() => expect(loadThumbnail).toHaveBeenCalledWith(file, 4_096, 4_000, undefined))
+    await waitFor(() => expect(loadThumbnail).toHaveBeenCalled())
+    expect(loadThumbnail.mock.calls[0]?.slice(0, 3)).toEqual([file, 4_096, 4_000])
+    expect(loadThumbnail.mock.calls[0]?.[3]).toBeInstanceOf(AbortSignal)
   })
 
-  it('passes the host-managed abort signal to the loader', async () => {
+  it('keeps the request signal live across a StrictMode simulated remount', async () => {
+    const signals: AbortSignal[] = []
+    const loadThumbnail = vi
+      .fn()
+      .mockImplementation(
+        (_file: BrowserFile, _maxPixels: number, _scaleMilli: number, signal?: AbortSignal) => {
+          if (signal !== undefined) signals.push(signal)
+          return Promise.resolve('viewer-image://thumbnail')
+        },
+      )
+    render(
+      <StrictMode>
+        <AspectThumbnail
+          file={file}
+          width={120}
+          height={80}
+          dimensionsKnown
+          loadThumbnail={loadThumbnail}
+          onNaturalDimensions={vi.fn()}
+        />
+      </StrictMode>,
+    )
+
+    await waitFor(() => expect(loadThumbnail).toHaveBeenCalledTimes(2))
+    expect(signals).toHaveLength(2)
+    expect(signals[1]).not.toBe(signals[0])
+    expect(signals[1]?.aborted).toBe(false)
+  })
+
+  it('cancels the in-flight request when the host abort signal fires', async () => {
     const controller = new AbortController()
-    const loadThumbnail = vi.fn().mockResolvedValue('viewer-image://thumbnail')
+    const loadThumbnail = vi
+      .fn()
+      .mockImplementation(
+        (_file: BrowserFile, _maxPixels: number, _scaleMilli: number, signal?: AbortSignal) => {
+          expect(signal).toBeInstanceOf(AbortSignal)
+          return Promise.resolve('viewer-image://thumbnail')
+        },
+      )
     render(
       <AspectThumbnail
         file={file}
@@ -219,9 +258,12 @@ describe('AspectThumbnail', () => {
       />,
     )
 
-    await waitFor(() =>
-      expect(loadThumbnail).toHaveBeenCalledWith(file, 120, 1_000, controller.signal),
-    )
+    await waitFor(() => expect(loadThumbnail).toHaveBeenCalled())
+    const internalSignal = loadThumbnail.mock.calls[0]?.[3]
+    expect(internalSignal).toBeInstanceOf(AbortSignal)
+    expect(internalSignal?.aborted).toBe(false)
+    controller.abort()
+    expect(internalSignal?.aborted).toBe(true)
   })
 
   it('ignores an obsolete thumbnail completion after the file identity changes', async () => {

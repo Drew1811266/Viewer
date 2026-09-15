@@ -14,7 +14,7 @@ export interface AspectThumbnailProps {
     scaleMilli: number,
     signal?: AbortSignal,
   ) => Promise<string>
-  /** 由宿主管理的生命周期信号：宿主在卸载/方向反转时 abort，组件本身不主动取消。 */
+  /** 宿主取消触发器：abort 时级联取消在途请求；请求生命周期由组件自持。 */
   signal?: AbortSignal
   onNaturalDimensions: (
     identity: { entityId: string; modifiedNs: string },
@@ -49,7 +49,15 @@ export default function AspectThumbnail({
     setState((current) =>
       current.identityKey === identityKey ? current : { status: 'loading', identityKey },
     )
-    void loadThumbnail(file, requestSize.maxPixels, requestSize.scaleMilli, signal).then(
+    // 每次请求自持生命周期控制器：StrictMode 的模拟卸载会重跑 effect，
+    // 重跑后仍能拿到全新信号（宿主持有的 controller 会被第一次清理 abort
+    // 且 useMemo 跨模拟重挂载存活，导致重挂载后全部请求以 aborted 拒绝）。
+    // 宿主 signal 只作外部取消触发器级联进内部控制器。
+    const controller = new AbortController()
+    const onHostAbort = () => controller.abort()
+    if (signal?.aborted) onHostAbort()
+    signal?.addEventListener('abort', onHostAbort)
+    void loadThumbnail(file, requestSize.maxPixels, requestSize.scaleMilli, controller.signal).then(
       (url) => {
         if (active) setState({ status: 'ready', identityKey, url })
       },
@@ -59,6 +67,8 @@ export default function AspectThumbnail({
     )
     return () => {
       active = false
+      signal?.removeEventListener('abort', onHostAbort)
+      controller.abort()
     }
   }, [file, height, identityKey, loadThumbnail, signal, width])
 

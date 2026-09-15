@@ -197,6 +197,17 @@ describe('FolderFilmstripRow', () => {
     expect(signals.every((signal) => signal.aborted)).toBe(true)
   })
 
+  // Regression: with content-visibility: auto (app.css), skipped rows keep
+  // their box via contain-intrinsic-size; the inline value must track the
+  // density so the scrollbar does not jump when rows first render.
+  it('carries a density-aware contain-intrinsic-size matching min-height', () => {
+    const { container } = renderRow({ density: 'large' })
+    const row = container.querySelector<HTMLElement>('.folder-filmstrip-row')
+    if (row === null) throw new Error('row is not rendered')
+    expect(row.style.minHeight).toBe('192px')
+    expect(row.style.containIntrinsicSize).toBe('auto 192px')
+  })
+
   // Regression: the dev entry renders under <StrictMode>, which runs every
   // effect with a simulated unmount. A host-owned AbortController memoized
   // with useMemo survives that simulated remount, so the reused signal is

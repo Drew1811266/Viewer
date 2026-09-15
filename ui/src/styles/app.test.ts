@@ -526,6 +526,9 @@ describe('workspace style contracts', () => {
     expect(row?.declarations).toMatchObject({
       display: 'grid',
       'grid-template-columns': '112px minmax(0, 1fr)',
+      // 视口外行跳过布局与绘制（滚动掉帧优化，2026-09-15 采样后落地）。
+      'content-visibility': 'auto',
+      'contain-intrinsic-size': 'auto 156px',
     })
     expect(shell?.declarations).toMatchObject({
       'min-width': '0',

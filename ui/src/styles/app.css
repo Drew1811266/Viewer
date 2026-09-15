@@ -1431,6 +1431,8 @@ body:has(.viewer-inspector) .global-notice-stack {
   display: grid;
   grid-template-columns: 112px minmax(0, 1fr);
   min-height: 156px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 156px;
 }
 
 .folder-filmstrip-shell {

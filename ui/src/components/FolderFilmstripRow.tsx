@@ -38,6 +38,14 @@ const ROW_ROOT_MARGIN = '600px 0px'
 const ROW_NEAR_MARGIN = '1500px 0px'
 const SCROLLBAR_INLINE_INSET = 4
 const SCROLLBAR_MIN_THUMB_WIDTH = 36
+/**
+ * 2026-09-15 滚动采样：视口外行的布局（LocalFrameViewLayoutContext）与图层
+ * 绘制（paintReachableBackingStoreContents）是主线程忙时大头，而所有行永久
+ * 挂载（FolderOverview 不做行级虚拟化）。app.css 给行加的
+ * content-visibility: auto 让 WebKit 跳过视口外行的内容布局与绘制；组件按
+ * 密度内联 contain-intrinsic-size（初值 = minHeight），`auto` 关键字在首次
+ * 渲染后记住真实高度，避免滚动条跳动。
+ */
 
 interface FolderFilmstripRowProps {
   folder: ContentFolderCard
@@ -288,7 +296,12 @@ export default function FolderFilmstripRow({
     <article
       ref={row}
       className="folder-filmstrip-row"
-      style={{ minHeight: `${imageHeight + 24}px` }}
+      style={{
+        minHeight: `${imageHeight + 24}px`,
+        // 与 CSS 的 content-visibility: auto 配套：按密度给出占位高度，
+        // 首次渲染后 WebKit 用 `auto` 记住的真实高度覆盖该估计值。
+        containIntrinsicSize: `auto ${imageHeight + 24}px`,
+      }}
     >
       <button
         type="button"

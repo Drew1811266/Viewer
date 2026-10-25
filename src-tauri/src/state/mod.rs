@@ -26,8 +26,8 @@ pub use viewer_infrastructure::session_cache::MemoryPressureLevel;
 use crate::{
     dto::{
         FolderTreeItemDto, FolderWorkspaceDto, ImageRepresentationDto, IndexProgressDto,
-        MarkerBatchResultDto, ProjectSnapshot, RecoveryReportDto, SearchPageDto, SelectionInfoDto,
-        TextPreviewDto, TextPreviewFormatDto, TextSnippetDto,
+        MarkerBatchResultDto, ProjectSnapshot, RecoveryReportDto, SaveTextResultDto, SearchPageDto,
+        SelectionInfoDto, TextPreviewDto, TextPreviewFormatDto, TextSnippetDto,
     },
     error::{CommandError, ErrorCategory, stale_search_revision},
     image_protocol::ActiveImageSession,
@@ -57,7 +57,8 @@ use viewer_application::{
     ActiveProject, BrowseIndexPort, BrowseService, ClockPort, ImageError, ImagePort, ImageRequest,
     ImageRequestCancellation, PreparedFinderDrag, ProjectAccess, ProjectOpenError,
     ProjectProbeError, ProjectProbePort, ProjectSessionService, ScanPort, SearchPort,
-    SearchSnippetPort, TextEncoding, TextPreviewPort, VolumePort,
+    SearchSnippetPort, TextEncoding, TextNewlineStyle, TextPreviewPort, TextSavePort,
+    TextSaveRequest, VolumePort,
     file_commands::{
         BatchId, BatchProgress, BatchResultPage, ConflictResolution, FileCommand, FileCommandItem,
         FileCommandKind, FileCommandPreflight, FileCommandService,
@@ -96,6 +97,7 @@ use viewer_infrastructure::{
     },
     session_cache::{CachedImage, SessionCache},
     text::preview::TextPreviewReader,
+    text::writer::AtomicTextWriter,
     video_probe::{UnavailableVideoProbe, VideoMetadataProbe},
 };
 use viewer_platform_macos::{
@@ -287,6 +289,7 @@ struct DesktopSession {
     file_undo_port: Arc<dyn UndoFilePort>,
     operations: Option<Arc<OperationRuntime>>,
     watcher: Option<WatcherRuntime>,
+    reconciler: Arc<viewer_infrastructure::scan::reconcile_service::ProjectReconciler>,
     search_revision: Arc<AtomicU64>,
     image: Arc<dyn ImagePort>,
     scan_task_id: TaskId,
@@ -356,6 +359,7 @@ pub struct DesktopRuntime {
     image_registry: Arc<ImageArtifactRegistry>,
     active_image_session: ActiveImageSession,
     text_reader: Arc<dyn TextPreviewPort>,
+    text_writer: Arc<dyn TextSavePort>,
     clock: Arc<dyn ClockPort>,
     marker_projection_factory: Arc<dyn DesktopMarkerProjectionFactory>,
     video_probe: Arc<dyn VideoMetadataProbe>,
@@ -535,6 +539,7 @@ impl DesktopRuntime {
             image_registry,
             active_image_session,
             text_reader: Arc::new(TextPreviewReader),
+            text_writer: Arc::new(AtomicTextWriter),
             clock,
             marker_projection_factory,
             video_probe,

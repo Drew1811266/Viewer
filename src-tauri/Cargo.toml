@@ -113,3 +113,7 @@ path = "../tests/image_render_performance_gate.rs"
 [[test]]
 name = "perf_memory_pressure"
 path = "../tests/perf_memory_pressure.rs"
+
+[[test]]
+name = "text_save_boundaries"
+path = "../tests/text_save_boundaries.rs"

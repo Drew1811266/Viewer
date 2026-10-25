@@ -338,13 +338,13 @@ impl DesktopRuntime {
                 )
                 .map_err(|_| operation_backend_unavailable())?,
             );
-            WatcherRuntime::start(
+            let watcher = WatcherRuntime::start(
                 active.root.clone(),
                 active.session_id,
                 active.generation,
                 Arc::new(MacWatcherPort),
                 expected_changes,
-                reconciler,
+                Arc::clone(&reconciler),
                 Arc::clone(&self.clock),
                 Arc::clone(&self.events),
                 scan_ready_rx,
@@ -359,10 +359,11 @@ impl DesktopRuntime {
                     review_changes: review_changes.clone(),
                 }),
             )
-            .map_err(|_| operation_backend_unavailable())
+            .map_err(|_| operation_backend_unavailable())?;
+            Ok((watcher, reconciler))
         })();
-        let watcher = match watcher_result {
-            Ok(watcher) => Some(watcher),
+        let (watcher, reconciler) = match watcher_result {
+            Ok((watcher, reconciler)) => (Some(watcher), reconciler),
             Err(error) => {
                 review.shutdown().await;
                 cancel_video_worker_before_session_teardown(video_index.as_ref()).await;
@@ -418,6 +419,7 @@ impl DesktopRuntime {
             file_undo_port,
             operations,
             watcher,
+            reconciler,
             search_revision: Arc::new(AtomicU64::new(0)),
             image,
             scan_task_id,

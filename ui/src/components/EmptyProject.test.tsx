@@ -28,6 +28,8 @@ function bridge(): ViewerBridge {
     queryFolder: vi.fn().mockResolvedValue({ workspace: 'empty' }),
     requestImage: vi.fn(),
     previewText: vi.fn(),
+    saveText: vi.fn(),
+    renderMarkdown: vi.fn(),
     openExternalLink: vi.fn(),
     revealProjectInFileManager: vi.fn(),
     cancelTask: vi.fn().mockResolvedValue(false),

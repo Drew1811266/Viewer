@@ -1,6 +1,7 @@
 use super::*;
 use std::collections::{VecDeque, hash_map::Entry};
 use tokio_util::sync::CancellationToken;
+use viewer_application::watcher::{ReconcileReason, ReconcileRequest};
 use viewer_domain::video::VideoProbeStatus;
 use viewer_infrastructure::video_probe::{MediaFileIdentity, VideoProbeError};
 
@@ -450,6 +451,77 @@ impl DesktopRuntime {
         })
     }
 
+    pub async fn save_text(
+        &self,
+        entity_id: EntityId,
+        content: String,
+        expected_fingerprint: String,
+        newline_style: TextNewlineStyle,
+        acknowledge_encoding_conversion: bool,
+    ) -> Result<SaveTextResultDto, CommandError> {
+        let (active, index, reconciler) = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or_else(project_not_open)?;
+            (
+                session.active.clone(),
+                Arc::clone(&session.index),
+                Arc::clone(&session.reconciler),
+            )
+        };
+        if active.access != ProjectAccess::ReadWrite {
+            return Err(project_read_only_operation());
+        }
+        let node = BrowseIndexPort::node(index.as_ref(), entity_id)
+            .map_err(CommandError::from)?
+            .ok_or_else(text_not_found)?;
+        if !matches!(node.kind, FileKind::Markdown | FileKind::Text) {
+            return Err(text_not_found());
+        }
+        let (source, _, _) =
+            validated_indexed_source(&active, &node).map_err(|()| text_not_found())?;
+        let writer = Arc::clone(&self.text_writer);
+        let write_source = source.clone();
+        let outcome = tokio::task::spawn_blocking(move || {
+            writer.save(TextSaveRequest {
+                source: &write_source,
+                content: &content,
+                expected_fingerprint: &expected_fingerprint,
+                newline_style,
+                acknowledge_encoding_conversion,
+            })
+        })
+        .await
+        .map_err(|_| internal_command_error())?
+        .map_err(CommandError::from)?;
+
+        // The atomic rename installs a fresh inode at the path. Run the
+        // canonical scoped reconcile for the file's folder so the session
+        // index, derived values, and portable markers all re-attach to the
+        // new identity exactly as they would for a watcher-driven change.
+        let parent = source
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .ok_or_else(text_not_found)?;
+        reconciler
+            .reconcile(ReconcileRequest {
+                session_id: active.session_id,
+                generation: active.generation,
+                roots: vec![parent],
+                reason: ReconcileReason::ExternalChange,
+            })
+            .await
+            .map_err(|_| internal_command_error())?;
+        let refreshed = BrowseIndexPort::node_by_relative_path(index.as_ref(), &node.relative_path)
+            .map_err(CommandError::from)?
+            .ok_or_else(text_not_found)?;
+
+        self.ensure_session_active(active.session_id).await?;
+        Ok(SaveTextResultDto {
+            fingerprint: outcome.fingerprint,
+            entity_id: refreshed.entity_id.to_string(),
+        })
+    }
+
     pub async fn preview_text(
         &self,
         entity_id: EntityId,
@@ -486,6 +558,8 @@ impl DesktopRuntime {
                 markdown_html: None,
                 encoding: preview.encoding,
                 truncated: preview.truncated,
+                fingerprint: preview.fingerprint,
+                uses_crlf: preview.uses_crlf,
             });
         }
 
@@ -524,13 +598,16 @@ impl DesktopRuntime {
         }
 
         self.ensure_session_active(active.session_id).await?;
+        let markdown_html = render_safe_markdown(&preview.text, &images);
         Ok(TextPreviewDto {
             entity_id: entity_id.to_string(),
             format: TextPreviewFormatDto::Markdown,
-            plain_text: None,
-            markdown_html: Some(render_safe_markdown(&preview.text, &images)),
+            plain_text: Some(preview.text),
+            markdown_html: Some(markdown_html),
             encoding: preview.encoding,
             truncated: preview.truncated,
+            fingerprint: preview.fingerprint,
+            uses_crlf: preview.uses_crlf,
         })
     }
 

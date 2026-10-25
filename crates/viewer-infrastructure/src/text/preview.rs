@@ -52,6 +52,8 @@ impl TextPreviewPort for TextPreviewReader {
             text: normalize_newlines(text),
             encoding,
             truncated,
+            fingerprint: blake3::hash(bounded).to_hex().to_string(),
+            uses_crlf: bounded.windows(2).any(|window| window == b"\r\n"),
         })
     }
 }

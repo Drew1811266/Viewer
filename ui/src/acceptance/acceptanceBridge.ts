@@ -65,10 +65,12 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
         return {
           entityId,
           format: 'markdown' as const,
-          plainText: null,
+          plainText: '# Viewer 视觉验收\n\n确定性的 Markdown 预览内容。',
           markdownHtml: '<h1>Viewer 视觉验收</h1><p>确定性的 Markdown 预览内容。</p>',
           encoding: 'utf8' as const,
           truncated: false,
+          fingerprint: `acceptance-fingerprint-${entityId}`,
+          usesCrlf: false,
         }
       }
       if (file.kind === 'text') {
@@ -79,9 +81,20 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
           markdownHtml: null,
           encoding: 'utf8' as const,
           truncated: false,
+          fingerprint: `acceptance-fingerprint-${entityId}`,
+          usesCrlf: false,
         }
       }
       return unexpected('previewText')
+    },
+    async saveText({ entityId }) {
+      return {
+        fingerprint: `acceptance-fingerprint-${entityId}`,
+        entityId,
+      }
+    },
+    async renderMarkdown() {
+      return '<h1>Viewer 视觉验收</h1><p>确定性的 Markdown 预览内容。</p>'
     },
     async openExternalLink() {
       return undefined

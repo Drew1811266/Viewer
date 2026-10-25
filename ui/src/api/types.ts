@@ -316,6 +316,23 @@ export interface TextPreview {
   markdownHtml: string | null
   encoding: TextEncoding
   truncated: boolean
+  fingerprint: string
+  usesCrlf: boolean
+}
+
+export type TextNewlineStyle = 'lf' | 'crlf'
+
+export interface SaveTextResult {
+  fingerprint: string
+  entityId: string
+}
+
+export interface SaveTextRequest {
+  entityId: string
+  content: string
+  expectedFingerprint: string
+  newlineStyle: TextNewlineStyle
+  acknowledgeEncodingConversion: boolean
 }
 
 export interface ViewerCommandError {

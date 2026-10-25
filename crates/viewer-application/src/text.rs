@@ -16,6 +16,13 @@ pub struct TextPreview {
     pub text: String,
     pub encoding: TextEncoding,
     pub truncated: bool,
+    /// blake3 fingerprint (hex) of the bounded bytes the preview decoded; a
+    /// save must echo it back so the writer can refuse blind overwrites of
+    /// externally modified files (ADR 0008).
+    pub fingerprint: String,
+    /// Whether the source bytes contained CRLF line endings, so an edited
+    /// save can round-trip the original newline style.
+    pub uses_crlf: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
@@ -32,4 +39,43 @@ pub trait TextPreviewPort: Send + Sync {
         source: &Path,
         encoding: Option<TextEncoding>,
     ) -> Result<TextPreview, TextPreviewError>;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextNewlineStyle {
+    Lf,
+    Crlf,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct TextSaveRequest<'a> {
+    pub source: &'a Path,
+    pub content: &'a str,
+    pub expected_fingerprint: &'a str,
+    pub newline_style: TextNewlineStyle,
+    pub acknowledge_encoding_conversion: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextSaveOutcome {
+    /// blake3 fingerprint (hex) of the newly written bytes; the caller keeps
+    /// it as the expected fingerprint for the next save of the same load.
+    pub fingerprint: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum TextSaveError {
+    #[error("text file could not be written: {0}")]
+    Io(String),
+    #[error("text file changed since it was loaded")]
+    Conflict,
+    #[error("text file is too large to edit")]
+    TooLarge,
+    #[error("saving requires an explicit encoding conversion acknowledgement")]
+    EncodingAcknowledgementRequired,
+}
+
+pub trait TextSavePort: Send + Sync {
+    fn save(&self, request: TextSaveRequest<'_>) -> Result<TextSaveOutcome, TextSaveError>;
 }

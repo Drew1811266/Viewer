@@ -261,6 +261,8 @@ pub fn run() {
             commands::browse::request_image_representation,
             commands::browse::cancel_image_request,
             commands::preview::preview_text,
+            commands::preview::save_text,
+            commands::preview::render_markdown,
             commands::preview::open_external_link,
             commands::search::search_project,
             commands::search::search_text_snippet,

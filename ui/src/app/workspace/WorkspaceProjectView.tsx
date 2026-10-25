@@ -737,6 +737,9 @@ function WorkspaceOverlays({
           files={viewing.activeTextPreviewFiles}
           unavailableEntityIds={viewing.unavailablePreviewEntityIds}
           requestPreview={viewing.requestTextPreview}
+          saveText={viewing.saveText}
+          renderMarkdown={viewing.renderMarkdown}
+          projectReadOnly={project.access === 'read_only'}
           openExternalLink={viewing.openExternalLink}
           onClose={viewing.closePreview}
           onTaskChange={feedback.setTextTask}

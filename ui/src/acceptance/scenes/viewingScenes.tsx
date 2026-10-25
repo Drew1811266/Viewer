@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   BrowserFile,
   ImageRepresentationRequest,
+  SaveTextRequest,
+  SaveTextResult,
   SelectionInfo,
   TextEncoding,
   TextPreview as TextPreviewDto,
@@ -377,6 +379,9 @@ function TextScene({ state }: { state: TextState }) {
       <TextPreview
         files={[MARKDOWN_FILE]}
         requestPreview={requestMarkdown}
+        saveText={acceptanceSaveText}
+        renderMarkdown={acceptanceRenderMarkdown}
+        projectReadOnly={false}
         openExternalLink={openExternalLink}
         onClose={noOp}
       />
@@ -387,6 +392,9 @@ function TextScene({ state }: { state: TextState }) {
       <TextPreview
         files={[GB18030_FILE]}
         requestPreview={requestEncodingRequired}
+        saveText={acceptanceSaveText}
+        renderMarkdown={acceptanceRenderMarkdown}
+        projectReadOnly={false}
         openExternalLink={openExternalLink}
         onClose={noOp}
       />
@@ -397,6 +405,9 @@ function TextScene({ state }: { state: TextState }) {
       <TextPreview
         files={[LARGE_TEXT_FILE]}
         requestPreview={requestTruncatedText}
+        saveText={acceptanceSaveText}
+        renderMarkdown={acceptanceRenderMarkdown}
+        projectReadOnly={false}
         openExternalLink={openExternalLink}
         onClose={noOp}
       />
@@ -407,6 +418,9 @@ function TextScene({ state }: { state: TextState }) {
       <TextPreview
         files={[MARKDOWN_FILE, PLAIN_FILE]}
         requestPreview={requestTextByKind}
+        saveText={acceptanceSaveText}
+        renderMarkdown={acceptanceRenderMarkdown}
+        projectReadOnly={false}
         openExternalLink={openExternalLink}
         onClose={noOp}
       />
@@ -416,6 +430,9 @@ function TextScene({ state }: { state: TextState }) {
     <TextPreview
       files={[PLAIN_FILE]}
       requestPreview={requestPlainText}
+      saveText={acceptanceSaveText}
+      renderMarkdown={acceptanceRenderMarkdown}
+      projectReadOnly={false}
       openExternalLink={openExternalLink}
       onClose={noOp}
     />
@@ -439,6 +456,13 @@ async function failedImage(): Promise<never> {
   throw new Error('Acceptance image fixture is unavailable')
 }
 
+const acceptanceSaveText = async ({ entityId }: SaveTextRequest): Promise<SaveTextResult> => ({
+  fingerprint: `acceptance-fingerprint-${entityId}`,
+  entityId,
+})
+const acceptanceRenderMarkdown = async (): Promise<string> =>
+  '<h1>Viewer 视觉验收</h1><p>确定性的 Markdown 预览内容。</p>'
+
 async function requestMarkdown(file: BrowserFile): Promise<TextPreviewDto> {
   return {
     entityId: file.entityId,
@@ -448,6 +472,8 @@ async function requestMarkdown(file: BrowserFile): Promise<TextPreviewDto> {
       '<h1>Viewer 视觉验收</h1><p>这是经过净化的 Markdown 内容。</p><p><a href="https://example.com">外部链接</a></p>',
     encoding: 'utf8',
     truncated: false,
+    fingerprint: `acceptance-fingerprint-${file.entityId}`,
+    usesCrlf: false,
   }
 }
 
@@ -459,6 +485,8 @@ async function requestPlainText(file: BrowserFile): Promise<TextPreviewDto> {
     markdownHtml: null,
     encoding: 'utf8',
     truncated: false,
+    fingerprint: `acceptance-fingerprint-${file.entityId}`,
+    usesCrlf: false,
   }
 }
 

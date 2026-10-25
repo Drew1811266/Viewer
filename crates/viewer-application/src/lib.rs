@@ -80,7 +80,8 @@ pub use settings::{
     ViewerSettingsService,
 };
 pub use text::{
-    MAX_TEXT_PREVIEW_BYTES, TextEncoding, TextPreview, TextPreviewError, TextPreviewPort,
+    MAX_TEXT_PREVIEW_BYTES, TextEncoding, TextNewlineStyle, TextPreview, TextPreviewError,
+    TextPreviewPort, TextSaveError, TextSaveOutcome, TextSavePort, TextSaveRequest,
 };
 pub use video::{
     EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekIntent, SeekRequest,

@@ -38,6 +38,8 @@ describe('Viewer visual acceptance bridge', () => {
         'preflightFileCommand',
         'previewRename',
         'previewText',
+        'saveText',
+        'renderMarkdown',
         'projectSnapshot',
         'queryFolder',
         'requestImage',

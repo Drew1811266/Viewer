@@ -7,6 +7,8 @@ export type PreviewDataPort = Pick<
   | 'queryFolder'
   | 'requestImage'
   | 'previewText'
+  | 'saveText'
+  | 'renderMarkdown'
   | 'openExternalLink'
   | 'videoRequestCover'
   | 'listenMemoryPressure'
@@ -74,6 +76,8 @@ export function createWorkspacePorts(bridge: ViewerBridge): WorkspacePorts {
       queryFolder: bridge.queryFolder,
       requestImage: bridge.requestImage,
       previewText: bridge.previewText,
+      saveText: bridge.saveText,
+      renderMarkdown: bridge.renderMarkdown,
       openExternalLink: bridge.openExternalLink,
       videoRequestCover: bridge.videoRequestCover,
       listenMemoryPressure: bridge.listenMemoryPressure,

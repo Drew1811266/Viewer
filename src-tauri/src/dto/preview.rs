@@ -79,6 +79,15 @@ pub struct TextPreviewDto {
     pub markdown_html: Option<String>,
     pub encoding: viewer_application::TextEncoding,
     pub truncated: bool,
+    pub fingerprint: String,
+    pub uses_crlf: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveTextResultDto {
+    pub fingerprint: String,
+    pub entity_id: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]

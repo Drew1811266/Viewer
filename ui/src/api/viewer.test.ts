@@ -23,6 +23,33 @@ afterEach(() => {
 })
 
 describe('tauriViewerBridge', () => {
+  it('saveText invokes the save_text command with the full request payload', async () => {
+    await tauriViewerBridge.saveText({
+      entityId: 'entity-1',
+      content: '# edited\n',
+      expectedFingerprint: 'fingerprint-1',
+      newlineStyle: 'crlf',
+      acknowledgeEncodingConversion: true,
+    })
+
+    expect(invoke).toHaveBeenCalledWith('save_text', {
+      entityId: 'entity-1',
+      content: '# edited\n',
+      expectedFingerprint: 'fingerprint-1',
+      newlineStyle: 'crlf',
+      acknowledgeEncodingConversion: true,
+    })
+  })
+
+  it('renderMarkdown invokes the render_markdown command with the content', async () => {
+    invoke.mockResolvedValue('<h1>标题</h1>')
+
+    const html = await tauriViewerBridge.renderMarkdown('# 标题')
+
+    expect(invoke).toHaveBeenCalledWith('render_markdown', { content: '# 标题' })
+    expect(html).toBe('<h1>标题</h1>')
+  })
+
   it('exposes one typed image render command and one semantic event transport', async () => {
     const handler = vi.fn()
     const unlisten = vi.fn()

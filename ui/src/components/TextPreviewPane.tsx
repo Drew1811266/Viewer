@@ -1,7 +1,13 @@
-import type { MouseEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { BrowserFile, TextEncoding, TextPreview as TextPreviewDto } from '../api/types'
+import type {
+  BrowserFile,
+  SaveTextRequest,
+  SaveTextResult,
+  TextEncoding,
+  TextPreview as TextPreviewDto,
+} from '../api/types'
 import { safeUserMessage } from '../api/viewer'
+import MarkdownDocumentEditor from './textPreview/MarkdownDocumentEditor'
 import ViewerField from './ui/ViewerField'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
@@ -11,6 +17,9 @@ export interface TextPreviewPaneProps {
   file: BrowserFile
   unavailable: boolean
   requestPreview(file: BrowserFile, encoding?: TextEncoding): Promise<TextPreviewDto>
+  saveText(request: SaveTextRequest): Promise<SaveTextResult>
+  renderMarkdown(content: string): Promise<string>
+  projectReadOnly: boolean
   openExternalLink(url: string): Promise<void>
   onStatusChange(entityId: string, status: TextPaneStatus): void
 }
@@ -19,6 +28,9 @@ export default function TextPreviewPane({
   file,
   unavailable,
   requestPreview,
+  saveText,
+  renderMarkdown,
+  projectReadOnly,
   openExternalLink,
   onStatusChange,
 }: TextPreviewPaneProps) {
@@ -30,14 +42,16 @@ export default function TextPreviewPane({
   const headingId = `text-pane-heading-${file.entityId}`
 
   const load = useCallback(
-    async (encoding?: TextEncoding) => {
+    async (encoding?: TextEncoding, entityId?: string) => {
       const generation = ++requestGeneration.current
       setPreview(null)
       setError(null)
       setEncodingRequired(false)
-      onStatusChange(file.entityId, 'running')
+      onStatusChange(entityId ?? file.entityId, 'running')
       try {
-        const next = await requestPreview(file, encoding)
+        const next = entityId
+          ? await requestPreview({ ...file, entityId }, encoding)
+          : await requestPreview(file, encoding)
         if (generation !== requestGeneration.current) return
         setPreview(next)
         onStatusChange(file.entityId, 'complete')
@@ -70,16 +84,6 @@ export default function TextPreviewPane({
     },
     [],
   )
-
-  function markdownClicked(event: MouseEvent<HTMLDivElement>) {
-    const target = event.target
-    if (!(target instanceof Element)) return
-    const anchor = target.closest('a')
-    const href = anchor?.getAttribute('href')
-    if (!href) return
-    event.preventDefault()
-    void openExternalLink(href).catch(() => setError('无法使用系统浏览器打开该链接。'))
-  }
 
   return (
     <section
@@ -134,10 +138,17 @@ export default function TextPreviewPane({
         <pre className="plain-text-preview">{preview.plainText}</pre>
       )}
       {!unavailable && preview?.format === 'markdown' && (
-        <div
-          className="markdown-preview markdown-reading-surface"
-          onClick={markdownClicked}
-          dangerouslySetInnerHTML={{ __html: preview.markdownHtml ?? '' }}
+        <MarkdownDocumentEditor
+          file={file}
+          preview={preview}
+          readOnly={projectReadOnly}
+          saveText={saveText}
+          renderMarkdown={renderMarkdown}
+          openExternalLink={openExternalLink}
+          onSaved={(entityId) => {
+            if (entityId === file.entityId) return
+            void load(undefined, entityId)
+          }}
         />
       )}
       {!unavailable && preview?.truncated && (

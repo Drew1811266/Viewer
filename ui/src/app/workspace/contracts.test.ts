@@ -56,7 +56,9 @@ describe('workspace contracts', () => {
       'openExternalLink',
       'previewText',
       'queryFolder',
+      'renderMarkdown',
       'requestImage',
+      'saveText',
       'videoRequestCover',
     ])
     expect('executeFileCommand' in ports.preview).toBe(false)

@@ -1,6 +1,12 @@
 import type { KeyboardEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { BrowserFile, TextEncoding, TextPreview as TextPreviewDto } from '../api/types'
+import type {
+  BrowserFile,
+  SaveTextRequest,
+  SaveTextResult,
+  TextEncoding,
+  TextPreview as TextPreviewDto,
+} from '../api/types'
 import type { TaskFeedback } from './TaskBar'
 import TextPreviewPane, { type TextPaneStatus } from './TextPreviewPane'
 import ViewerButton from './ui/ViewerButton'
@@ -12,6 +18,9 @@ export interface TextPreviewProps {
   files: TextPreviewFiles
   unavailableEntityIds?: ReadonlySet<string>
   requestPreview(file: BrowserFile, encoding?: TextEncoding): Promise<TextPreviewDto>
+  saveText(request: SaveTextRequest): Promise<SaveTextResult>
+  renderMarkdown(content: string): Promise<string>
+  projectReadOnly: boolean
   openExternalLink(url: string): Promise<void>
   onClose(): void
   onTaskChange?(task: TaskFeedback | null): void
@@ -25,6 +34,9 @@ export default function TextPreview({
   files,
   unavailableEntityIds = EMPTY_ENTITY_IDS,
   requestPreview,
+  saveText,
+  renderMarkdown,
+  projectReadOnly,
   openExternalLink,
   onClose,
   onTaskChange,
@@ -48,6 +60,9 @@ export default function TextPreview({
       file={file}
       unavailable={unavailableEntityIds.has(file.entityId)}
       requestPreview={requestPreview}
+      saveText={saveText}
+      renderMarkdown={renderMarkdown}
+      projectReadOnly={projectReadOnly}
       openExternalLink={openExternalLink}
       onStatusChange={recordStatus}
     />

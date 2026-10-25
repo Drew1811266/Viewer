@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo } from 'react'
-import type { BrowserFile, ImageRepresentationRequest, TextEncoding } from '../../api/types'
+import type {
+  BrowserFile,
+  ImageRepresentationRequest,
+  SaveTextRequest,
+  TextEncoding,
+} from '../../api/types'
 import {
   createProjectThumbnailCache,
   PROJECT_THUMBNAIL_CACHE_CAPACITY,
@@ -29,6 +34,8 @@ export interface PreviewDataCoordinator {
     file: BrowserFile,
     encoding?: TextEncoding,
   ): ReturnType<PreviewDataPort['previewText']>
+  saveText: PreviewDataPort['saveText']
+  renderMarkdown: PreviewDataPort['renderMarkdown']
   requestVideoCover(entityId: string): Promise<string>
   openExternalLink: PreviewDataPort['openExternalLink']
 }
@@ -102,6 +109,8 @@ export function usePreviewData(
       port.previewText({ entityId: file.entityId, encoding }),
     [port],
   )
+  const saveText = useCallback((request: SaveTextRequest) => port.saveText(request), [port])
+  const renderMarkdown = useCallback((content: string) => port.renderMarkdown(content), [port])
   const requestVideoCover = useCallback(
     (entityId: string) => port.videoRequestCover(entityId),
     [port],
@@ -113,6 +122,8 @@ export function usePreviewData(
     requestFolderImages,
     requestPreviewImage,
     requestTextPreview,
+    saveText,
+    renderMarkdown,
     requestVideoCover,
     openExternalLink: port.openExternalLink,
   }

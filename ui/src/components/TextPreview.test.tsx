@@ -27,6 +27,9 @@ const markdownFile: BrowserFile = {
   kind: 'markdown',
 }
 
+const saveText = vi.fn().mockResolvedValue({ fingerprint: 'test-fingerprint', entityId: 'test' })
+const renderMarkdown = vi.fn().mockResolvedValue('<p>preview</p>')
+
 function textPreview(
   file: BrowserFile,
   plainText: string,
@@ -39,6 +42,8 @@ function textPreview(
     markdownHtml: null,
     encoding,
     truncated: false,
+    fingerprint: 'test-fingerprint',
+    usesCrlf: false,
   }
 }
 
@@ -54,6 +59,8 @@ function markdownPreview(
     markdownHtml,
     encoding,
     truncated: false,
+    fingerprint: 'test-fingerprint',
+    usesCrlf: false,
   }
 }
 
@@ -79,6 +86,9 @@ describe('TextPreview', () => {
       <TextPreview
         files={[plainTextFile, markdownFile]}
         requestPreview={requestPreview}
+        saveText={saveText}
+        renderMarkdown={renderMarkdown}
+        projectReadOnly={false}
         openExternalLink={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -143,6 +153,9 @@ describe('TextPreview', () => {
       <TextPreview
         files={[plainTextFile, markdownFile]}
         requestPreview={requestPreview}
+        saveText={saveText}
+        renderMarkdown={renderMarkdown}
+        projectReadOnly={false}
         openExternalLink={vi.fn()}
         onClose={vi.fn()}
         onTaskChange={onTaskChange}
@@ -194,6 +207,9 @@ describe('TextPreview', () => {
             <TextPreview
               files={files}
               requestPreview={(file) => Promise.resolve(textPreview(file, file.name))}
+              saveText={saveText}
+              renderMarkdown={renderMarkdown}
+              projectReadOnly={false}
               openExternalLink={() => Promise.resolve()}
               onClose={() => setFiles(null)}
             />
@@ -234,6 +250,9 @@ describe('TextPreview', () => {
       <TextPreview
         files={[plainTextFile, markdownFile]}
         requestPreview={requestPreview}
+        saveText={saveText}
+        renderMarkdown={renderMarkdown}
+        projectReadOnly={false}
         openExternalLink={vi.fn()}
         onClose={vi.fn()}
         onTaskChange={onTaskChange}
@@ -272,6 +291,9 @@ describe('TextPreview', () => {
       <TextPreview
         files={[plainTextFile]}
         requestPreview={requestPreview}
+        saveText={saveText}
+        renderMarkdown={renderMarkdown}
+        projectReadOnly={false}
         openExternalLink={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -281,6 +303,9 @@ describe('TextPreview', () => {
       <TextPreview
         files={[replacementFile]}
         requestPreview={requestPreview}
+        saveText={saveText}
+        renderMarkdown={renderMarkdown}
+        projectReadOnly={false}
         openExternalLink={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -307,6 +332,9 @@ describe('TextPreview', () => {
       <TextPreview
         files={[plainTextFile, markdownFile]}
         requestPreview={requestPreview}
+        saveText={saveText}
+        renderMarkdown={renderMarkdown}
+        projectReadOnly={false}
         openExternalLink={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -320,6 +348,9 @@ describe('TextPreview', () => {
         files={[plainTextFile, markdownFile]}
         unavailableEntityIds={new Set([markdownFile.entityId])}
         requestPreview={requestPreview}
+        saveText={saveText}
+        renderMarkdown={renderMarkdown}
+        projectReadOnly={false}
         openExternalLink={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -354,6 +385,9 @@ describe('TextPreview', () => {
       <TextPreview
         files={[markdownFile]}
         requestPreview={request}
+        saveText={saveText}
+        renderMarkdown={renderMarkdown}
+        projectReadOnly={false}
         openExternalLink={openExternalLink}
         onClose={vi.fn()}
       />,
@@ -380,6 +414,9 @@ describe('TextPreview', () => {
       <TextPreview
         files={[plainTextFile]}
         requestPreview={request}
+        saveText={saveText}
+        renderMarkdown={renderMarkdown}
+        projectReadOnly={false}
         openExternalLink={vi.fn()}
         onClose={vi.fn()}
       />,

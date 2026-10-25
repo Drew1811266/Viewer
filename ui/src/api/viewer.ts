@@ -80,6 +80,8 @@ import type {
   ReviewStartWithFeedbackRequest,
   ReviewUpdateFeedbackRequest,
   ReviewUpdateFeedbackTextRequest,
+  SaveTextRequest,
+  SaveTextResult,
   ScanEvent,
   SearchPage,
   SearchProjectRequest,
@@ -146,6 +148,8 @@ export interface ViewerBridge {
   queryFolder(entityId: string | null, aggregate?: boolean): Promise<FolderWorkspace>
   requestImage(request: ImageRequest, signal?: AbortSignal): Promise<ImageRepresentation>
   previewText(request: TextPreviewRequest): Promise<TextPreview>
+  saveText(request: SaveTextRequest): Promise<SaveTextResult>
+  renderMarkdown(content: string): Promise<string>
   openExternalLink(url: string): Promise<void>
   revealProjectInFileManager(): Promise<void>
   cancelTask(taskId: string): Promise<boolean>
@@ -284,6 +288,24 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   previewText({ entityId, encoding }) {
     return invoke<TextPreview>('preview_text', { entityId, encoding: encoding ?? null })
+  },
+  saveText({
+    entityId,
+    content,
+    expectedFingerprint,
+    newlineStyle,
+    acknowledgeEncodingConversion,
+  }) {
+    return invoke<SaveTextResult>('save_text', {
+      entityId,
+      content,
+      expectedFingerprint,
+      newlineStyle,
+      acknowledgeEncodingConversion,
+    })
+  },
+  renderMarkdown(content: string) {
+    return invoke<string>('render_markdown', { content })
   },
   openExternalLink(url) {
     return invoke<void>('open_external_link', { url })

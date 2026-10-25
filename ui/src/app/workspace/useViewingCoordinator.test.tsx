@@ -47,6 +47,8 @@ function previewPort(): PreviewDataPort {
       height: 1,
       backend: 'image_io',
     }),
+    saveText: vi.fn(),
+    renderMarkdown: vi.fn(),
     previewText: vi.fn().mockResolvedValue({
       entityId: 'text-1',
       format: 'plain_text',
@@ -54,6 +56,8 @@ function previewPort(): PreviewDataPort {
       markdownHtml: null,
       encoding: 'utf8',
       truncated: false,
+      fingerprint: 'test-fingerprint',
+      usesCrlf: false,
     }),
     openExternalLink: vi.fn().mockResolvedValue(undefined),
     videoRequestCover: vi.fn().mockResolvedValue('viewer-video-cover://video-1'),

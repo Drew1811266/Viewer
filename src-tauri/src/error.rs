@@ -1,7 +1,7 @@
 use serde::Serialize;
 use viewer_application::{
     BrowseError, BrowseIndexError, FinderDragError, ImageError, ProjectOpenError,
-    ProjectProbeError, ReviewSessionError, TextPreviewError, ViewerSettingsError,
+    ProjectProbeError, ReviewSessionError, TextPreviewError, TextSaveError, ViewerSettingsError,
     metadata::{MarkerServiceError, MarkerStoreError},
     search::SearchError,
     undo::{UndoError, UndoServiceError},
@@ -626,6 +626,37 @@ impl From<TextPreviewError> for CommandError {
     }
 }
 
+impl From<TextSaveError> for CommandError {
+    fn from(error: TextSaveError) -> Self {
+        match error {
+            TextSaveError::Conflict => Self::new(
+                "text_save_conflict",
+                ErrorCategory::Conflict,
+                "文件在加载后被外部修改，未保存。请重新加载或另存副本。",
+                false,
+            ),
+            TextSaveError::TooLarge => Self::new(
+                "text_save_too_large",
+                ErrorCategory::Validation,
+                "文件超出可编辑的大小限制。",
+                false,
+            ),
+            TextSaveError::EncodingAcknowledgementRequired => Self::new(
+                "text_encoding_acknowledgement_required",
+                ErrorCategory::Validation,
+                "保存会把文件转换为 UTF-8 编码，请确认后重试。",
+                false,
+            ),
+            TextSaveError::Io(_) => Self::new(
+                "text_save_unavailable",
+                ErrorCategory::Environment,
+                "暂时无法保存文件，请重试。",
+                true,
+            ),
+        }
+    }
+}
+
 impl From<ViewerSettingsError> for CommandError {
     fn from(_error: ViewerSettingsError) -> Self {
         Self::new(
@@ -660,8 +691,8 @@ mod tests {
     use super::{
         BrowseError, BrowseIndexError, CommandError, ErrorCategory, FinderDragError,
         ImageArtifactRegistryError, ImageError, MarkerServiceError, ProjectOpenError,
-        ProjectProbeError, SearchError, SessionCacheError, TextPreviewError, UndoServiceError,
-        ViewerSettingsError,
+        ProjectProbeError, SearchError, SessionCacheError, TextPreviewError, TextSaveError,
+        UndoServiceError, ViewerSettingsError,
     };
     use crate::{state::RuntimeError, video_runtime::VideoCommandError};
     use std::path::PathBuf;
@@ -899,6 +930,34 @@ mod tests {
             "text_encoding_required",
             ErrorCategory::Content,
             "无法自动识别文本编码，请选择编码后重试。",
+            true,
+        );
+        assert_command_contract(
+            TextSaveError::Conflict,
+            "text_save_conflict",
+            ErrorCategory::Conflict,
+            "文件在加载后被外部修改，未保存。请重新加载或另存副本。",
+            false,
+        );
+        assert_command_contract(
+            TextSaveError::TooLarge,
+            "text_save_too_large",
+            ErrorCategory::Validation,
+            "文件超出可编辑的大小限制。",
+            false,
+        );
+        assert_command_contract(
+            TextSaveError::EncodingAcknowledgementRequired,
+            "text_encoding_acknowledgement_required",
+            ErrorCategory::Validation,
+            "保存会把文件转换为 UTF-8 编码，请确认后重试。",
+            false,
+        );
+        assert_command_contract(
+            TextSaveError::Io("fixture".into()),
+            "text_save_unavailable",
+            ErrorCategory::Environment,
+            "暂时无法保存文件，请重试。",
             true,
         );
     }

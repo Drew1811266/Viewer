@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 async-trait.workspace = true
 blake3.workspace = true
+tempfile.workspace = true
 encoding_rs.workspace = true
 getrandom.workspace = true
 libc.workspace = true
@@ -24,7 +25,6 @@ viewer-video-mpv = { path = "../viewer-video-mpv" }
 walkdir.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
 viewer-test-support = { path = "../viewer-test-support" }
 
 [[test]]

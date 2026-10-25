@@ -52,10 +52,15 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 
 | Package | Version | License | Viewer purpose | Upstream | Distributed |
 | --- | --- | --- | --- | --- | --- |
+| `@codemirror/lang-markdown` | 6.5.2 | MIT | Markdown language support for the document editor | [codemirror/lang-markdown](https://github.com/codemirror/lang-markdown) | Yes |
+| `@codemirror/language` | 6.13.1 | MIT | CodeMirror language infrastructure for editor highlights | [codemirror/language](https://github.com/codemirror/language) | Yes |
+| `@codemirror/state` | 6.7.6 | MIT | CodeMirror editor state model | [codemirror/state](https://github.com/codemirror/state) | Yes |
+| `@codemirror/view` | 6.43.15 | MIT | CodeMirror editor DOM view layer | [codemirror/view](https://github.com/codemirror/view) | Yes |
 | `@tauri-apps/api` | 2.11.1 | Apache-2.0 OR MIT | Typed frontend access to the restricted Tauri API | [tauri-apps/tauri](https://github.com/tauri-apps/tauri) | Yes |
 | `@tauri-apps/plugin-dialog` | 2.7.1 | MIT OR Apache-2.0 | Frontend binding for the native project-folder chooser | [tauri-apps/plugins-workspace](https://github.com/tauri-apps/plugins-workspace) | Yes |
 | `react` | 19.2.7 | MIT | User-interface rendering and state composition | [facebook/react](https://github.com/facebook/react) | Yes |
 | `react-dom` | 19.2.7 | MIT | React DOM/WebView renderer | [facebook/react](https://github.com/facebook/react) | Yes |
+| `@uiw/react-codemirror` | 4.25.12 | MIT | React wrapper binding CodeMirror 6 into the document editor | [uiwjs/react-codemirror](https://github.com/uiwjs/react-codemirror) | Yes |
 
 ## Build dependencies and tools
 

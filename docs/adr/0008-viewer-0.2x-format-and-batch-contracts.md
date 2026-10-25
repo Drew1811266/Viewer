@@ -48,6 +48,15 @@ Code-level facts established during planning (see development plan §1):
   native wgpu viewport through `probe_image_source` / `thumbnail_from_image_source`
   (each re-validates `image_format()`; audited 2026-10-25). Multi-page or
   animated sources decode frame 0 only; 0.2.x ships no animation playback.
+- **Vector sources (SVG/SVGZ/AI, 0.2.2).** SVG rasterizes through resvg with
+  usvg's default no-external-resource parsing; AI renders its PDF-compatible
+  first page through `CGPDFDocument`, while pure-PostScript sources are
+  refused by signature. Untrusted-source budgets are enforced locally: SVGZ
+  decompression is capped at 64 MiB, vector source files at 64 MiB, and XML
+  element nesting at 512 levels — the depth scan exists because usvg's
+  recursive parser aborts the process on hostile nesting depths, and a
+  refused decode is the only acceptable outcome. Rasterization always happens
+  at the requested representation size, never at the intrinsic viewBox size.
 - **Wire surface unchanged for images.** Artifacts remain PNG re-encodes; the
   `viewer-image://` MIME allowlist, its tests, and CSP do not change in 0.2.x.
   Reclassified files keep their marker data because entity identity is

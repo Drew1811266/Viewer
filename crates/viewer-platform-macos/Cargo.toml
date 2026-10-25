@@ -8,6 +8,8 @@ publish = false
 [dependencies]
 async-trait.workspace = true
 blake3.workspace = true
+flate2.workspace = true
+resvg.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

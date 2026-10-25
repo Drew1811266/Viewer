@@ -29,6 +29,8 @@ confidence-threshold = 0.8
 # foldhash is inherited through Tauri; do not allow Zlib for unrelated crates.
 exceptions = [
     { allow = ["Zlib"], crate = "foldhash@0.2.0" },
+    # slotmap is inherited through resvg's fontdb; scoped to this exact version.
+    { allow = ["Zlib"], crate = "slotmap@1.1.1" },
 ]
 
 [sources]

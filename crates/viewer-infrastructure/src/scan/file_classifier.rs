@@ -4,9 +4,10 @@ use viewer_domain::file::FileKind;
 const IMAGE_EXTENSIONS: &[&str] = &[
     "gif", "webp", "avif", "heic", "heif", "bmp", "tif", "tiff", "ico", "apng", "psd", "dng",
     "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "raf", "orf", "rw2", "pef", "srw", "x3f",
+    "svg", "svgz", "ai",
 ];
 
-const UNSUPPORTED_IMAGE_EXTENSIONS: &[&str] = &["svg", "svgz", "jxl"];
+const UNSUPPORTED_IMAGE_EXTENSIONS: &[&str] = &["jxl"];
 
 const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "m4v", "mov", "mkv", "webm", "avi", "wmv", "mpg", "mpeg", "ts", "mts", "m2ts", "flv",
@@ -98,13 +99,17 @@ mod tests {
     }
 
     #[test]
-    fn vector_and_unavailable_formats_stay_unsupported_until_their_slice() {
-        for name in ["a.svg", "a.svgz", "a.jxl"] {
+    fn vector_formats_are_previewable_images_and_jxl_stays_unsupported() {
+        for name in ["a.svg", "a.svgz", "a.ai"] {
             assert_eq!(
                 classify_regular_file(Path::new(name)),
-                Some(FileKind::UnsupportedImage),
+                Some(FileKind::Image),
                 "classified {name} incorrectly"
             );
         }
+        assert_eq!(
+            classify_regular_file(Path::new("a.jxl")),
+            Some(FileKind::UnsupportedImage)
+        );
     }
 }

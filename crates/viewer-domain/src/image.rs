@@ -15,6 +15,8 @@ pub enum ImageFormat {
     Ico,
     Psd,
     Raw,
+    Svg,
+    Ai,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

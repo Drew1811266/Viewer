@@ -1,51 +1,51 @@
 [
   {
     "id": "RUSTSEC-2025-0075",
-    "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain",
+    "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain; re-reviewed 2026-10-25 and the Tauri unic-* chain is unchanged in tauri-utils 2.9.3",
     "chain": "viewer-desktop 0.2.0 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-char-property 0.9.0 > unic-char-range 0.9.0",
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
-    "reviewAfter": "2026-10-23",
+    "reviewAfter": "2027-01-23",
     "removeWhen": "Tauri removes the transitive unic-* chain",
     "videoRuntimeImpact": "None; the exception is outside ViewerVideoRuntime and does not alter its locked LGPL dependency closure"
   },
   {
     "id": "RUSTSEC-2025-0080",
-    "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain",
+    "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain; re-reviewed 2026-10-25 and the Tauri unic-* chain is unchanged in tauri-utils 2.9.3",
     "chain": "viewer-desktop 0.2.0 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-ucd-version 0.9.0 > unic-common 0.9.0",
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
-    "reviewAfter": "2026-10-23",
+    "reviewAfter": "2027-01-23",
     "removeWhen": "Tauri removes the transitive unic-* chain",
     "videoRuntimeImpact": "None; the exception is outside ViewerVideoRuntime and does not alter its locked LGPL dependency closure"
   },
   {
     "id": "RUSTSEC-2025-0081",
-    "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain",
+    "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain; re-reviewed 2026-10-25 and the Tauri unic-* chain is unchanged in tauri-utils 2.9.3",
     "chain": "viewer-desktop 0.2.0 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-char-property 0.9.0",
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
-    "reviewAfter": "2026-10-23",
+    "reviewAfter": "2027-01-23",
     "removeWhen": "Tauri removes the transitive unic-* chain",
     "videoRuntimeImpact": "None; the exception is outside ViewerVideoRuntime and does not alter its locked LGPL dependency closure"
   },
   {
     "id": "RUSTSEC-2025-0098",
-    "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain",
+    "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain; re-reviewed 2026-10-25 and the Tauri unic-* chain is unchanged in tauri-utils 2.9.3",
     "chain": "viewer-desktop 0.2.0 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0 > unic-ucd-version 0.9.0",
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
-    "reviewAfter": "2026-10-23",
+    "reviewAfter": "2027-01-23",
     "removeWhen": "Tauri removes the transitive unic-* chain",
     "videoRuntimeImpact": "None; the exception is outside ViewerVideoRuntime and does not alter its locked LGPL dependency closure"
   },
   {
     "id": "RUSTSEC-2025-0100",
-    "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain",
+    "reason": "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain; re-reviewed 2026-10-25 and the Tauri unic-* chain is unchanged in tauri-utils 2.9.3",
     "chain": "viewer-desktop 0.2.0 > tauri 2.11.5/tauri-build 2.6.3/tauri-macros 2.6.3 > tauri-utils 2.9.3 > urlpattern 0.3.0 > unic-ucd-ident 0.9.0",
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
-    "reviewAfter": "2026-10-23",
+    "reviewAfter": "2027-01-23",
     "removeWhen": "Tauri removes the transitive unic-* chain",
     "videoRuntimeImpact": "None; the exception is outside ViewerVideoRuntime and does not alter its locked LGPL dependency closure"
   }

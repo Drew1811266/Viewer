@@ -30,7 +30,11 @@ impl ImageIoBackend {
     }
 
     pub fn probe_sync(&self, source: impl AsRef<Path>) -> Result<ImageProbe, ImageError> {
-        let image_source = open_image_source(source.as_ref())?;
+        let source = source.as_ref();
+        if let Some(extension) = vector_extension_of(source) {
+            return super::svg::probe_vector(source, extension);
+        }
+        let image_source = open_image_source(source)?;
         probe_image_source(&image_source)
     }
 
@@ -40,11 +44,15 @@ impl ImageIoBackend {
         max_pixels: u32,
         destination: impl AsRef<Path>,
     ) -> Result<(u32, u32), ImageError> {
+        let source = source.as_ref();
         if max_pixels == 0 {
             return Err(ImageError::BudgetExceeded);
         }
+        if let Some(extension) = vector_extension_of(source) {
+            return super::svg::render_vector(source, extension, max_pixels, destination.as_ref());
+        }
 
-        let image_source = open_image_source(source.as_ref())?;
+        let image_source = open_image_source(source)?;
         let thumbnail = thumbnail_from_image_source(&image_source, max_pixels)?;
         let width = u32::try_from(CGImage::width(Some(&thumbnail)))
             .map_err(|_| ImageError::BudgetExceeded)?;
@@ -62,6 +70,30 @@ impl ImageIoBackend {
         destination: impl AsRef<Path>,
     ) -> Result<(u32, u32), ImageError> {
         let source = source.as_ref();
+        if let Some(extension) = vector_extension_of(source) {
+            let max_dimension = match kind {
+                ImageRepresentationKind::Thumbnail { max_pixels, .. } => max_pixels,
+                ImageRepresentationKind::FitPreview {
+                    max_width,
+                    max_height,
+                    ..
+                } => {
+                    let probe = self.probe_sync(source)?;
+                    fit_max_dimension(&probe, max_width, max_height)?
+                }
+                ImageRepresentationKind::Original100Percent => {
+                    let probe = self.probe_sync(source)?;
+                    let (width, height) = oriented_dimensions(&probe);
+                    width.max(height)
+                }
+            };
+            return super::svg::render_vector(
+                source,
+                extension,
+                max_dimension,
+                destination.as_ref(),
+            );
+        }
         let max_dimension = match kind {
             ImageRepresentationKind::Thumbnail { max_pixels, .. } => max_pixels,
             ImageRepresentationKind::FitPreview {
@@ -123,6 +155,19 @@ pub(crate) fn fit_max_dimension(
     let target_width = u64::from(width) * u64::from(numerator) / u64::from(denominator);
     let target_height = u64::from(height) * u64::from(numerator) / u64::from(denominator);
     u32::try_from(target_width.max(target_height).max(1)).map_err(|_| ImageError::BudgetExceeded)
+}
+
+pub(crate) fn vector_extension_of(path: &Path) -> Option<&'static str> {
+    let extension = path
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .map(str::to_ascii_lowercase)?;
+    match extension.as_str() {
+        "svg" => Some("svg"),
+        "svgz" => Some("svgz"),
+        "ai" => Some("ai"),
+        _ => None,
+    }
 }
 
 pub(crate) fn open_image_source(
@@ -484,6 +529,119 @@ mod tests {
                 ImageRepresentationKind::Original100Percent,
                 output.path()
             ),
+            Err(ImageError::BudgetExceeded)
+        ));
+    }
+
+    #[test]
+    fn vector_backends_probe_and_render_admitted_formats() {
+        let backend = ImageIoBackend::default();
+        let logo = backend.probe_sync(image_fixture("logo.svg")).unwrap();
+        assert_eq!(logo.format, ImageFormat::Svg);
+        assert_eq!((logo.width, logo.height), (640, 480));
+        assert!(logo.has_alpha);
+
+        let svgz = backend.probe_sync(image_fixture("logo.svgz")).unwrap();
+        assert_eq!(svgz.format, ImageFormat::Svg);
+        assert_eq!((svgz.width, svgz.height), (640, 480));
+
+        let poster = backend.probe_sync(image_fixture("poster.ai")).unwrap();
+        assert_eq!(poster.format, ImageFormat::Ai);
+        assert_eq!((poster.width, poster.height), (640, 480));
+
+        for name in ["logo.svg", "logo.svgz", "poster.ai"] {
+            let output = tempfile::NamedTempFile::new().unwrap();
+            let dimensions = backend
+                .render_sync(
+                    image_fixture(name),
+                    ImageRepresentationKind::FitPreview {
+                        max_width: 300,
+                        max_height: 300,
+                        scale_milli: 2_000,
+                    },
+                    output.path(),
+                )
+                .unwrap_or_else(|error| panic!("{name}: {error:?}"));
+            assert_eq!(png_dimensions(output.path()).unwrap(), dimensions, "{name}");
+            assert!(dimensions.0 <= 300 && dimensions.1 <= 300, "{name}");
+        }
+    }
+
+    #[test]
+    fn legacy_postscript_ai_is_refused_as_unsupported() {
+        let backend = ImageIoBackend::default();
+        assert!(matches!(
+            backend.probe_sync(image_fixture("legacy.ai")),
+            Err(ImageError::Unsupported)
+        ));
+    }
+
+    #[test]
+    fn truncated_vector_fixtures_are_isolated_as_corrupt() {
+        let backend = ImageIoBackend::default();
+        for name in ["corrupt.svg", "corrupt.ai"] {
+            assert!(
+                matches!(
+                    backend.probe_sync(image_fixture(name)),
+                    Err(ImageError::Corrupt)
+                ),
+                "{name} was not isolated as corrupt"
+            );
+        }
+    }
+
+    #[test]
+    fn deeply_nested_svg_is_refused_within_the_depth_budget() {
+        // 5000 nested groups would otherwise overflow the parser stack; the
+        // pre-parse depth budget must refuse it closed instead of crashing.
+        let backend = ImageIoBackend::default();
+        assert!(matches!(
+            backend.probe_sync(image_fixture("nested.svg")),
+            Err(ImageError::BudgetExceeded)
+        ));
+    }
+
+    #[test]
+    fn lying_dimension_svg_rasterizes_only_at_requested_size() {
+        let backend = ImageIoBackend::default();
+        let probe = backend
+            .probe_sync(image_fixture("huge-dimensions.svg"))
+            .unwrap();
+        assert_eq!((probe.width, probe.height), (60_000, 60_000));
+        let output = tempfile::NamedTempFile::new().unwrap();
+        let dimensions = backend
+            .render_sync(
+                image_fixture("huge-dimensions.svg"),
+                ImageRepresentationKind::FitPreview {
+                    max_width: 300,
+                    max_height: 300,
+                    scale_milli: 2_000,
+                },
+                output.path(),
+            )
+            .unwrap();
+        assert_eq!(dimensions, (300, 300));
+        assert_eq!(png_dimensions(output.path()).unwrap(), (300, 300));
+    }
+
+    #[test]
+    fn external_references_and_scripts_never_block_or_load() {
+        let backend = ImageIoBackend::default();
+        let probe = backend
+            .probe_sync(image_fixture("external-ref.svg"))
+            .unwrap();
+        assert_eq!(probe.format, ImageFormat::Svg);
+        let output = tempfile::NamedTempFile::new().unwrap();
+        backend
+            .render_thumbnail_sync(image_fixture("external-ref.svg"), 256, output.path())
+            .unwrap();
+    }
+
+    #[test]
+    fn svgz_decompression_budget_refuses_bombs() {
+        let backend = ImageIoBackend::default();
+        assert!(matches!(
+            backend.probe_sync(image_fixture("bomb.svgz")),
             Err(ImageError::BudgetExceeded)
         ));
     }

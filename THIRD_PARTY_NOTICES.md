@@ -15,6 +15,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `bytemuck` | 1.25.1 | Zlib OR Apache-2.0 OR MIT | Checked conversion of renderer vertex and uniform data to GPU bytes | [Lokathor/bytemuck](https://github.com/Lokathor/bytemuck) | Yes |
 | `dispatch2` | 0.3.1 | Zlib OR Apache-2.0 OR MIT | Schedule native video feasibility rendering work on the macOS main dispatch queue | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes, when the video-feasibility feature is enabled |
 | `encoding_rs` | 0.8.35 | (Apache-2.0 OR MIT) AND BSD-3-Clause | Strict UTF-8, UTF-16 and GB18030 text-preview decoding | [hsivonen/encoding_rs](https://github.com/hsivonen/encoding_rs) | Yes |
+| `flate2` | 1.1.9 | MIT OR Apache-2.0 | Decompress SVGZ sources through a size-bounded reader before SVG parsing | [rust-lang/flate2](https://github.com/rust-lang/flate2) | Yes |
 | `getrandom` | 0.4.3 | MIT OR Apache-2.0 | Random transaction identifiers and protected temporary names | [rust-random/getrandom](https://github.com/rust-random/getrandom) | Yes |
 | `libc` | 0.2.186 | MIT OR Apache-2.0 | Native filesystem primitives and memory measurements | [rust-lang/libc](https://github.com/rust-lang/libc) | Yes |
 | `libloading` | 0.8.9 | ISC | Load the exact Viewer-bundled libmpv dynamic library and reviewed symbols | [nagisa/rust_libloading](https://github.com/nagisa/rust_libloading) | Yes |
@@ -32,6 +33,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `objc2-quick-look-thumbnailing` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Primary macOS thumbnail generation | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `pulldown-cmark` | 0.13.4 | MIT | Parse Markdown into a filtered event stream before HTML sanitization | [raphlinus/pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) | Yes |
 | `raw-window-metal` | 1.1.0 | MIT OR Apache-2.0 | Bind the native macOS image viewport to its retained CAMetalLayer surface | [rust-windowing/raw-window-metal](https://github.com/rust-windowing/raw-window-metal) | Yes |
+| `resvg` | 0.48.1 | Apache-2.0 OR MIT | Rasterize SVG sources (usvg parsing + tiny-skia rendering) into the PNG artifact pipeline | [linebender/resvg](https://github.com/linebender/resvg) | Yes |
 | `rusqlite` | 0.40.1 | MIT | Portable metadata and rebuildable session/search indexes | [rusqlite/rusqlite](https://github.com/rusqlite/rusqlite) | Yes |
 | `serde` | 1.0.228 | MIT OR Apache-2.0 | Typed serialization at IPC and persistence boundaries | [serde-rs/serde](https://github.com/serde-rs/serde) | Yes |
 | `serde_json` | 1.0.150 | MIT OR Apache-2.0 | Review protocol JSON and bounded desktop DTO response measurement; also fixtures and diagnostics | [serde-rs/json](https://github.com/serde-rs/json) | Yes |

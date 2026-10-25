@@ -1,0 +1,5 @@
+%!PS-Adobe-3.0
+%%BoundingBox: 0 0 640 480
+0 0 1 setrgbcolor
+0 0 640 480 rectfill
+showpage

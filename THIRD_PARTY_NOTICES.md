@@ -8,7 +8,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 
 | Package | Version | License | Viewer purpose | Upstream | Distributed |
 | --- | --- | --- | --- | --- | --- |
-| `ammonia` | 4.1.4 | MIT OR Apache-2.0 | Sanitize rendered Markdown HTML at the Tauri boundary | [rust-ammonia/ammonia](https://github.com/rust-ammonia/ammonia) | Yes |
+| `ammonia` | 4.1.8 | MIT OR Apache-2.0 | Sanitize rendered Markdown HTML at the Tauri boundary | [rust-ammonia/ammonia](https://github.com/rust-ammonia/ammonia) | Yes |
 | `async-trait` | 0.1.99 | MIT OR Apache-2.0 | Async Application port traits and adapters | [dtolnay/async-trait](https://github.com/dtolnay/async-trait) | Yes, as expanded code |
 | `blake3` | 1.8.5 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception | File-operation evidence and recovery fingerprints | [BLAKE3-team/BLAKE3](https://github.com/BLAKE3-team/BLAKE3) | Yes |
 | `block2` | 0.6.2 | MIT | Objective-C completion blocks for Quick Look | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
@@ -37,7 +37,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `serde_json` | 1.0.150 | MIT OR Apache-2.0 | Review protocol JSON and bounded desktop DTO response measurement; also fixtures and diagnostics | [serde-rs/json](https://github.com/serde-rs/json) | Yes |
 | `sha2` | 0.10.9 | MIT OR Apache-2.0 | Verify bundled ffprobe runtime integrity and immutable video-fixture identities | [RustCrypto/hashes](https://github.com/RustCrypto/hashes) | Yes |
 | `thiserror` | 2.0.18 | MIT OR Apache-2.0 | Structured domain, application and adapter errors | [dtolnay/thiserror](https://github.com/dtolnay/thiserror) | Yes |
-| `tokio` | 1.52.3 | MIT | Async tasks, cancellation, synchronization and timers | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) | Yes |
+| `tokio` | 1.53.3 | MIT | Async tasks, cancellation, synchronization and timers | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) | Yes |
 | `tokio-util` | 0.7.18 | MIT | Cancellation tokens for bounded video-probe process and session lifecycles | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) | Yes |
 | `trash` | 5.2.6 | MIT | Move user-selected files to the macOS Trash | [ArturKovacs/trash](https://github.com/ArturKovacs/trash) | Yes |
 | `uuid` | 1.24.0 | Apache-2.0 OR MIT | Stable session, file, task and operation identifiers | [uuid-rs/uuid](https://github.com/uuid-rs/uuid) | Yes |

@@ -30,7 +30,7 @@ export function compareEntryAvailability(input: {
 }
 
 export function isSupportedCompareKind(kind: string): boolean {
-  return kind === 'jpeg' || kind === 'png' || kind === 'unsupported_image'
+  return kind === 'jpeg' || kind === 'png' || kind === 'image' || kind === 'unsupported_image'
 }
 
 export function validateCompareCandidates(

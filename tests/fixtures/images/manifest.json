@@ -9,6 +9,38 @@
       "sha256" : "f514f2a5563166aaa73d0549d3708a4fdf66a140d97ac57edefb050371699f77",
       "width" : 640
     },
+    "animated.gif" : {
+      "format" : "gif",
+      "hasAlpha" : false,
+      "height" : 480,
+      "orientation" : 1,
+      "sha256" : "f21701fe4ebbabc5709abbece8f167894464617039a4af5ac2f3ff5f2c74e3dd",
+      "width" : 640
+    },
+    "corrupt.avif" : {
+      "format" : "avif",
+      "hasAlpha" : false,
+      "height" : 0,
+      "orientation" : 1,
+      "sha256" : "dc32f4794ef75463dea17355bfbbb7c13301e18047c02f7742148e407d100e06",
+      "width" : 0
+    },
+    "corrupt.gif" : {
+      "format" : "gif",
+      "hasAlpha" : false,
+      "height" : 0,
+      "orientation" : 1,
+      "sha256" : "2757bfa05954188a4b7555c1082ca5825bf5131c9a616b7d274827ab0bba3c5c",
+      "width" : 0
+    },
+    "corrupt.heic" : {
+      "format" : "heic",
+      "hasAlpha" : false,
+      "height" : 0,
+      "orientation" : 1,
+      "sha256" : "aad025878b4ed1087467f9b43fd2c7d0cd0cc0d2898d94fead975b05a66454b2",
+      "width" : 0
+    },
     "corrupt.jpg" : {
       "format" : "jpeg",
       "hasAlpha" : false,
@@ -16,6 +48,57 @@
       "orientation" : 1,
       "sha256" : "aceb8316e3cde3097156c3d3d1ee66128b29ea0a88c4d74cffe5dfb2d270c4ae",
       "width" : 0
+    },
+    "corrupt.tiff" : {
+      "format" : "tiff",
+      "hasAlpha" : false,
+      "height" : 0,
+      "orientation" : 1,
+      "sha256" : "c77dbd159f32adfade04aa7c9592067a2ef0f05b1135e5e810aab0faf7020b19",
+      "width" : 0
+    },
+    "dot.ico" : {
+      "format" : "ico",
+      "hasAlpha" : true,
+      "height" : 16,
+      "orientation" : 1,
+      "sha256" : "14560f2145a16d5181cb684dadcb6c9c3652e603dab0f58802bf37d5aead8895",
+      "width" : 16
+    },
+    "forged.png" : {
+      "format" : "png",
+      "hasAlpha" : true,
+      "height" : 60000,
+      "orientation" : 1,
+      "profile" : "sRGB IEC61966-2.1",
+      "sha256" : "a149b397c794b34751464aaea3d9c3caf35fba032ac0218a2c86f149751fbbac",
+      "width" : 60000
+    },
+    "grid.avif" : {
+      "format" : "avif",
+      "hasAlpha" : false,
+      "height" : 480,
+      "orientation" : 1,
+      "sha256" : "a4c1400980ad8394c6adc7a1a075d6f0c2100bd83a5525c547e16d779de8854f",
+      "width" : 640
+    },
+    "mismatch.webp" : {
+      "format" : "jpeg",
+      "hasAlpha" : false,
+      "height" : 768,
+      "orientation" : 1,
+      "profile" : "sRGB IEC61966-2.1",
+      "sha256" : "ffb89121baa0aafd524f82eb0ed6d0338e596f9a5e2b20d0749348f9d22dc2c7",
+      "width" : 1024
+    },
+    "p3.heic" : {
+      "format" : "heic",
+      "hasAlpha" : false,
+      "height" : 480,
+      "orientation" : 1,
+      "profile" : "Display P3",
+      "sha256" : "f878bc1949bf2e16ceabd3c3dbc11083f0ccff9b07bef0b95c772e35ef76f49f",
+      "width" : 640
     },
     "p3.jpg" : {
       "format" : "jpeg",
@@ -26,6 +109,14 @@
       "sha256" : "e2889994f629953d85a41c432818b2483afce0e7d48d804cda5aed47c4d86837",
       "width" : 1024
     },
+    "pages.tiff" : {
+      "format" : "tiff",
+      "hasAlpha" : false,
+      "height" : 600,
+      "orientation" : 1,
+      "sha256" : "9349b7d74137502ac044bc9380a670c012c7223c1d251553bfefb0d9fdde080d",
+      "width" : 800
+    },
     "rotated-6.jpg" : {
       "format" : "jpeg",
       "hasAlpha" : false,
@@ -34,6 +125,14 @@
       "profile" : "sRGB IEC61966-2.1",
       "sha256" : "15471349db35f00c31944db308a5d33edd5ee493a9a1634a88e44fdbd6fffc06",
       "width" : 800
+    },
+    "solid.bmp" : {
+      "format" : "bmp",
+      "hasAlpha" : false,
+      "height" : 384,
+      "orientation" : 1,
+      "sha256" : "7a4ff19d93bba282ef7db10875b2e5954c8beba65ba09fcb66c9e7c23b9a6611",
+      "width" : 512
     },
     "srgb.jpg" : {
       "format" : "jpeg",

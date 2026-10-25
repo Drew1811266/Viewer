@@ -133,7 +133,7 @@ async fn run_and_assert_scan(root: &std::path::Path) {
             "products/id-1/prompt.md",
         ]
     );
-    assert!(files.contains(&("poster.WEBP".into(), FileKind::UnsupportedImage)));
+    assert!(files.contains(&("poster.WEBP".into(), FileKind::Image)));
     assert!(files.contains(&("archive.zip".into(), FileKind::Other)));
     assert!(files.contains(&("README".into(), FileKind::Other)));
     assert!(files.contains(&("ignored.MOV".into(), FileKind::Video)));
@@ -255,11 +255,7 @@ fn session_index_commits_a_batch_and_reopens_with_the_same_hierarchy() {
     let item_id = EntityId::new();
     let nodes = vec![
         indexed_node(assets_id, "assets", FileKind::Directory),
-        indexed_node(
-            EntityId::new(),
-            "assets/source.psd",
-            FileKind::UnsupportedImage,
-        ),
+        indexed_node(EntityId::new(), "assets/source.psd", FileKind::Image),
         indexed_node(EntityId::new(), "assets/license.pdf", FileKind::Other),
         indexed_node(products_id, "products", FileKind::Directory),
         indexed_node(item_id, "products/id-1", FileKind::Directory),
@@ -282,7 +278,7 @@ fn session_index_commits_a_batch_and_reopens_with_the_same_hierarchy() {
             .collect::<Vec<_>>(),
         [
             ("assets/license.pdf", FileKind::Other),
-            ("assets/source.psd", FileKind::UnsupportedImage),
+            ("assets/source.psd", FileKind::Image),
         ]
     );
     let product_children = index.directory_children(Some(products_id)).unwrap();

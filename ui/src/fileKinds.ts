@@ -1,10 +1,13 @@
 import type { BrowserFile, VideoFile } from './api/types'
 
 export const isImageFile = (file: Pick<BrowserFile, 'kind'>) =>
-  file.kind === 'jpeg' || file.kind === 'png' || file.kind === 'unsupported_image'
+  file.kind === 'jpeg' ||
+  file.kind === 'png' ||
+  file.kind === 'image' ||
+  file.kind === 'unsupported_image'
 
 export const isPreviewableImage = (file: Pick<BrowserFile, 'kind'>) =>
-  file.kind === 'jpeg' || file.kind === 'png'
+  file.kind === 'jpeg' || file.kind === 'png' || file.kind === 'image'
 
 export const isVideoFile = (file: BrowserFile): file is VideoFile =>
   file.kind === 'video' && file.videoMetadata != null

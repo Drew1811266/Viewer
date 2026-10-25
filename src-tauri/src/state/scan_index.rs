@@ -376,7 +376,7 @@ async fn rebuild_derived_nodes_with_text_work(
             continue;
         }
         match node.kind {
-            FileKind::Jpeg | FileKind::Png => {
+            FileKind::Jpeg | FileKind::Png | FileKind::Image => {
                 let permit = scheduler.acquire(DerivedWorkClass::VisibleDerived).await;
                 if !coordinator.is_publishable(active.session_id, active.generation) {
                     return Ok(());

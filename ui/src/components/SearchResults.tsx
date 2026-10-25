@@ -381,6 +381,7 @@ function fileKindLabel(kind: SearchHit['kind']): string {
   const labels: Record<SearchHit['kind'], string> = {
     jpeg: 'JPG',
     png: 'PNG',
+    image: 'IMG',
     unsupported_image: 'IMG',
     video: '视频',
     markdown: 'MD',

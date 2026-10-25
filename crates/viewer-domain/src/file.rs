@@ -12,6 +12,7 @@ pub enum FileKind {
     UnsupportedImage,
     Other,
     Video,
+    Image,
 }
 
 impl FileKind {
@@ -25,15 +26,19 @@ impl FileKind {
             Self::UnsupportedImage => 5,
             Self::Other => 6,
             Self::Video => 7,
+            Self::Image => 8,
         }
     }
 
     pub const fn is_image(self) -> bool {
-        matches!(self, Self::Jpeg | Self::Png | Self::UnsupportedImage)
+        matches!(
+            self,
+            Self::Jpeg | Self::Png | Self::UnsupportedImage | Self::Image
+        )
     }
 
     pub const fn is_previewable_image(self) -> bool {
-        matches!(self, Self::Jpeg | Self::Png)
+        matches!(self, Self::Jpeg | Self::Png | Self::Image)
     }
 
     pub const fn is_other_file(self) -> bool {
@@ -53,6 +58,8 @@ mod tests {
     fn file_kinds_expose_behavior_without_extension_logic() {
         assert!(FileKind::Jpeg.is_image());
         assert!(FileKind::Png.is_previewable_image());
+        assert!(FileKind::Image.is_image());
+        assert!(FileKind::Image.is_previewable_image());
         assert!(FileKind::UnsupportedImage.is_image());
         assert!(!FileKind::UnsupportedImage.is_previewable_image());
         assert!(FileKind::Markdown.is_other_file());
@@ -73,6 +80,7 @@ mod tests {
         assert_eq!(FileKind::UnsupportedImage.encode(), 5);
         assert_eq!(FileKind::Other.encode(), 6);
         assert_eq!(FileKind::Video.encode(), 7);
+        assert_eq!(FileKind::Image.encode(), 8);
     }
 }
 

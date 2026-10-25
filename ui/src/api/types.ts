@@ -44,6 +44,7 @@ export type FileKind =
   | 'unsupported_image'
   | 'other'
   | 'video'
+  | 'image'
 export type ReviewState = 'keep' | 'pending' | 'reject'
 
 export interface Marker {

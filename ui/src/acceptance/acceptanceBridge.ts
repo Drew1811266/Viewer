@@ -151,10 +151,11 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
         totalSize: files.reduce((total, { size }) => total + size, 0),
         types: {
           folders: 0,
-          images: files.filter(({ kind }) => kind === 'jpeg' || kind === 'png').length,
+          images: files.filter(({ kind }) => kind === 'jpeg' || kind === 'png' || kind === 'image')
+            .length,
           videos: files.filter(({ kind }) => kind === 'video').length,
           otherFiles: files.filter(
-            ({ kind }) => kind !== 'jpeg' && kind !== 'png' && kind !== 'video',
+            ({ kind }) => kind !== 'jpeg' && kind !== 'png' && kind !== 'image' && kind !== 'video',
           ).length,
         },
         commonReview:

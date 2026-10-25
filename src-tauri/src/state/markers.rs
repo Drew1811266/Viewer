@@ -144,6 +144,7 @@ fn validated_marker_target(
         FileKind::Directory => metadata.is_dir(),
         FileKind::Jpeg
         | FileKind::Png
+        | FileKind::Image
         | FileKind::Markdown
         | FileKind::Text
         | FileKind::UnsupportedImage

@@ -445,12 +445,8 @@ async fn subtree_snapshot_excludes_hidden_reserved_and_symlink_entries_and_class
             .kind,
         FileKind::Other
     );
-    let poster = filesystem_node(
-        fixture.project.root(),
-        "work/poster.webp",
-        FileKind::UnsupportedImage,
-    )
-    .entity_id;
+    let poster =
+        filesystem_node(fixture.project.root(), "work/poster.webp", FileKind::Image).entity_id;
     assert_eq!(
         fixture
             .index
@@ -459,7 +455,7 @@ async fn subtree_snapshot_excludes_hidden_reserved_and_symlink_entries_and_class
             .unwrap()
             .node
             .kind,
-        FileKind::UnsupportedImage
+        FileKind::Image
     );
     let video = filesystem_node(fixture.project.root(), "work/clip.mov", FileKind::Video).entity_id;
     assert_eq!(
@@ -480,12 +476,7 @@ async fn subtree_snapshot_excludes_hidden_reserved_and_symlink_entries_and_class
     .unwrap();
     fixture.reconcile(&["work"]).await;
     assert_eq!(
-        filesystem_node(
-            fixture.project.root(),
-            "work/ignored.webp",
-            FileKind::UnsupportedImage,
-        )
-        .entity_id,
+        filesystem_node(fixture.project.root(), "work/ignored.webp", FileKind::Image).entity_id,
         ignored
     );
     assert_eq!(
@@ -496,7 +487,7 @@ async fn subtree_snapshot_excludes_hidden_reserved_and_symlink_entries_and_class
             .unwrap()
             .node
             .kind,
-        FileKind::UnsupportedImage
+        FileKind::Image
     );
 
     fs::rename(

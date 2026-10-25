@@ -520,7 +520,9 @@ fn capture_source(
 
 fn candidate_kind(kind: FileKind) -> Option<ReviewAssetKind> {
     match kind {
-        FileKind::Jpeg | FileKind::Png | FileKind::UnsupportedImage => Some(ReviewAssetKind::Image),
+        FileKind::Jpeg | FileKind::Png | FileKind::Image | FileKind::UnsupportedImage => {
+            Some(ReviewAssetKind::Image)
+        }
         FileKind::Video => Some(ReviewAssetKind::Video),
         FileKind::Directory | FileKind::Markdown | FileKind::Text | FileKind::Other => None,
     }
@@ -585,7 +587,7 @@ async fn assess_media(
             },
             failure: Some(ReviewabilityFailure::Unsupported),
         }),
-        FileKind::Jpeg | FileKind::Png => {
+        FileKind::Jpeg | FileKind::Png | FileKind::Image => {
             if mode == MediaProbeMode::Legacy
                 && let (ImageIndexStatus::Ready, Some(metadata)) =
                     (indexed.image_status, indexed.image_metadata)

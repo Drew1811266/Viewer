@@ -6,6 +6,15 @@ use std::collections::HashSet;
 pub enum ImageFormat {
     Jpeg,
     Png,
+    Gif,
+    Tiff,
+    Webp,
+    Avif,
+    Heic,
+    Bmp,
+    Ico,
+    Psd,
+    Raw,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

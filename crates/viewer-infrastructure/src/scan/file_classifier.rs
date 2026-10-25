@@ -1,11 +1,12 @@
 use std::{ffi::OsStr, path::Path};
 use viewer_domain::file::FileKind;
 
-const UNSUPPORTED_IMAGE_EXTENSIONS: &[&str] = &[
-    "gif", "webp", "avif", "heic", "heif", "bmp", "tif", "tiff", "svg", "svgz", "ico", "jxl",
-    "jfif", "apng", "psd", "dng", "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "raf", "orf",
-    "rw2", "pef", "srw", "x3f",
+const IMAGE_EXTENSIONS: &[&str] = &[
+    "gif", "webp", "avif", "heic", "heif", "bmp", "tif", "tiff", "ico", "apng", "psd", "dng",
+    "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "raf", "orf", "rw2", "pef", "srw", "x3f",
 ];
+
+const UNSUPPORTED_IMAGE_EXTENSIONS: &[&str] = &["svg", "svgz", "jxl"];
 
 const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "m4v", "mov", "mkv", "webm", "avi", "wmv", "mpg", "mpeg", "ts", "mts", "m2ts", "flv",
@@ -18,10 +19,11 @@ pub(crate) fn classify_regular_file(path: &Path) -> Option<FileKind> {
         .and_then(OsStr::to_str)
         .map(str::to_ascii_lowercase);
     match extension.as_deref() {
-        Some("jpg" | "jpeg") => Some(FileKind::Jpeg),
+        Some("jpg" | "jpeg" | "jfif") => Some(FileKind::Jpeg),
         Some("png") => Some(FileKind::Png),
         Some("md" | "markdown") => Some(FileKind::Markdown),
         Some("txt") => Some(FileKind::Text),
+        Some(value) if IMAGE_EXTENSIONS.contains(&value) => Some(FileKind::Image),
         Some(value) if UNSUPPORTED_IMAGE_EXTENSIONS.contains(&value) => {
             Some(FileKind::UnsupportedImage)
         }
@@ -62,5 +64,47 @@ mod tests {
             classify_regular_file(Path::new("CLIP.M2TS")),
             Some(FileKind::Video)
         );
+    }
+
+    #[test]
+    fn imageio_matrix_extensions_classify_as_previewable_image() {
+        for name in [
+            "a.gif", "a.webp", "a.avif", "a.heic", "a.heif", "a.bmp", "a.tif", "a.tiff", "a.ico",
+            "a.apng", "a.psd", "a.dng", "a.cr2", "a.cr3", "a.nef", "a.nrw", "a.arw", "a.srf",
+            "a.sr2", "a.raf", "a.orf", "a.rw2", "a.pef", "a.srw", "a.x3f",
+        ] {
+            assert_eq!(
+                classify_regular_file(Path::new(name)),
+                Some(FileKind::Image),
+                "classified {name} incorrectly"
+            );
+        }
+    }
+
+    #[test]
+    fn jfif_classifies_as_jpeg_and_remains_case_insensitive() {
+        assert_eq!(
+            classify_regular_file(Path::new("photo.jfif")),
+            Some(FileKind::Jpeg)
+        );
+        assert_eq!(
+            classify_regular_file(Path::new("PHOTO.JFIF")),
+            Some(FileKind::Jpeg)
+        );
+        assert_eq!(
+            classify_regular_file(Path::new("vector.HEIC")),
+            Some(FileKind::Image)
+        );
+    }
+
+    #[test]
+    fn vector_and_unavailable_formats_stay_unsupported_until_their_slice() {
+        for name in ["a.svg", "a.svgz", "a.jxl"] {
+            assert_eq!(
+                classify_regular_file(Path::new(name)),
+                Some(FileKind::UnsupportedImage),
+                "classified {name} incorrectly"
+            );
+        }
     }
 }

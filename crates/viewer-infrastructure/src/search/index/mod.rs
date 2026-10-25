@@ -131,6 +131,7 @@ pub(super) fn decode_kind(value: i64) -> rusqlite::Result<FileKind> {
         5 => Ok(FileKind::UnsupportedImage),
         6 => Ok(FileKind::Other),
         7 => Ok(FileKind::Video),
+        8 => Ok(FileKind::Image),
         _ => Err(persisted_error("kind", value)),
     }
 }

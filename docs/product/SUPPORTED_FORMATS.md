@@ -1,8 +1,8 @@
-# Viewer 0.2.0 支持格式与限制
+# Viewer 支持格式与限制
 
 > Status: Current
 >
-> 当前开发版本：`0.2.0`
+> 当前开发版本：`0.2.1`（开发中，基于 0.2.0 基线）
 
 > **重要规则：被扫描识别不代表文件内容一定可解码；实际结果取决于文件内容、权限、完整性和
 > 打包运行时。**
@@ -12,19 +12,31 @@ Viewer 先按不区分大小写的扩展名把普通文件归类，再由图片�
 
 ## 1. 图片
 
-| 扩展名或类别 | 扫描分类 | 0.2.0 应用内能力 | 失败与限制 |
+图片能力分级承诺：
+
+- **完整解码**：进入与 JPEG/PNG 相同的完整管线（缩略图、适合窗口预览、原图 100%、
+  缩放/平移/旋转、放大镜、2–8 图对比、派生尺寸索引与评审资产）。
+- **快速预览级解码**（RAW）：使用 macOS Image I/O 的原生 RAW 快速预览（无相机配置文件、
+  降噪弱），浏览与审阅够用；不承诺专业 RAW 冲图质量。
+- **仅列出**：作为图片类条目显示并可审阅、收藏、搜索或整理，不承诺应用内解码。
+
+| 扩展名或类别 | 扫描分类 | 应用内能力 | 失败与限制 |
 | --- | --- | --- | --- |
-| `.jpg`、`.jpeg` | JPEG | 缩略图、适合窗口预览、原图 100%、缩放/平移/旋转、放大镜、2–8 图对比 | 损坏、不可读或内容与扩展名不符时显示局部图片错误 |
-| `.png` | PNG | 与 JPEG 相同，包含带透明度 PNG 的表示管线 | 同上；成功识别不保证每个异常 PNG 都可解码 |
-| `.gif`、`.webp`、`.avif`、`.heic`、`.heif`、`.bmp`、`.tif`、`.tiff`、`.svg`、`.svgz`、`.ico`、`.jxl`、`.jfif`、`.apng`、`.psd`、`.dng`、`.cr2`、`.cr3`、`.nef`、`.nrw`、`.arw`、`.srf`、`.sr2`、`.raf`、`.orf`、`.rw2`、`.pef`、`.srw`、`.x3f` | `unsupported_image` | 作为图片类条目显示并可审阅、收藏、搜索或整理 | 不承诺应用内解码或原图预览；进入预览/对比时可能只显示明确的不支持状态 |
+| `.jpg`、`.jpeg`、`.jfif` | JPEG | 完整解码 | 损坏、不可读或内容与扩展名不符时显示局部图片错误；内容按实际字节识别，不按扩展名 |
+| `.png` | PNG | 完整解码，包含带透明度 PNG | 同上 |
+| `.gif`、`.tif`、`.tiff`、`.bmp`、`.ico`、`.apng`、`.webp`、`.avif`、`.heic`、`.heif`、`.psd` | `image` | 完整解码 | 多页或动画格式仅取第一帧静态展示，不播放动画；WebP 解码需 macOS 11+，AVIF 需 macOS 13+；PSD 读取的是内嵌合成图层 |
+| `.dng`、`.cr2`、`.cr3`、`.nef`、`.nrw`、`.arw`、`.srf`、`.sr2`、`.raf`、`.orf`、`.rw2`、`.pef`、`.srw`、`.x3f` | `image` | 快速预览级解码（RAW） | 同上；个别厂商新 RAW 若系统不识别则按不支持隔离 |
+| `.svg`、`.svgz` | `unsupported_image` | 仅列出（计划 0.2.2 接入） | 进入预览/对比时显示明确的不支持状态 |
+| `.jxl` | `unsupported_image` | 仅列出 | 同上 |
 
 图片表示通过会话限定的 `viewer-image://` URL 交给界面，不直接把任意文件路径暴露给 Web
-层。当前图片主支持集是 JPEG 和 PNG，不应把 macOS Quick Look 偶然能显示的其他格式写成
-Viewer 的稳定产品承诺。
+层。所有应用内图片工件统一重编码为 PNG 表示；解码受固定内存与像素预算限制（超大图按预算
+拒绝或降级）。本页承诺以逐格式解码矩阵测试为准，不以 Quick Look 偶尔能显示的格式为准。
 
 维护证据：`crates/viewer-infrastructure/src/scan/file_classifier.rs`、
-`crates/viewer-domain/src/file.rs`、`crates/viewer-platform-macos/src/image/`、
-`ui/src/components/ImagePreview.test.tsx`。
+`crates/viewer-domain/src/file.rs`、`crates/viewer-platform-macos/src/image/`
+（`image_io.rs` 的 UTI 白名单与逐格式矩阵测试）、`tests/fixtures/images/`
+（确定性 fixture 与 `manifest.json`）、`ui/src/components/ImagePreview.test.tsx`。
 
 ## 2. 文本
 

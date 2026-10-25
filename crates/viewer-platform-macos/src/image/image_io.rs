@@ -237,10 +237,39 @@ pub(crate) fn thumbnail_from_image_source(
 fn image_format(image_source: &CGImageSource) -> Result<ImageFormat, ImageError> {
     // SAFETY: The image source is valid for this metadata-only query.
     let type_identifier = unsafe { image_source.r#type() }.ok_or(ImageError::Corrupt)?;
-    match type_identifier.to_string().as_str() {
-        "public.jpeg" => Ok(ImageFormat::Jpeg),
-        "public.png" => Ok(ImageFormat::Png),
-        _ => Err(ImageError::Unsupported),
+    image_format_for_type_identifier(&type_identifier.to_string()).ok_or(ImageError::Unsupported)
+}
+
+/// Formats admitted beyond JPEG/PNG through the same CGImageSource pipeline.
+/// Unknown identifiers stay refused (deny by default). RAW formats decode at
+/// Image I/O quick-preview quality (ADR 0008).
+fn image_format_for_type_identifier(type_identifier: &str) -> Option<ImageFormat> {
+    match type_identifier {
+        "public.jpeg" => Some(ImageFormat::Jpeg),
+        "public.png" => Some(ImageFormat::Png),
+        "com.compuserve.gif" => Some(ImageFormat::Gif),
+        "public.tiff" => Some(ImageFormat::Tiff),
+        "org.webmproject.webp" => Some(ImageFormat::Webp),
+        "public.avif" => Some(ImageFormat::Avif),
+        "public.heic" | "public.heif" => Some(ImageFormat::Heic),
+        "com.microsoft.bmp" => Some(ImageFormat::Bmp),
+        "com.microsoft.ico" => Some(ImageFormat::Ico),
+        "com.adobe.photoshop-image" => Some(ImageFormat::Psd),
+        "public.camera-raw-image"
+        | "com.adobe.dng"
+        | "com.canon.cr2-raw-image"
+        | "com.canon.cr3-raw-image"
+        | "com.nikon.nef-raw-image"
+        | "com.nikon.nrw-raw-image"
+        | "com.sony.arw-raw-image"
+        | "com.sony.sr2-raw-image"
+        | "com.fuji.raw-image"
+        | "com.olympus.orf-raw-image"
+        | "com.panasonic.rw2-raw-image"
+        | "com.pentax.pef-raw-image"
+        | "com.samsung.srw-raw-image"
+        | "com.sigma.x3f-raw-image" => Some(ImageFormat::Raw),
+        _ => None,
     }
 }
 
@@ -291,7 +320,7 @@ fn optional_string_property(properties: &CFDictionary, key: &CFString) -> Option
 mod tests {
     use super::ImageIoBackend;
     use viewer_application::ImageError;
-    use viewer_domain::image::{DecodeBudget, ImageRepresentationKind};
+    use viewer_domain::image::{DecodeBudget, ImageFormat, ImageRepresentationKind};
     use viewer_test_support::image_fixtures::{image_fixture, png_dimensions};
 
     #[test]
@@ -315,6 +344,147 @@ mod tests {
         assert!(matches!(
             backend.probe_sync(image_fixture("corrupt.jpg")),
             Err(ImageError::Corrupt)
+        ));
+    }
+
+    #[test]
+    fn uti_allowlist_admits_only_documented_formats() {
+        use super::image_format_for_type_identifier as map;
+        let admitted = [
+            ("public.jpeg", ImageFormat::Jpeg),
+            ("public.png", ImageFormat::Png),
+            ("com.compuserve.gif", ImageFormat::Gif),
+            ("public.tiff", ImageFormat::Tiff),
+            ("org.webmproject.webp", ImageFormat::Webp),
+            ("public.avif", ImageFormat::Avif),
+            ("public.heic", ImageFormat::Heic),
+            ("public.heif", ImageFormat::Heic),
+            ("com.microsoft.bmp", ImageFormat::Bmp),
+            ("com.microsoft.ico", ImageFormat::Ico),
+            ("com.adobe.photoshop-image", ImageFormat::Psd),
+            ("public.camera-raw-image", ImageFormat::Raw),
+            ("com.adobe.dng", ImageFormat::Raw),
+            ("com.canon.cr3-raw-image", ImageFormat::Raw),
+        ];
+        for (identifier, format) in admitted {
+            assert_eq!(map(identifier), Some(format), "{identifier}");
+        }
+        for refused in ["public.svg-image", "public.data", "com.microsoft.xlsx", ""] {
+            assert_eq!(map(refused), None, "{refused}");
+        }
+    }
+
+    #[test]
+    fn imageio_format_matrix_decodes_admitted_formats() {
+        let backend = ImageIoBackend::default();
+        let cases = [
+            ("animated.gif", ImageFormat::Gif, (640, 480)),
+            ("pages.tiff", ImageFormat::Tiff, (800, 600)),
+            ("solid.bmp", ImageFormat::Bmp, (512, 384)),
+            ("p3.heic", ImageFormat::Heic, (640, 480)),
+            ("grid.avif", ImageFormat::Avif, (640, 480)),
+            ("dot.ico", ImageFormat::Ico, (16, 16)),
+        ];
+        for (name, format, dimensions) in cases {
+            let probe = backend
+                .probe_sync(image_fixture(name))
+                .unwrap_or_else(|error| panic!("{name}: {error:?}"));
+            assert_eq!(probe.format, format, "{name}");
+            assert_eq!((probe.width, probe.height), dimensions, "{name}");
+        }
+    }
+
+    #[test]
+    fn heic_probe_reports_display_p3_profile() {
+        let probe = ImageIoBackend::default()
+            .probe_sync(image_fixture("p3.heic"))
+            .unwrap();
+        assert_eq!(probe.icc_profile_name.as_deref(), Some("Display P3"));
+    }
+
+    #[test]
+    fn truncated_matrix_fixtures_are_isolated_as_corrupt() {
+        let backend = ImageIoBackend::default();
+        for name in [
+            "corrupt.gif",
+            "corrupt.tiff",
+            "corrupt.heic",
+            "corrupt.avif",
+        ] {
+            assert!(
+                matches!(
+                    backend.probe_sync(image_fixture(name)),
+                    Err(ImageError::Corrupt)
+                ),
+                "{name} was not isolated as corrupt"
+            );
+        }
+    }
+
+    #[test]
+    fn content_mismatch_extension_decodes_by_content_or_is_refused() {
+        let result = ImageIoBackend::default().probe_sync(image_fixture("mismatch.webp"));
+        match result {
+            Ok(probe) => assert_eq!(probe.format, ImageFormat::Jpeg),
+            Err(ImageError::Unsupported) => {}
+            other => panic!("mismatch.webp: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn forged_dimension_png_never_decodes_within_budget() {
+        let backend = ImageIoBackend::default();
+        let result = backend.probe_sync(image_fixture("forged.png"));
+        match result {
+            Err(_) => {}
+            Ok(probe) => assert!(
+                !DecodeBudget::new(700_000_000, 100_000_000).allows_full_decode(
+                    probe.width,
+                    probe.height,
+                    4
+                )
+            ),
+        }
+    }
+
+    #[test]
+    fn matrix_formats_render_png_representations() {
+        let backend = ImageIoBackend::default();
+        for name in [
+            "animated.gif",
+            "pages.tiff",
+            "solid.bmp",
+            "p3.heic",
+            "grid.avif",
+            "dot.ico",
+        ] {
+            let output = tempfile::NamedTempFile::new().unwrap();
+            let dimensions = backend
+                .render_sync(
+                    image_fixture(name),
+                    ImageRepresentationKind::FitPreview {
+                        max_width: 300,
+                        max_height: 300,
+                        scale_milli: 2_000,
+                    },
+                    output.path(),
+                )
+                .unwrap_or_else(|error| panic!("{name}: {error:?}"));
+            assert_eq!(png_dimensions(output.path()).unwrap(), dimensions, "{name}");
+        }
+    }
+
+    #[test]
+    fn original_decode_of_matrix_formats_respects_the_hard_budget() {
+        let backend = ImageIoBackend::new(DecodeBudget::new(1, 1));
+        let output = tempfile::NamedTempFile::new().unwrap();
+        assert!(matches!(
+            backend.render_sync(
+                image_fixture("p3.heic"),
+                ImageRepresentationKind::Original100Percent,
+                output.path()
+            ),
+            Err(ImageError::BudgetExceeded)
         ));
     }
 

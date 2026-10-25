@@ -954,7 +954,7 @@ fn identity_changing_video_move_rekeys_companion_metadata_atomically() {
 
 #[test]
 fn unknown_persisted_kinds_still_reject_operation_projections() {
-    for invalid_kind in [-1_i64, 8] {
+    for invalid_kind in [-1_i64, 9] {
         let directory = TempDir::new().unwrap();
         let database = directory.path().join("session.sqlite");
         let index = SessionIndex::open(&database).unwrap();

@@ -1,6 +1,6 @@
 # ADR 0008: Viewer 0.2.x format expansion and batch-processing contracts
 
-> Status: Draft (adopted incrementally per 0.2.x slice; finalizes at 0.2.5)
+> Status: Active (finalized at 0.2.5)
 >
 > Decision: Viewer 0.2.x extends the image pipeline to macOS Image I/O's native
 > format matrix under a single decode gate, adds Markdown write-back and batch
@@ -95,6 +95,12 @@ Code-level facts established during planning (see development plan §1):
 - AVIF/WebP *encoding* availability varies by macOS version and is probed at
   runtime via `CGImageDestinationCopyTypeIdentifiers` (0.2.4); decoding follows
   the platform baseline (macOS 13).
-- Each slice lands through `pnpm verify:clean` plus its slice gate; this ADR
-  is finalized with the 0.2.5 closure (regression, perf re-baseline, docs
-  sync).
+- Each slice landed through `pnpm verify:clean` plus its slice gate; this ADR
+  is finalized with the 0.2.5 closure. Final facts: format gates live in
+  `image_format_for_type_identifier` (raster UTIs) plus the vector dispatch in
+  `image_io.rs` (`vector_extension_of`); batch encoding lives in
+  `image/transform.rs` with runtime format probing through
+  `CGImageDestinationCopyTypeIdentifiers`; Markdown write-back lives in
+  `text/writer.rs` behind the `save_text` command. All three slices shipped
+  through commits `bddc551` (0.2.1), `f411187` (0.2.2), `607d168`+`acc97a0`
+  (0.2.3), and `8d76903` (0.2.4).

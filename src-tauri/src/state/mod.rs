@@ -1,3 +1,4 @@
+mod batch_image;
 mod common;
 mod markers;
 mod organization;
@@ -372,6 +373,8 @@ pub struct DesktopRuntime {
     image_render_lifecycle: StdMutex<Option<std::sync::Weak<dyn ImageRenderClosePort>>>,
     project_lifecycle_gate: Arc<RwLock<()>>,
     session: Mutex<Option<DesktopSession>>,
+    batch_image_lane: Arc<Mutex<()>>,
+    active_batch_image_cancel: Arc<StdMutex<Option<tokio_util::sync::CancellationToken>>>,
 }
 
 impl DesktopRuntime {
@@ -552,6 +555,8 @@ impl DesktopRuntime {
             image_render_lifecycle: StdMutex::new(None),
             project_lifecycle_gate: Arc::new(RwLock::new(())),
             session: Mutex::new(None),
+            batch_image_lane: Arc::new(Mutex::new(())),
+            active_batch_image_cancel: Arc::new(StdMutex::new(None)),
         }
     }
 

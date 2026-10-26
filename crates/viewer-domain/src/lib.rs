@@ -1,3 +1,4 @@
+pub mod batch_image;
 pub mod file;
 pub mod image;
 pub mod operation;

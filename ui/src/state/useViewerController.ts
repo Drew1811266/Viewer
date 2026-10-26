@@ -87,6 +87,8 @@ export function useViewerController(bridge: ViewerBridge) {
   )
   const {
     previewRename,
+    previewBatchImage,
+    executeBatchImage,
     preflightFileCommand,
     executeFileCommand,
     cancelOperation,
@@ -139,6 +141,8 @@ export function useViewerController(bridge: ViewerBridge) {
     setReviewState,
     toggleFavorite,
     previewRename,
+    previewBatchImage,
+    executeBatchImage,
     preflightFileCommand,
     executeFileCommand,
     cancelOperation,

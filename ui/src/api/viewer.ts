@@ -38,6 +38,9 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { open } from '@tauri-apps/plugin-dialog'
 import type {
+  BatchImageExecution,
+  BatchImagePlanRow,
+  BatchImageSettingsRequest,
   BeginFinderDragRequest,
   CancelOperationRequest,
   CloseBlockedEvent,
@@ -150,6 +153,15 @@ export interface ViewerBridge {
   previewText(request: TextPreviewRequest): Promise<TextPreview>
   saveText(request: SaveTextRequest): Promise<SaveTextResult>
   renderMarkdown(content: string): Promise<string>
+  previewBatchImage(
+    entityIds: readonly string[],
+    settings: BatchImageSettingsRequest,
+  ): Promise<BatchImagePlanRow[]>
+  executeBatchImage(
+    entityIds: readonly string[],
+    settings: BatchImageSettingsRequest,
+  ): Promise<BatchImageExecution>
+  cancelBatchImage(): void
   openExternalLink(url: string): Promise<void>
   revealProjectInFileManager(): Promise<void>
   cancelTask(taskId: string): Promise<boolean>
@@ -306,6 +318,15 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   renderMarkdown(content: string) {
     return invoke<string>('render_markdown', { content })
+  },
+  previewBatchImage(entityIds, settings) {
+    return invoke('preview_batch_image', { entityIds: [...entityIds], settings })
+  },
+  executeBatchImage(entityIds, settings) {
+    return invoke('execute_batch_image', { entityIds: [...entityIds], settings })
+  },
+  cancelBatchImage() {
+    void invoke('cancel_batch_image')
   },
   openExternalLink(url) {
     return invoke<void>('open_external_link', { url })

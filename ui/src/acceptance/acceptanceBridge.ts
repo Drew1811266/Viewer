@@ -96,6 +96,29 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async renderMarkdown() {
       return '<h1>Viewer 视觉验收</h1><p>确定性的 Markdown 预览内容。</p>'
     },
+    async previewBatchImage(entityIds) {
+      return entityIds.map((entityId) => ({
+        entityId,
+        relativePath: 'batch/fixture.jpg',
+        disposition: { kind: 'convert', destination: 'batch/fixture-converted.jpg' },
+      }))
+    },
+    async executeBatchImage(entityIds) {
+      return {
+        batchId: 'acceptance-batch',
+        outcomes: entityIds.map((entityId) => ({
+          entityId,
+          outcome: {
+            kind: 'converted',
+            destination: 'batch/fixture-converted.jpg',
+            width: 640,
+            height: 480,
+            sizeBytes: 2048,
+          },
+        })),
+      }
+    },
+    cancelBatchImage() {},
     async openExternalLink() {
       return undefined
     },

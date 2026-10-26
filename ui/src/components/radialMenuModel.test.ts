@@ -53,6 +53,7 @@ describe('buildRadialMenuModel', () => {
     ])
     expect(model[2]?.children?.map((item) => item.id)).toEqual([
       'organize.rename',
+      'organize.batch-image',
       'organize.copy',
       'organize.move',
     ])
@@ -65,6 +66,7 @@ describe('buildRadialMenuModel', () => {
     ])
     expect(model[2]?.children?.map((item) => item.icon)).toEqual([
       'pencil',
+      'copy',
       'copy',
       'folder-output',
     ])

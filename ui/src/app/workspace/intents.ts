@@ -9,6 +9,7 @@ export type WorkspaceIntent =
     }
   | { kind: 'enter-compare'; files: readonly BrowserFile[] }
   | { kind: 'start-rename'; files: readonly BrowserFile[] }
+  | { kind: 'start-batch-image'; files: readonly BrowserFile[] }
   | { kind: 'show-operation-results'; batchId: string }
   | { kind: 'open-settings' }
   | { kind: 'open-info' }

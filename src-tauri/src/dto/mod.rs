@@ -16,6 +16,8 @@ pub use image_render::*;
 pub use markers::*;
 pub use memory_pressure::*;
 pub use operations::*;
+pub mod batch_image;
+pub use batch_image::*;
 pub use preview::*;
 pub use project::*;
 pub use review::*;

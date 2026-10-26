@@ -11,7 +11,7 @@ use crate::{
 };
 use std::{str::FromStr, sync::Arc};
 use tauri::State;
-use viewer_domain::{OperationId, search::Generation};
+use viewer_domain::{OperationId, batch_image::BatchImageSettings, search::Generation};
 
 #[tauri::command]
 pub async fn preview_rename(
@@ -129,6 +129,48 @@ pub async fn cancel_operation(
             parse_batch_id(&request.batch_id)?,
         )
         .await
+}
+
+#[tauri::command]
+pub async fn preview_batch_image(
+    runtime: State<'_, Arc<DesktopRuntime>>,
+    entity_ids: Vec<String>,
+    settings: crate::dto::BatchImageSettingsDto,
+) -> Result<Vec<crate::dto::BatchImagePlanRowDto>, CommandError> {
+    let entities = entity_ids
+        .iter()
+        .map(|value| parse_entity_id(value))
+        .collect::<Result<Vec<_>, _>>()?;
+    let settings = BatchImageSettings::try_from(settings).map_err(invalid_batch_image_settings)?;
+    runtime.preview_batch_image(entities, settings).await
+}
+
+#[tauri::command]
+pub async fn execute_batch_image(
+    runtime: State<'_, Arc<DesktopRuntime>>,
+    entity_ids: Vec<String>,
+    settings: crate::dto::BatchImageSettingsDto,
+) -> Result<crate::dto::BatchImageExecutionDto, CommandError> {
+    let entities = entity_ids
+        .iter()
+        .map(|value| parse_entity_id(value))
+        .collect::<Result<Vec<_>, _>>()?;
+    let settings = BatchImageSettings::try_from(settings).map_err(invalid_batch_image_settings)?;
+    runtime.execute_batch_image(entities, settings).await
+}
+
+#[tauri::command]
+pub fn cancel_batch_image(runtime: State<'_, Arc<DesktopRuntime>>) {
+    runtime.cancel_batch_image();
+}
+
+fn invalid_batch_image_settings(_reason: &str) -> CommandError {
+    CommandError::new(
+        "invalid_batch_image_settings",
+        crate::error::ErrorCategory::Validation,
+        "批量处理参数无效，请调整后重试。",
+        false,
+    )
 }
 
 #[tauri::command]

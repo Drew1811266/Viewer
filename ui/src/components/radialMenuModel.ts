@@ -10,6 +10,7 @@ export type RadialLeafAction =
   | 'mark.clear'
   | 'mark.favorite'
   | 'organize.rename'
+  | 'organize.batch-image'
   | 'organize.copy'
   | 'organize.move'
   | 'trash'
@@ -90,6 +91,12 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
       label: context.selectedCount > 1 ? '批量重命名' : '重命名',
       icon: 'pencil',
       disabled: writesDisabled,
+    },
+    {
+      id: 'organize.batch-image',
+      label: '批量处理',
+      icon: 'copy',
+      disabled: writesDisabled || context.selectedImageCount === 0,
     },
     { id: 'organize.copy', label: '复制到', icon: 'copy', disabled: writesDisabled },
     { id: 'organize.move', label: '移动到', icon: 'folder-output', disabled: writesDisabled },

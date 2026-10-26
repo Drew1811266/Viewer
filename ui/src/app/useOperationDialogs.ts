@@ -5,6 +5,7 @@ import type { ViewerStatus } from '../state/viewerState'
 export type OperationDialog =
   | { kind: 'rename'; file: BrowserFile }
   | { kind: 'batch_rename'; files: BrowserFile[] }
+  | { kind: 'batch_image'; files: BrowserFile[] }
   | {
       kind: 'destination'
       mode: 'copy' | 'move'

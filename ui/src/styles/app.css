@@ -3301,3 +3301,24 @@ summary:focus-visible,
   height: 100%;
   font-size: 13px;
 }
+
+.batch-image-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.batch-image-form .batch-image-quality,
+.batch-image-form .batch-image-output-choice {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.batch-image-plan {
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--viewer-border);
+  border-radius: 8px;
+  padding: 8px;
+}

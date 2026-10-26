@@ -77,6 +77,9 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     queryFolder: vi.fn().mockResolvedValue({ workspace: 'empty' }),
     requestImage: vi.fn(),
     previewText: vi.fn(),
+    previewBatchImage: vi.fn(),
+    executeBatchImage: vi.fn(),
+    cancelBatchImage: vi.fn(),
     saveText: vi.fn(),
     renderMarkdown: vi.fn(),
     openExternalLink: vi.fn(),
@@ -223,6 +226,8 @@ type ExpectedSelectionMarkerController = {
 }
 
 type ExpectedOperationController = {
+  previewBatchImage: ViewerController['previewBatchImage']
+  executeBatchImage: ViewerController['executeBatchImage']
   previewRename: ViewerController['previewRename']
   preflightFileCommand: ViewerController['preflightFileCommand']
   executeFileCommand: ViewerController['executeFileCommand']
@@ -348,6 +353,8 @@ describe('useViewerController M2 coordination', () => {
       'setReviewState',
       'toggleFavorite',
       'previewRename',
+      'previewBatchImage',
+      'executeBatchImage',
       'preflightFileCommand',
       'executeFileCommand',
       'cancelOperation',

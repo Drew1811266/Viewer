@@ -6,6 +6,8 @@ export type OrganizationCommands = Pick<
   | 'setReviewState'
   | 'toggleFavorite'
   | 'previewRename'
+  | 'previewBatchImage'
+  | 'executeBatchImage'
   | 'preflightFileCommand'
   | 'executeFileCommand'
   | 'cancelOperation'

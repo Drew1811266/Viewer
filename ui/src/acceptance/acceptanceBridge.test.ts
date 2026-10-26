@@ -10,10 +10,12 @@ describe('Viewer visual acceptance bridge', () => {
     expect(Object.keys(bridge).sort()).toEqual(
       [
         'beginFinderDrag',
+        'cancelBatchImage',
         'cancelOperation',
         'cancelTask',
         'chooseProject',
         'closeProject',
+        'executeBatchImage',
         'executeFileCommand',
         'folderTree',
         'getViewerSettings',
@@ -37,6 +39,7 @@ describe('Viewer visual acceptance bridge', () => {
         'operationStatus',
         'preflightFileCommand',
         'previewRename',
+        'previewBatchImage',
         'previewText',
         'saveText',
         'renderMarkdown',

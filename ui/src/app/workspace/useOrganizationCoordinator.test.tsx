@@ -81,6 +81,8 @@ function commands(): OrganizationCommands {
     setReviewState: vi.fn().mockResolvedValue(undefined),
     toggleFavorite: vi.fn().mockResolvedValue(undefined),
     previewRename: vi.fn().mockResolvedValue(null),
+    previewBatchImage: vi.fn(),
+    executeBatchImage: vi.fn(),
     preflightFileCommand: vi.fn().mockResolvedValue(null),
     executeFileCommand: vi.fn().mockResolvedValue(null),
     cancelOperation: vi.fn().mockResolvedValue(false),

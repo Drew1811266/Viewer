@@ -10,7 +10,9 @@ async-trait.workspace = true
 blake3.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+uuid.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 viewer-domain = { path = "../viewer-domain" }
 
 [dev-dependencies]

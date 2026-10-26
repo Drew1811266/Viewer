@@ -4667,6 +4667,8 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
+ "uuid",
  "viewer-domain",
 ]
 

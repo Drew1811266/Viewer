@@ -6,6 +6,7 @@ pub mod quick_look;
 mod review_annotation;
 mod review_evidence;
 mod svg;
+pub mod transform;
 
 pub use image_io::ImageIoBackend;
 pub use quick_look::{MacImagePort, QuickLookBackend};

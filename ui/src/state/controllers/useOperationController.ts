@@ -1,6 +1,9 @@
 import type { MutableRefObject } from 'react'
 import { useCallback, useEffect, useRef } from 'react'
 import type {
+  BatchImageExecution,
+  BatchImagePlanRow,
+  BatchImageSettingsRequest,
   ConflictResolution,
   FileCommandItem,
   FileCommandKind,
@@ -18,6 +21,14 @@ import { refreshDesiredProjection } from './useProjectSessionController'
 
 export interface OperationController {
   previewRename(entityIds: string[], rules: RenameRules): Promise<RenamePreview | null>
+  previewBatchImage(
+    entityIds: string[],
+    settings: BatchImageSettingsRequest,
+  ): Promise<BatchImagePlanRow[] | null>
+  executeBatchImage(
+    entityIds: string[],
+    settings: BatchImageSettingsRequest,
+  ): Promise<BatchImageExecution | null>
   preflightFileCommand(
     kind: FileCommandKind,
     items: FileCommandItem[],
@@ -77,6 +88,36 @@ export function useOperationController(
   useEffect(() => {
     resetSessionRequests(sessionEpoch)
   }, [resetSessionRequests, sessionEpoch])
+
+  const previewBatchImage = useCallback(
+    async (entityIds: string[], settings: BatchImageSettingsRequest) => {
+      const current = stateRef.current
+      if (
+        current.status !== 'active' ||
+        current.project === null ||
+        current.project.access === 'read_only'
+      ) {
+        return null
+      }
+      return bridge.previewBatchImage(entityIds, settings)
+    },
+    [bridge],
+  )
+
+  const executeBatchImage = useCallback(
+    async (entityIds: string[], settings: BatchImageSettingsRequest) => {
+      const current = stateRef.current
+      if (
+        current.status !== 'active' ||
+        current.project === null ||
+        current.project.access === 'read_only'
+      ) {
+        return null
+      }
+      return bridge.executeBatchImage(entityIds, settings)
+    },
+    [bridge],
+  )
 
   const previewRename = useCallback(
     async (entityIds: string[], rules: RenameRules) => {
@@ -427,6 +468,8 @@ export function useOperationController(
 
   const controller: OperationController = {
     previewRename,
+    previewBatchImage,
+    executeBatchImage,
     preflightFileCommand,
     executeFileCommand,
     cancelOperation,

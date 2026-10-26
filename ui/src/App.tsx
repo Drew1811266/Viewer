@@ -106,6 +106,8 @@ function ViewerWorkspace({
       setReviewState: controller.setReviewState,
       toggleFavorite: controller.toggleFavorite,
       previewRename: controller.previewRename,
+      previewBatchImage: controller.previewBatchImage,
+      executeBatchImage: controller.executeBatchImage,
       preflightFileCommand: controller.preflightFileCommand,
       executeFileCommand: controller.executeFileCommand,
       cancelOperation: controller.cancelOperation,
@@ -187,6 +189,9 @@ function ViewerWorkspace({
         return
       case 'start-rename':
         organization.openRenameDialog(intent.files)
+        return
+      case 'start-batch-image':
+        organization.openBatchImageDialog(intent.files)
         return
       case 'show-operation-results':
         organization.showResults(intent.batchId)

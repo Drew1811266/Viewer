@@ -13,6 +13,8 @@ import type { OrganizationCommands, OrganizationFileCommandKind } from './organi
 type OperationCommands = Pick<
   OrganizationCommands,
   | 'previewRename'
+  | 'previewBatchImage'
+  | 'executeBatchImage'
   | 'preflightFileCommand'
   | 'executeFileCommand'
   | 'cancelOperation'
@@ -34,6 +36,7 @@ export interface OrganizationOperations {
     initialPreflight?: FileCommandPreflight,
   ): void
   openTrashDialog(files?: readonly BrowserFile[]): void
+  openBatchImageDialog(files?: readonly BrowserFile[]): void
   closeOperationDialog(): void
   submitFileCommand(
     kind: OrganizationFileCommandKind,
@@ -45,6 +48,8 @@ export interface OrganizationOperations {
   showResults(batchId: string): void
   closeResults(): void
   previewRename: OperationCommands['previewRename']
+  previewBatchImage: OperationCommands['previewBatchImage']
+  executeBatchImage: OperationCommands['executeBatchImage']
   preflightFileCommand: OperationCommands['preflightFileCommand']
   cancelOperation: OperationCommands['cancelOperation']
   loadOperationResults: OperationCommands['loadOperationResults']
@@ -100,6 +105,8 @@ export function useOrganizationOperations({
   const results = useOperationResults(projectSessionId, state.operation)
 
   return {
+    previewBatchImage: commands.previewBatchImage,
+    executeBatchImage: commands.executeBatchImage,
     operationDialog,
     operationSubmitting,
     operationBusy,
@@ -119,6 +126,7 @@ export function useOrganizationOperations({
 type DialogActions = Pick<
   OrganizationOperations,
   | 'openRenameDialog'
+  | 'openBatchImageDialog'
   | 'openDestinationDialog'
   | 'openTrashDialog'
   | 'closeOperationDialog'
@@ -159,6 +167,17 @@ function useOrganizationDialogActions({
         return
       }
       setOperationDialog({ kind: 'batch_rename', files: [...files] })
+    },
+    [filesCanMutate, selectedFiles, setOperationDialog],
+  )
+  const openBatchImageDialog = useCallback(
+    (files: readonly BrowserFile[] = selectedFiles) => {
+      if (!filesCanMutate(files)) return
+      const images = files.filter(
+        (file) => file.kind === 'jpeg' || file.kind === 'png' || file.kind === 'image',
+      )
+      if (images.length === 0) return
+      setOperationDialog({ kind: 'batch_image', files: [...images] })
     },
     [filesCanMutate, selectedFiles, setOperationDialog],
   )
@@ -208,6 +227,7 @@ function useOrganizationDialogActions({
 
   return {
     openRenameDialog,
+    openBatchImageDialog,
     openDestinationDialog,
     openTrashDialog,
     closeOperationDialog,

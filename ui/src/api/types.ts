@@ -903,3 +903,38 @@ export interface ReviewEditorState {
   saveState: ReviewEditorSaveState
   error: string | null
 }
+
+export type BatchImageTargetFormat = 'jpeg' | 'png' | 'heic' | 'tiff' | 'webp'
+
+export interface BatchImageSettingsRequest {
+  format: BatchImageTargetFormat
+  qualityMilli: number
+  resize: { kind: 'none' } | { kind: 'longest_edge'; edge: number }
+  output: { kind: 'sibling'; suffix: string } | { kind: 'subfolder'; name: string }
+  conflict: 'skip' | 'suffix' | 'overwrite'
+}
+
+export interface BatchImagePlanRow {
+  entityId: string
+  relativePath: string
+  disposition:
+    | { kind: 'convert'; destination: string }
+    | { kind: 'skipped_existing' }
+    | { kind: 'convert_suffixed'; destination: string }
+    | { kind: 'overwrite_existing'; destination: string }
+    | { kind: 'rejected'; reason: 'not_an_image' | 'source_missing' | 'unwritable_format' }
+}
+
+export interface BatchImageExecution {
+  batchId: string
+  outcomes: Array<{
+    entityId: string
+    outcome:
+      | { kind: 'converted'; destination: string; width: number; height: number; sizeBytes: number }
+      | { kind: 'skipped'; reason: 'conflict' | 'cancelled' }
+      | {
+          kind: 'failed'
+          reason: 'decode_failed' | 'encode_failed' | 'placement_failed' | 'source_changed'
+        }
+  }>
+}

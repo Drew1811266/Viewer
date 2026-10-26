@@ -190,6 +190,7 @@ function runWorkspaceAction(
   operations: Pick<OrganizationOperations, 'openDestinationDialog' | 'openTrashDialog'>,
 ) {
   if (action === 'organize.rename') emitIntent({ kind: 'start-rename', files })
+  else if (action === 'organize.batch-image') emitIntent({ kind: 'start-batch-image', files })
   else if (action === 'organize.copy') operations.openDestinationDialog('copy', files)
   else if (action === 'organize.move') operations.openDestinationDialog('move', files)
   else if (action === 'trash') operations.openTrashDialog(files)

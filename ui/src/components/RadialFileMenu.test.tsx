@@ -415,7 +415,7 @@ describe('RadialFileMenu', () => {
 
   it.each([
     ['标记', { x: 398, y: 195 }, 5],
-    ['整理', { x: 398, y: 285 }, 3],
+    ['整理', { x: 398, y: 285 }, 4],
   ])('expands the %s fan after the pointer dwell', (label, point, expectedChildren) => {
     vi.useFakeTimers()
     try {

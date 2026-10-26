@@ -28,6 +28,8 @@ function exhaust(intent: WorkspaceIntent): string {
       return String(intent.files.length)
     case 'start-rename':
       return String(intent.files.length)
+    case 'start-batch-image':
+      return String(intent.files.length)
     case 'show-operation-results':
       return intent.batchId
     case 'open-settings':

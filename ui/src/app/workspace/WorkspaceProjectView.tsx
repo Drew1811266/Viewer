@@ -1,6 +1,7 @@
 import type { CSSProperties, MutableRefObject, ReactNode } from 'react'
 import { useCallback, useRef } from 'react'
 import type { FolderTreeItem, RenamePreview, RenameRules } from '../../api/types'
+import BatchImageDialog from '../../components/BatchImageDialog'
 import BatchRenameDialog from '../../components/BatchRenameDialog'
 import CloseOperationDialog from '../../components/CloseOperationDialog'
 import CompareWorkspace from '../../components/CompareWorkspace'
@@ -833,6 +834,25 @@ function WorkspaceOperationDialogs({
             })),
           )
         }
+      />
+    )
+  }
+
+  if (dialog?.kind === 'batch_image') {
+    return (
+      <BatchImageDialog
+        entityIds={dialog.files.map((file) => file.entityId)}
+        busy={organization.operationBusy}
+        previewBatchImage={(entityIds, settings) =>
+          organization.previewBatchImage([...entityIds], settings).then((plan) => plan ?? [])
+        }
+        executeBatchImage={(entityIds, settings) =>
+          organization.executeBatchImage([...entityIds], settings).then((execution) => {
+            if (execution === null) throw new Error('当前没有打开的项目')
+            return execution
+          })
+        }
+        onCancel={organization.closeOperationDialog}
       />
     )
   }

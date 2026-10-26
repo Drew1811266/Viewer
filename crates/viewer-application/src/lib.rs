@@ -1,3 +1,4 @@
+pub mod batch_image;
 pub mod browse;
 pub mod file_commands;
 pub mod finder_drag;
@@ -25,6 +26,7 @@ pub mod video;
 pub mod video_thumbnail;
 pub mod watcher;
 
+pub use batch_image::{BatchImageExecution, BatchImageIoPort, BatchImageService};
 pub use browse::{BrowseError, BrowseIndexError, BrowseIndexPort, BrowseService};
 pub use finder_drag::{
     FinderDragError, FinderDragReceipt, PreparedFinderDrag, begin_finder_drag, prepare_finder_drag,

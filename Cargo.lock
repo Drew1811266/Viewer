@@ -4659,7 +4659,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "viewer-application"
-version = "0.2.0"
+version = "0.2.5"
 dependencies = [
  "async-trait",
  "blake3",
@@ -4674,7 +4674,7 @@ dependencies = [
 
 [[package]]
 name = "viewer-desktop"
-version = "0.2.0"
+version = "0.2.5"
 dependencies = [
  "ammonia",
  "async-trait",
@@ -4705,7 +4705,7 @@ dependencies = [
 
 [[package]]
 name = "viewer-domain"
-version = "0.2.0"
+version = "0.2.5"
 dependencies = [
  "serde",
  "thiserror 2.0.18",
@@ -4714,7 +4714,7 @@ dependencies = [
 
 [[package]]
 name = "viewer-infrastructure"
-version = "0.2.0"
+version = "0.2.5"
 dependencies = [
  "async-trait",
  "blake3",
@@ -4738,7 +4738,7 @@ dependencies = [
 
 [[package]]
 name = "viewer-platform-macos"
-version = "0.2.0"
+version = "0.2.5"
 dependencies = [
  "async-trait",
  "blake3",
@@ -4777,11 +4777,11 @@ dependencies = [
 
 [[package]]
 name = "viewer-render-core"
-version = "0.2.0"
+version = "0.2.5"
 
 [[package]]
 name = "viewer-render-wgpu"
-version = "0.2.0"
+version = "0.2.5"
 dependencies = [
  "bytemuck",
  "raw-window-metal",
@@ -4793,7 +4793,7 @@ dependencies = [
 
 [[package]]
 name = "viewer-test-support"
-version = "0.2.0"
+version = "0.2.5"
 dependencies = [
  "async-trait",
  "serde",
@@ -4807,7 +4807,7 @@ dependencies = [
 
 [[package]]
 name = "viewer-video-mpv"
-version = "0.2.0"
+version = "0.2.5"
 dependencies = [
  "libc",
  "libloading 0.8.9",

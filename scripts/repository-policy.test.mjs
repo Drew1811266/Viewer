@@ -41,7 +41,7 @@ const currentProductDocuments = [
 
 test('current product documentation is complete, versioned, locally linked, and archived', async () => {
   const tauri = JSON.parse(await read('src-tauri/tauri.conf.json'))
-  assert.equal(tauri.version, '0.2.0')
+  assert.equal(tauri.version, '0.2.5')
   assert.equal(JSON.parse(await read('ui/package.json')).version, tauri.version)
 
   const documents = await Promise.all(

@@ -4,7 +4,26 @@ use super::*;
 use viewer_application::{BatchImageIoPort, BatchImageService, TrashPort};
 use viewer_domain::batch_image::BatchImageSettings;
 
-pub(super) struct DesktopBatchImageIo;
+pub(super) struct DesktopBatchImageIo {
+    root: PathBuf,
+}
+
+impl DesktopBatchImageIo {
+    pub(super) fn new(root: PathBuf) -> Self {
+        Self { root }
+    }
+
+    fn ensure_contained(&self, path: &Path) -> Result<(), String> {
+        if path.starts_with(&self.root) {
+            Ok(())
+        } else {
+            Err(format!(
+                "batch path is outside the project: {}",
+                path.display()
+            ))
+        }
+    }
+}
 
 #[async_trait::async_trait]
 impl BatchImageIoPort for DesktopBatchImageIo {
@@ -14,6 +33,8 @@ impl BatchImageIoPort for DesktopBatchImageIo {
         settings: &BatchImageSettings,
         temp: &Path,
     ) -> Result<(u32, u32, u64), ImageError> {
+        self.ensure_contained(source).map_err(ImageError::Io)?;
+        self.ensure_contained(temp).map_err(ImageError::Io)?;
         let source = source.to_path_buf();
         let settings = settings.clone();
         let temp = temp.to_path_buf();
@@ -29,10 +50,8 @@ impl BatchImageIoPort for DesktopBatchImageIo {
     }
 
     async fn trash(&self, path: &Path) -> Result<(), String> {
-        let root = path
-            .parent()
-            .ok_or_else(|| "batch output has no parent".to_owned())?;
-        let port = viewer_platform_macos::files::MacTrashPort::new(root)
+        self.ensure_contained(path)?;
+        let port = viewer_platform_macos::files::MacTrashPort::new(&self.root)
             .map_err(|error| format!("open trash port: {error:?}"))?;
         port.trash(path)
             .await
@@ -40,14 +59,17 @@ impl BatchImageIoPort for DesktopBatchImageIo {
     }
 
     fn path_exists(&self, path: &Path) -> bool {
-        std::fs::symlink_metadata(path).is_ok()
+        path.starts_with(&self.root) && std::fs::symlink_metadata(path).is_ok()
     }
 
     fn rename(&self, from: &Path, to: &Path) -> Result<(), String> {
+        self.ensure_contained(from)?;
+        self.ensure_contained(to)?;
         std::fs::rename(from, to).map_err(|error| format!("rename batch output: {error}"))
     }
 
     fn create_directory(&self, path: &Path) -> Result<(), String> {
+        self.ensure_contained(path)?;
         std::fs::create_dir_all(path).map_err(|error| format!("create batch folder: {error}"))
     }
 
@@ -71,7 +93,8 @@ impl DesktopRuntime {
             return Err(project_read_only_operation());
         }
         let nodes = indexed_nodes(index.as_ref(), &entity_ids)?;
-        let service = BatchImageService::new(Arc::new(DesktopBatchImageIo));
+        let service =
+            BatchImageService::new(Arc::new(DesktopBatchImageIo::new(active.root.clone())));
         if !service.io().available_formats().contains(&settings.format) {
             return Err(batch_image_format_unavailable());
         }
@@ -116,7 +139,8 @@ impl DesktopRuntime {
             progress_events.emit_operation(progress_session, progress_generation, progress);
         };
 
-        let service = BatchImageService::new(Arc::new(DesktopBatchImageIo));
+        let service =
+            BatchImageService::new(Arc::new(DesktopBatchImageIo::new(active.root.clone())));
         let execution = service
             .execute(&active.root, &nodes, &settings, &cancellation, &progress)
             .await;

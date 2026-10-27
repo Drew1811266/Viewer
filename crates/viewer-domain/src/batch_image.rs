@@ -84,6 +84,47 @@ pub struct BatchImageSettings {
     pub conflict: BatchImageConflictStrategy,
 }
 
+impl BatchImageOutput {
+    /// Output names are single path components: they may not introduce a
+    /// directory separator, an absolute path, or a parent traversal.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        match self {
+            Self::Sibling { suffix } => validate_component(suffix, true),
+            Self::Subfolder { name } => validate_component(name, false),
+        }
+    }
+}
+
+fn validate_component(value: &str, allow_empty: bool) -> Result<(), &'static str> {
+    if !allow_empty && value.is_empty() {
+        return Err("output name must not be empty");
+    }
+    if value == "." || value == ".." {
+        return Err("output name must not be a traversal component");
+    }
+    if value
+        .chars()
+        .any(|character| character == '/' || character == '\\' || character == '\0')
+    {
+        return Err("output name must not contain a path separator");
+    }
+    Ok(())
+}
+
+impl BatchImageSettings {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if !self.quality.is_valid() {
+            return Err("quality must be within 0..=1000");
+        }
+        if let BatchImageResize::LongestEdge(edge) = self.resize
+            && edge == 0
+        {
+            return Err("longest edge must be positive");
+        }
+        self.output.validate()
+    }
+}
+
 /// Per-file disposition computed during planning (the preflight preview).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -151,7 +192,10 @@ pub enum BatchImageFailureReason {
 
 #[cfg(test)]
 mod tests {
-    use super::{BatchImageQuality, BatchImageTargetFormat};
+    use super::{
+        BatchImageConflictStrategy, BatchImageOutput, BatchImageQuality, BatchImageResize,
+        BatchImageSettings, BatchImageTargetFormat,
+    };
 
     #[test]
     fn target_formats_use_stable_lowercase_extensions() {
@@ -165,5 +209,74 @@ mod tests {
         assert!(BatchImageQuality::DEFAULT.is_valid());
         assert!(BatchImageQuality(1_000).is_valid());
         assert!(!BatchImageQuality(1_001).is_valid());
+    }
+
+    #[test]
+    fn output_names_reject_path_components() {
+        for output in [
+            BatchImageOutput::Subfolder {
+                name: "../outside".into(),
+            },
+            BatchImageOutput::Subfolder {
+                name: "/tmp/outside".into(),
+            },
+            BatchImageOutput::Subfolder {
+                name: "nested/inside".into(),
+            },
+            BatchImageOutput::Subfolder { name: "..".into() },
+            BatchImageOutput::Subfolder {
+                name: String::new(),
+            },
+            BatchImageOutput::Sibling {
+                suffix: "/../../outside".into(),
+            },
+        ] {
+            assert!(output.validate().is_err(), "{output:?} should be rejected");
+        }
+        assert!(
+            BatchImageOutput::Subfolder {
+                name: "converted".into()
+            }
+            .validate()
+            .is_ok()
+        );
+        assert!(
+            BatchImageOutput::Sibling {
+                suffix: "-converted".into()
+            }
+            .validate()
+            .is_ok()
+        );
+        assert!(
+            BatchImageOutput::Sibling {
+                suffix: String::new()
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn settings_validation_covers_quality_resize_and_output() {
+        let mut settings = BatchImageSettings {
+            format: BatchImageTargetFormat::Jpeg,
+            quality: BatchImageQuality::DEFAULT,
+            resize: BatchImageResize::None,
+            output: BatchImageOutput::Subfolder {
+                name: "converted".into(),
+            },
+            conflict: BatchImageConflictStrategy::Skip,
+        };
+        assert!(settings.validate().is_ok());
+        settings.quality = BatchImageQuality(1_001);
+        assert!(settings.validate().is_err());
+        settings.quality = BatchImageQuality::DEFAULT;
+        settings.resize = BatchImageResize::LongestEdge(0);
+        assert!(settings.validate().is_err());
+        settings.resize = BatchImageResize::None;
+        settings.output = BatchImageOutput::Subfolder {
+            name: "../outside".into(),
+        };
+        assert!(settings.validate().is_err());
     }
 }

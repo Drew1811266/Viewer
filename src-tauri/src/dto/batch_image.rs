@@ -21,22 +21,15 @@ impl TryFrom<BatchImageSettingsDto> for BatchImageSettings {
     type Error = &'static str;
 
     fn try_from(value: BatchImageSettingsDto) -> Result<Self, Self::Error> {
-        let quality = BatchImageQuality(value.quality_milli);
-        if !quality.is_valid() {
-            return Err("quality must be within 0..=1000");
-        }
-        if let BatchImageResize::LongestEdge(edge) = value.resize
-            && edge == 0
-        {
-            return Err("longest edge must be positive");
-        }
-        Ok(Self {
+        let settings = Self {
             format: value.format,
-            quality,
+            quality: BatchImageQuality(value.quality_milli),
             resize: value.resize,
             output: value.output,
             conflict: value.conflict,
-        })
+        };
+        settings.validate()?;
+        Ok(settings)
     }
 }
 
@@ -85,5 +78,47 @@ impl From<viewer_application::BatchImageExecution> for BatchImageExecutionDto {
                 })
                 .collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BatchImageSettingsDto;
+    use viewer_domain::batch_image::{
+        BatchImageConflictStrategy, BatchImageOutput, BatchImageResize, BatchImageSettings,
+        BatchImageTargetFormat,
+    };
+
+    fn dto(output: BatchImageOutput) -> BatchImageSettingsDto {
+        BatchImageSettingsDto {
+            format: BatchImageTargetFormat::Jpeg,
+            quality_milli: 850,
+            resize: BatchImageResize::None,
+            output,
+            conflict: BatchImageConflictStrategy::Skip,
+        }
+    }
+
+    #[test]
+    fn wire_settings_reject_output_traversal() {
+        let error = BatchImageSettings::try_from(dto(BatchImageOutput::Subfolder {
+            name: "../outside".into(),
+        }))
+        .unwrap_err();
+        assert!(error.contains("path separator") || error.contains("traversal"));
+    }
+
+    #[test]
+    fn wire_settings_accept_a_plain_subfolder() {
+        let settings = BatchImageSettings::try_from(dto(BatchImageOutput::Subfolder {
+            name: "converted".into(),
+        }))
+        .unwrap();
+        assert_eq!(
+            settings.output,
+            BatchImageOutput::Subfolder {
+                name: "converted".into()
+            }
+        );
     }
 }

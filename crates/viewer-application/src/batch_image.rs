@@ -364,6 +364,7 @@ fn destination_path(
     node: &viewer_domain::file::FileNode,
     settings: &BatchImageSettings,
 ) -> Option<PathBuf> {
+    settings.validate().ok()?;
     let relative = Path::new(node.relative_path.as_str());
     let file_name = relative.file_name()?.to_str()?;
     let stem = file_name
@@ -378,7 +379,11 @@ fn destination_path(
         }
         BatchImageOutput::Subfolder { name } => relative.with_file_name(name).join(output_name),
     };
-    Some(root.join(destination))
+    let destination = root.join(destination);
+    // Defence in depth: the relative source path is already validated and the
+    // output name is a single component, but never hand an escaping path to
+    // the filesystem or the trash port.
+    destination.starts_with(root).then_some(destination)
 }
 
 fn free_suffixed_path(io: &Arc<dyn BatchImageIoPort>, destination: &Path) -> Option<PathBuf> {

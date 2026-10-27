@@ -6,7 +6,8 @@ use viewer_desktop::error::{CommandError, ErrorCategory};
 use viewer_desktop::state::{DesktopEventSink, DesktopRuntime, ScanEventDto};
 use viewer_domain::batch_image::{
     BatchImageConflictStrategy, BatchImageItemOutcome, BatchImageOutput, BatchImagePlanDisposition,
-    BatchImageQuality, BatchImageResize, BatchImageSettings, BatchImageTargetFormat,
+    BatchImageQuality, BatchImageRejectReason, BatchImageResize, BatchImageSettings,
+    BatchImageTargetFormat,
 };
 use viewer_infrastructure::scan::walker::ProjectWalker;
 
@@ -161,6 +162,46 @@ async fn plan_reports_destinations_conflicts_and_rejections() {
         plan[1].disposition,
         BatchImagePlanDisposition::Rejected { .. }
     ));
+}
+
+#[test]
+fn plan_rejects_output_names_that_escape_the_project_root() {
+    let project = tempfile::tempdir().unwrap();
+    write_tree(project.path());
+    let io = Arc::new(RecordingIo {
+        cancelled_after: usize::MAX,
+        processed: std::sync::Mutex::new(0),
+    });
+    let service = BatchImageService::new(io);
+    let nodes = vec![node_for(project.path(), "a.jpg")];
+
+    for output in [
+        BatchImageOutput::Subfolder {
+            name: "../outside".into(),
+        },
+        BatchImageOutput::Subfolder {
+            name: "/tmp/outside".into(),
+        },
+        BatchImageOutput::Sibling {
+            suffix: "/../../outside".into(),
+        },
+    ] {
+        let plan = service.plan(
+            project.path(),
+            &nodes,
+            &settings(BatchImageConflictStrategy::Overwrite, output),
+        );
+        assert!(
+            matches!(
+                plan[0].disposition,
+                BatchImagePlanDisposition::Rejected {
+                    reason: BatchImageRejectReason::UnwritableFormat
+                }
+            ),
+            "unsafe output must be rejected: {:?}",
+            plan[0].disposition
+        );
+    }
 }
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub const MAX_TEXT_PREVIEW_BYTES: usize = 10 * 1024 * 1024;
 
@@ -57,6 +57,19 @@ pub struct TextSaveRequest<'a> {
     pub acknowledge_encoding_conversion: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct TextCopyRequest<'a> {
+    pub source: &'a Path,
+    pub content: &'a str,
+    pub newline_style: TextNewlineStyle,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextCopyOutcome {
+    pub path: PathBuf,
+    pub fingerprint: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TextSaveOutcome {
     /// blake3 fingerprint (hex) of the newly written bytes; the caller keeps
@@ -78,4 +91,7 @@ pub enum TextSaveError {
 
 pub trait TextSavePort: Send + Sync {
     fn save(&self, request: TextSaveRequest<'_>) -> Result<TextSaveOutcome, TextSaveError>;
+    /// Write `content` next to `source` under a fresh `-copy` name without
+    /// touching the source. Never overwrites an existing file.
+    fn save_copy(&self, request: TextCopyRequest<'_>) -> Result<TextCopyOutcome, TextSaveError>;
 }

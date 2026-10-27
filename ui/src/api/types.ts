@@ -325,6 +325,7 @@ export type TextNewlineStyle = 'lf' | 'crlf'
 export interface SaveTextResult {
   fingerprint: string
   entityId: string
+  createdPath?: string
 }
 
 export interface SaveTextRequest {
@@ -333,6 +334,7 @@ export interface SaveTextRequest {
   expectedFingerprint: string
   newlineStyle: TextNewlineStyle
   acknowledgeEncodingConversion: boolean
+  saveAsCopy?: boolean
 }
 
 export interface ViewerCommandError {

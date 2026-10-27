@@ -38,7 +38,24 @@ describe('tauriViewerBridge', () => {
       expectedFingerprint: 'fingerprint-1',
       newlineStyle: 'crlf',
       acknowledgeEncodingConversion: true,
+      saveAsCopy: false,
     })
+  })
+
+  it('saveText forwards saveAsCopy for conflict copies', async () => {
+    await tauriViewerBridge.saveText({
+      entityId: 'entity-1',
+      content: '# copy\n',
+      expectedFingerprint: 'fingerprint-1',
+      newlineStyle: 'lf',
+      acknowledgeEncodingConversion: true,
+      saveAsCopy: true,
+    })
+
+    expect(invoke).toHaveBeenCalledWith(
+      'save_text',
+      expect.objectContaining({ saveAsCopy: true, entityId: 'entity-1' }),
+    )
   })
 
   it('renderMarkdown invokes the render_markdown command with the content', async () => {

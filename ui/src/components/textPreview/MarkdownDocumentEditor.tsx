@@ -42,6 +42,7 @@ export default function MarkdownDocumentEditor({
   const [saving, setSaving] = useState(false)
   const [issue, setIssue] = useState<SaveIssue>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const pendingAcknowledge = useRef(false)
   const renderGeneration = useRef(0)
 
@@ -104,6 +105,29 @@ export default function MarkdownDocumentEditor({
     [content, entityId, fingerprint, onSaved, preview.usesCrlf, saveText],
   )
 
+  const saveCopy = useCallback(async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const result = await saveText({
+        entityId,
+        content,
+        expectedFingerprint: fingerprint,
+        newlineStyle: preview.usesCrlf ? 'crlf' : 'lf',
+        acknowledgeEncodingConversion: true,
+        saveAsCopy: true,
+      })
+      setIssue(null)
+      setNotice(
+        result.createdPath ? `副本已保存为 ${result.createdPath}。` : '副本已保存到同一文件夹。',
+      )
+    } catch (caught) {
+      setError(safeUserMessage(caught))
+    } finally {
+      setSaving(false)
+    }
+  }, [content, entityId, fingerprint, preview.usesCrlf, saveText])
+
   useEffect(() => {
     if (!editing) return
     function interceptSave(event: KeyboardEvent) {
@@ -128,6 +152,7 @@ export default function MarkdownDocumentEditor({
 
   function discardAndReload() {
     setIssue(null)
+    setNotice(null)
     setEditing(false)
     setContent(savedContent)
     setRenderedHtml(preview.markdownHtml ?? '')
@@ -182,6 +207,11 @@ export default function MarkdownDocumentEditor({
               {error}
             </ViewerLocalFeedback>
           )}
+          {notice && (
+            <ViewerLocalFeedback tone="info" title="副本已保存">
+              {notice}
+            </ViewerLocalFeedback>
+          )}
           <div className="markdown-editor-columns">
             <div className="markdown-editor-source">
               <CodeMirror
@@ -211,12 +241,17 @@ export default function MarkdownDocumentEditor({
           description="自加载以来该文件在 Viewer 之外被修改，本次保存未执行。"
           onCancel={() => setIssue(null)}
         >
-          <p>选择“放弃修改并重载”将丢弃当前编辑内容并重新读取文件。</p>
-          <ViewerButton tone="quiet" onClick={discardAndReload}>
+          <p>
+            选择“放弃修改并重载”将丢弃当前编辑内容并重新读取文件；“另存副本”会把当前内容写到同目录的新文件，不动磁盘上的原文件。
+          </p>
+          <ViewerButton tone="quiet" onClick={discardAndReload} disabled={saving}>
             放弃修改并重载
           </ViewerButton>
-          <ViewerButton tone="primary" onClick={() => setIssue(null)}>
+          <ViewerButton tone="quiet" onClick={() => setIssue(null)} disabled={saving}>
             继续编辑
+          </ViewerButton>
+          <ViewerButton tone="primary" onClick={() => void saveCopy()} disabled={saving}>
+            {saving ? '保存中…' : '另存副本'}
           </ViewerButton>
         </ViewerDialog>
       )}

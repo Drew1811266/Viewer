@@ -216,6 +216,7 @@ async fn save_text_command_round_trips_through_the_desktop_runtime() {
                 TextNewlineStyle::Lf
             },
             false,
+            false,
         )
         .await
         .unwrap();
@@ -234,6 +235,7 @@ async fn save_text_command_round_trips_through_the_desktop_runtime() {
             "# title\n\nedited twice\n".to_owned(),
             saved.fingerprint,
             TextNewlineStyle::Lf,
+            false,
             false,
         )
         .await
@@ -270,6 +272,7 @@ async fn save_text_refuses_read_only_projects_and_non_text_targets() {
             "0".to_owned(),
             TextNewlineStyle::Lf,
             false,
+            false,
         )
         .await
         .unwrap_err();
@@ -292,11 +295,111 @@ async fn save_text_refuses_read_only_projects_and_non_text_targets() {
             "0".to_owned(),
             TextNewlineStyle::Lf,
             false,
+            false,
         )
         .await
         .unwrap_err();
     assert_eq!(error.code, "project_read_only");
     assert_eq!(error.category, ErrorCategory::Conflict);
+}
+
+#[tokio::test]
+async fn save_text_copy_writes_fresh_siblings_without_touching_the_original() {
+    let cache_base = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("notes.md"), b"# title\n").unwrap();
+
+    let runtime = DesktopRuntime::new_with_dependencies(
+        cache_base.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+        Arc::new(ProjectWalker),
+        Arc::new(NullEventSink),
+    );
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+
+    let entity = workspace_file(&runtime, "notes.md").await;
+    let preview = runtime
+        .preview_text(entity_id(&entity), None)
+        .await
+        .unwrap();
+    let saved = runtime
+        .save_text(
+            entity_id(&entity),
+            "# title\n\ncopy one\n".to_owned(),
+            preview.fingerprint,
+            TextNewlineStyle::Lf,
+            false,
+            true,
+        )
+        .await
+        .unwrap();
+    assert_eq!(saved.created_path.as_deref(), Some("notes-copy.md"));
+    assert_eq!(
+        fs::read(project.path().join("notes.md")).unwrap(),
+        b"# title\n"
+    );
+    assert_eq!(
+        fs::read(project.path().join("notes-copy.md")).unwrap(),
+        b"# title\n\ncopy one\n"
+    );
+
+    let preview = runtime
+        .preview_text(entity_id(&entity), None)
+        .await
+        .unwrap();
+    let second = runtime
+        .save_text(
+            entity_id(&entity),
+            "# title\n\ncopy two\n".to_owned(),
+            preview.fingerprint,
+            TextNewlineStyle::Lf,
+            false,
+            true,
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.created_path.as_deref(), Some("notes-copy-2.md"));
+    assert_eq!(
+        fs::read(project.path().join("notes-copy-2.md")).unwrap(),
+        b"# title\n\ncopy two\n"
+    );
+    assert!(
+        workspace_file(&runtime, "notes-copy-2.md")
+            .await
+            .ends_with(&second.entity_id)
+    );
+}
+
+#[tokio::test]
+async fn save_text_copy_refuses_read_only_projects() {
+    let cache_base = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("notes.md"), b"# title\n").unwrap();
+
+    let runtime = DesktopRuntime::new_with_dependencies(
+        cache_base.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadOnly)),
+        Arc::new(ProjectWalker),
+        Arc::new(NullEventSink),
+    );
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+
+    let entity = workspace_file(&runtime, "notes.md").await;
+    let error = runtime
+        .save_text(
+            entity_id(&entity),
+            "# copy\n".to_owned(),
+            "0".to_owned(),
+            TextNewlineStyle::Lf,
+            false,
+            true,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "project_read_only");
+    assert!(!project.path().join("notes-copy.md").exists());
 }
 
 #[tokio::test]
@@ -325,6 +428,7 @@ async fn save_text_reports_a_conflict_when_the_file_changes_behind_the_preview()
             "# edited\n".to_owned(),
             preview.fingerprint,
             TextNewlineStyle::Lf,
+            false,
             false,
         )
         .await

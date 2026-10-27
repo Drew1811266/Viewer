@@ -458,6 +458,7 @@ impl DesktopRuntime {
         expected_fingerprint: String,
         newline_style: TextNewlineStyle,
         acknowledge_encoding_conversion: bool,
+        save_as_copy: bool,
     ) -> Result<SaveTextResultDto, CommandError> {
         // A save is a project write: keep the lifecycle read lease so an
         // open/close transition cannot swap the project underneath it, and
@@ -488,6 +489,52 @@ impl DesktopRuntime {
             validated_indexed_source(&active, &node).map_err(|()| text_not_found())?;
         let writer = Arc::clone(&self.text_writer);
         let write_source = source.clone();
+        if save_as_copy {
+            let copy_source = write_source.clone();
+            let copy_content = content.clone();
+            let copy = tokio::task::spawn_blocking(move || {
+                writer.save_copy(viewer_application::text::TextCopyRequest {
+                    source: &copy_source,
+                    content: &copy_content,
+                    newline_style,
+                })
+            })
+            .await
+            .map_err(|_| internal_command_error())?
+            .map_err(CommandError::from)?;
+            drop(_write_guard);
+            let relative = copy
+                .path
+                .strip_prefix(&active.root)
+                .map_err(|_| text_not_found())?
+                .to_string_lossy()
+                .into_owned();
+            let parent = copy
+                .path
+                .parent()
+                .map(std::path::Path::to_path_buf)
+                .ok_or_else(text_not_found)?;
+            reconciler
+                .reconcile(ReconcileRequest {
+                    session_id: active.session_id,
+                    generation: active.generation,
+                    roots: vec![parent],
+                    reason: ReconcileReason::ExternalChange,
+                })
+                .await
+                .map_err(|_| internal_command_error())?;
+            let relative_path =
+                viewer_domain::RelativePath::parse(&relative).map_err(|_| text_not_found())?;
+            let refreshed = BrowseIndexPort::node_by_relative_path(index.as_ref(), &relative_path)
+                .map_err(CommandError::from)?
+                .ok_or_else(text_not_found)?;
+            self.ensure_session_active(active.session_id).await?;
+            return Ok(SaveTextResultDto {
+                fingerprint: copy.fingerprint,
+                entity_id: refreshed.entity_id.to_string(),
+                created_path: Some(relative),
+            });
+        }
         let outcome = tokio::task::spawn_blocking(move || {
             writer.save(TextSaveRequest {
                 source: &write_source,
@@ -527,6 +574,7 @@ impl DesktopRuntime {
         Ok(SaveTextResultDto {
             fingerprint: outcome.fingerprint,
             entity_id: refreshed.entity_id.to_string(),
+            created_path: None,
         })
     }
 

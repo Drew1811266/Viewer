@@ -307,6 +307,7 @@ export const tauriViewerBridge: ViewerBridge = {
     expectedFingerprint,
     newlineStyle,
     acknowledgeEncodingConversion,
+    saveAsCopy,
   }) {
     return invoke<SaveTextResult>('save_text', {
       entityId,
@@ -314,6 +315,7 @@ export const tauriViewerBridge: ViewerBridge = {
       expectedFingerprint,
       newlineStyle,
       acknowledgeEncodingConversion,
+      saveAsCopy: saveAsCopy ?? false,
     })
   },
   renderMarkdown(content: string) {

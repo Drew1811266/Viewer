@@ -27,6 +27,7 @@ pub async fn save_text(
     expected_fingerprint: String,
     newline_style: TextNewlineStyle,
     acknowledge_encoding_conversion: bool,
+    save_as_copy: Option<bool>,
 ) -> Result<SaveTextResultDto, CommandError> {
     runtime
         .save_text(
@@ -35,6 +36,7 @@ pub async fn save_text(
             expected_fingerprint,
             newline_style,
             acknowledge_encoding_conversion,
+            save_as_copy.unwrap_or(false),
         )
         .await
 }

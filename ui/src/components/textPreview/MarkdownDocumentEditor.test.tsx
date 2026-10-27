@@ -162,6 +162,42 @@ describe('MarkdownDocumentEditor', () => {
     expect(screen.queryByLabelText('doc.md 源码编辑器')).toBeNull()
   })
 
+  it('a conflict can save the current content as a sibling copy', async () => {
+    saveText
+      .mockRejectedValueOnce(commandError('text_save_conflict'))
+      .mockResolvedValueOnce(saveResult({ createdPath: 'notes/doc-copy.md' }))
+    render(
+      <MarkdownDocumentEditor
+        file={markdownFile}
+        preview={preview()}
+        readOnly={false}
+        saveText={saveText}
+        renderMarkdown={renderMarkdown}
+        openExternalLink={openExternalLink}
+        onSaved={onSaved}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+    const editor = await screen.findByLabelText('doc.md 源码编辑器')
+    fireEvent.change(editor, { target: { value: '本地修改' } })
+    fireEvent.click(await screen.findByRole('button', { name: '保存' }))
+    expect(await screen.findByText('文件已被外部修改')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '另存副本' }))
+    expect(await screen.findByText('副本已保存为 notes/doc-copy.md。')).toBeTruthy()
+    expect(saveText).toHaveBeenLastCalledWith({
+      entityId: 'doc-1',
+      content: '本地修改',
+      expectedFingerprint: 'fingerprint-1',
+      newlineStyle: 'lf',
+      acknowledgeEncodingConversion: true,
+      saveAsCopy: true,
+    })
+    expect(screen.queryByText('文件已被外部修改')).toBeNull()
+    expect(screen.getByLabelText('doc.md 源码编辑器')).toBeTruthy()
+  })
+
   it('an encoding conversion requires an explicit acknowledgement before saving', async () => {
     saveText
       .mockRejectedValueOnce(commandError('text_encoding_acknowledgement_required'))

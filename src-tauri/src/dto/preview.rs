@@ -88,6 +88,8 @@ pub struct TextPreviewDto {
 pub struct SaveTextResultDto {
     pub fingerprint: String,
     pub entity_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_path: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]

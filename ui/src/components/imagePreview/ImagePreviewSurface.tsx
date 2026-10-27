@@ -5,6 +5,7 @@ import type {
   ImageRepresentationRequest,
   MagnifierPreferences,
 } from '../../api/types'
+import { isVectorImage } from '../../fileKinds'
 import type {
   ImageRendererPort,
   ImageRendererViewportBinding,
@@ -48,9 +49,20 @@ export interface ImagePreviewSurfaceProps {
   nativeBinding?: ImageRendererViewportBinding
 }
 
+export function shouldUseNativeViewport(
+  renderer: ImageRendererPort | undefined,
+  file: Pick<BrowserFile, 'name'>,
+): boolean {
+  // The native provider decodes raster sources through CGImageSource. Vector
+  // sources are rasterized by the platform image port, so they stay on the
+  // Web artifact path until the native provider gains a vector decode step.
+  return renderer?.backend === 'native' && !isVectorImage(file)
+}
+
 export default function ImagePreviewSurface(props: ImagePreviewSurfaceProps) {
-  if (props.renderer?.backend === 'native') {
-    return <NativeImageViewport {...props} renderer={props.renderer} />
+  const renderer = props.renderer
+  if (shouldUseNativeViewport(renderer, props.file) && renderer !== undefined) {
+    return <NativeImageViewport {...props} renderer={renderer} />
   }
   return <WebImageViewport {...props} />
 }

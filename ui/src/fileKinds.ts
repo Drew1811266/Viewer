@@ -18,6 +18,14 @@ export const isOtherFile = (file: Pick<BrowserFile, 'kind'>) =>
 export const isPreviewableText = (file: Pick<BrowserFile, 'kind'>) =>
   file.kind === 'markdown' || file.kind === 'text'
 
+const VECTOR_IMAGE_EXTENSIONS = new Set(['svg', 'svgz', 'ai'])
+
+export function isVectorImage(file: Pick<BrowserFile, 'name'>): boolean {
+  const separator = file.name.lastIndexOf('.')
+  if (separator <= 0 || separator === file.name.length - 1) return false
+  return VECTOR_IMAGE_EXTENSIONS.has(file.name.slice(separator + 1).toLowerCase())
+}
+
 export function fileExtensionLabel(name: string): string {
   const separator = name.lastIndexOf('.')
   if (separator <= 0 || separator === name.length - 1) return '无扩展名'

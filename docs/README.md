@@ -53,6 +53,8 @@
 | [adr/0003-scan-search-and-generation.md](adr/0003-scan-search-and-generation.md) | Active | — |
 | [adr/0005-continuous-development-governance.md](adr/0005-continuous-development-governance.md) | Active | — |
 | [adr/0006-continuous-review-snapshot-and-archive-protocol.md](adr/0006-continuous-review-snapshot-and-archive-protocol.md) | Active | — |
+| [adr/0007-image-protocol-memory-only-caching.md](adr/0007-image-protocol-memory-only-caching.md) | Active | — |
+| [adr/0008-viewer-0.2x-format-and-batch-contracts.md](adr/0008-viewer-0.2x-format-and-batch-contracts.md) | Active | — |
 
 AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状态为 `Implemented`，实施计划
 内部状态为 `Complete`。两份文档继续以 Active 治理资料保留，用于约束未来阶段的依赖边界。

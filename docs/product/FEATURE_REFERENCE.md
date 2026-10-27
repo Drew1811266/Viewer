@@ -141,15 +141,19 @@
 
 **状态：** 当前可用。
 
-**用户行为：** 一到两个 Markdown/TXT 文件可只读预览。每栏可以独立选择 UTF-8、UTF-16
+**用户行为：** 一到两个 Markdown/TXT 文件可预览。每栏可以独立选择 UTF-8、UTF-16
 LE、UTF-16 BE 或 GB18030；Markdown 表格和删除线可以呈现，本地图片通过受控会话 URL 加载。
+可写项目中的 Markdown 可进入编辑模式，`⌘S` 原子保存；外部修改冲突可选择重载、继续编辑
+或另存副本，TXT 仍只读。
 
 **边界与失败：** 每个文件最多读取前 10 MiB，超出部分会标记截断。无法自动判定的编码要求
-用户选择。原始 HTML、未解析图片和远程图片不会进入预览；文本不能在 Viewer 内编辑或保存。
+用户选择。原始 HTML、未解析图片和远程图片不会进入预览；TXT 不能在 Viewer 内编辑或保存，
+Markdown 保存前会核对文件指纹，不会盲目覆盖外部修改。
 
 **维护证据：** `ui/src/components/TextPreview.tsx`、`src-tauri/src/commands/preview.rs`、
 `src-tauri/src/markdown.rs`、`crates/viewer-infrastructure/src/text/preview.rs`；测试见
-`ui/src/components/TextPreview.test.tsx` 和 `src-tauri/src/markdown.rs`。
+`ui/src/components/TextPreview.test.tsx`、`ui/src/components/textPreview/MarkdownDocumentEditor.test.tsx`、
+`tests/text_save_boundaries.rs` 和 `src-tauri/src/markdown.rs`。
 
 ## 9. 多图对比
 

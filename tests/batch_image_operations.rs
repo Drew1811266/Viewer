@@ -2,6 +2,7 @@ use std::{fs, path::Path, sync::Arc};
 use viewer_application::{
     BatchImageIoPort, BatchImageService, ProjectAccess, ProjectProbeError, ProjectProbePort,
 };
+use viewer_desktop::dto::{BatchImageItemOutcomeDto, BatchImagePlanDispositionDto};
 use viewer_desktop::error::{CommandError, ErrorCategory};
 use viewer_desktop::state::{DesktopEventSink, DesktopRuntime, ScanEventDto};
 use viewer_domain::batch_image::{
@@ -575,7 +576,7 @@ async fn desktop_round_trip_converts_a_real_jpeg_into_heic() {
         .unwrap();
     assert!(matches!(
         plan[0].disposition,
-        BatchImagePlanDisposition::Convert { ref destination } if destination == "photo-converted.heic"
+        BatchImagePlanDispositionDto::Convert { ref destination } if destination == "photo-converted.heic"
     ));
 
     let execution = runtime
@@ -593,7 +594,7 @@ async fn desktop_round_trip_converts_a_real_jpeg_into_heic() {
         .unwrap();
     assert!(matches!(
         execution.outcomes[0].outcome,
-        BatchImageItemOutcome::Converted { ref destination, width, height, .. }
+        BatchImageItemOutcomeDto::Converted { ref destination, width, height, .. }
             if destination == "photo-converted.heic" && width > 0 && height > 0
     ));
 

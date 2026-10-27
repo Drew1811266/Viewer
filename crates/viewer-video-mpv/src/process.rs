@@ -2235,15 +2235,25 @@ mod tests {
         let tools = fixture.tools();
         let pid_path = tools.ffprobe_launch.path.with_extension("pid");
 
-        let result = tools
-            .ffprobe_json_with_timeout(
-                &media,
-                None,
-                CancellationToken::new(),
-                Duration::from_secs(1),
-            )
-            .await;
+        // Wait for the pid concurrently with the call: under load the shell can
+        // take longer than the 1s probe budget to start and publish its pid, and
+        // awaiting the call first would let the timeout kill it before the file
+        // exists. Both futures observe the same child.
+        let task = tokio::spawn(async move {
+            tools
+                .ffprobe_json_with_timeout(
+                    &media,
+                    None,
+                    CancellationToken::new(),
+                    Duration::from_secs(1),
+                )
+                .await
+        });
         let pid = wait_for_pid(&pid_path).await;
+        let result = tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .expect("timed-out ffprobe must be killed and awaited")
+            .unwrap();
 
         assert!(matches!(result, Err(MediaToolError::TimedOut)));
         assert_process_is_gone(pid);

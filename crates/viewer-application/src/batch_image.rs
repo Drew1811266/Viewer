@@ -124,10 +124,9 @@ impl BatchImageService {
                 reason: BatchImageRejectReason::NotAnImage,
             };
         }
-        let Some(destination) = destination_path(root, node, settings) else {
-            return BatchImagePlanDisposition::Rejected {
-                reason: BatchImageRejectReason::UnwritableFormat,
-            };
+        let destination = match destination_path(root, node, settings) {
+            Ok(destination) => destination,
+            Err(reason) => return BatchImagePlanDisposition::Rejected { reason },
         };
         if !self.io.path_exists(&destination) {
             return BatchImagePlanDisposition::Convert {
@@ -219,7 +218,7 @@ impl BatchImageService {
                 ));
                 continue;
             }
-            let Some(destination) = destination_path(root, node, settings) else {
+            let Ok(destination) = destination_path(root, node, settings) else {
                 failed += 1;
                 outcomes.push((
                     node.entity_id,
@@ -403,10 +402,15 @@ fn destination_path(
     root: &Path,
     node: &viewer_domain::file::FileNode,
     settings: &BatchImageSettings,
-) -> Option<PathBuf> {
-    settings.validate().ok()?;
+) -> Result<PathBuf, BatchImageRejectReason> {
+    settings
+        .validate()
+        .map_err(|_| BatchImageRejectReason::UnwritableFormat)?;
     let relative = Path::new(node.relative_path.as_str());
-    let file_name = relative.file_name()?.to_str()?;
+    let file_name = relative
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or(BatchImageRejectReason::UnwritableFormat)?;
     let stem = file_name
         .rsplit_once('.')
         .map(|(stem, _)| stem)
@@ -419,11 +423,18 @@ fn destination_path(
         }
         BatchImageOutput::Subfolder { name } => relative.with_file_name(name).join(output_name),
     };
+    let source = root.join(relative);
     let destination = root.join(destination);
+    if destination == source {
+        return Err(BatchImageRejectReason::SamePath);
+    }
     // Defence in depth: the relative source path is already validated and the
     // output name is a single component, but never hand an escaping path to
     // the filesystem or the trash port.
-    destination.starts_with(root).then_some(destination)
+    destination
+        .starts_with(root)
+        .then_some(destination)
+        .ok_or(BatchImageRejectReason::UnwritableFormat)
 }
 
 fn target_dimensions(width: u32, height: u32, resize: BatchImageResize) -> (u32, u32) {

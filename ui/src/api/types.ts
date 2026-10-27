@@ -932,7 +932,10 @@ export interface BatchImagePlanRow {
     | { kind: 'skipped_existing' }
     | { kind: 'convert_suffixed'; destination: string }
     | { kind: 'overwrite_existing'; destination: string }
-    | { kind: 'rejected'; reason: 'not_an_image' | 'source_missing' | 'unwritable_format' }
+    | {
+        kind: 'rejected'
+        reason: 'not_an_image' | 'source_missing' | 'unwritable_format' | 'same_path'
+      }
 }
 
 export interface BatchImageExecution {

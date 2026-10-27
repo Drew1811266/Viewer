@@ -186,6 +186,35 @@ async fn plan_reports_destinations_conflicts_and_rejections() {
 }
 
 #[test]
+fn plan_rejects_an_output_that_would_overwrite_the_source() {
+    let project = tempfile::tempdir().unwrap();
+    write_tree(project.path());
+    let io = Arc::new(RecordingIo {
+        cancelled_after: usize::MAX,
+        processed: std::sync::Mutex::new(0),
+        swap_fails: false,
+        trash_fails: false,
+    });
+    let service = BatchImageService::new(io);
+    let nodes = vec![node_for(project.path(), "a.jpg")];
+    let mut settings = settings(
+        BatchImageConflictStrategy::Overwrite,
+        BatchImageOutput::Sibling {
+            suffix: String::new(),
+        },
+    );
+    settings.format = BatchImageTargetFormat::Jpeg;
+
+    let plan = service.plan(project.path(), &nodes, &settings);
+    assert!(matches!(
+        plan[0].disposition,
+        BatchImagePlanDisposition::Rejected {
+            reason: BatchImageRejectReason::SamePath
+        }
+    ));
+}
+
+#[test]
 fn plan_estimates_percent_and_exact_geometry() {
     let project = tempfile::tempdir().unwrap();
     write_tree(project.path());

@@ -168,6 +168,9 @@ pub enum BatchImageRejectReason {
     NotAnImage,
     SourceMissing,
     UnwritableFormat,
+    /// An empty suffix plus the source's own format would target the source
+    /// itself; batch output must always be a new file.
+    SamePath,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

@@ -83,6 +83,15 @@ impl BatchImageIoPort for DesktopBatchImageIo {
     fn available_formats(&self) -> Vec<viewer_domain::batch_image::BatchImageTargetFormat> {
         viewer_platform_macos::image::transform::available_batch_formats()
     }
+
+    fn source_image_info(&self, path: &Path) -> Option<(u32, u32, u64)> {
+        self.ensure_contained(path).ok()?;
+        let size = std::fs::metadata(path).ok()?.len();
+        let probe = viewer_platform_macos::image::image_io::ImageIoBackend::default()
+            .probe_sync(path)
+            .ok()?;
+        Some((probe.width, probe.height, size))
+    }
 }
 
 impl DesktopRuntime {

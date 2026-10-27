@@ -105,6 +105,10 @@ pub struct BatchImagePlanRowDto {
     pub entity_id: String,
     pub relative_path: String,
     pub disposition: BatchImagePlanDispositionDto,
+    pub source_size_bytes: u64,
+    pub target_width: u32,
+    pub target_height: u32,
+    pub estimated_size_bytes: u64,
 }
 
 impl From<BatchImagePlanRow> for BatchImagePlanRowDto {
@@ -113,6 +117,10 @@ impl From<BatchImagePlanRow> for BatchImagePlanRowDto {
             entity_id: row.entity_id.to_string(),
             relative_path: row.relative_path,
             disposition: row.disposition.into(),
+            source_size_bytes: row.source_size_bytes,
+            target_width: row.target_width,
+            target_height: row.target_height,
+            estimated_size_bytes: row.estimated_size_bytes,
         }
     }
 }
@@ -266,6 +274,10 @@ mod tests {
             disposition: BatchImagePlanDisposition::Convert {
                 destination: "photo-converted.webp".into(),
             },
+            source_size_bytes: 1_024,
+            target_width: 640,
+            target_height: 480,
+            estimated_size_bytes: 512,
         });
         let value = serde_json::to_value(&row).unwrap();
         assert_eq!(value["disposition"]["kind"], "convert");

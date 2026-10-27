@@ -14,7 +14,7 @@ use viewer_domain::{
     batch_image::{
         BatchImageConflictStrategy, BatchImageFailureReason, BatchImageItemOutcome,
         BatchImageOutput, BatchImagePlanDisposition, BatchImagePlanRow, BatchImageRejectReason,
-        BatchImageSettings, BatchImageSkipReason, BatchImageTargetFormat,
+        BatchImageResize, BatchImageSettings, BatchImageSkipReason, BatchImageTargetFormat,
     },
     operation::{BatchId, BatchLifecycle, BatchProgress},
 };
@@ -40,6 +40,9 @@ pub trait BatchImageIoPort: Send + Sync {
     fn rename(&self, from: &Path, to: &Path) -> Result<(), String>;
     fn create_directory(&self, path: &Path) -> Result<(), String>;
     fn available_formats(&self) -> Vec<BatchImageTargetFormat>;
+    /// Header probe for the preflight estimate; `None` when the source cannot
+    /// be read or its format has no Image I/O header.
+    fn source_image_info(&self, path: &Path) -> Option<(u32, u32, u64)>;
 }
 
 pub struct BatchImageService {
@@ -72,12 +75,42 @@ impl BatchImageService {
     ) -> Vec<BatchImagePlanRow> {
         nodes
             .iter()
-            .map(|node| BatchImagePlanRow {
-                entity_id: node.entity_id,
-                relative_path: node.relative_path.as_str().to_owned(),
-                disposition: self.plan_row(root, node, settings),
+            .map(|node| {
+                let estimate = self.estimate_row(root, node, settings);
+                BatchImagePlanRow {
+                    entity_id: node.entity_id,
+                    relative_path: node.relative_path.as_str().to_owned(),
+                    disposition: self.plan_row(root, node, settings),
+                    source_size_bytes: estimate.0,
+                    target_width: estimate.1,
+                    target_height: estimate.2,
+                    estimated_size_bytes: estimate.3,
+                }
             })
             .collect()
+    }
+
+    fn estimate_row(
+        &self,
+        root: &Path,
+        node: &viewer_domain::file::FileNode,
+        settings: &BatchImageSettings,
+    ) -> (u64, u32, u32, u64) {
+        if !node.kind.is_previewable_image() {
+            return (0, 0, 0, 0);
+        }
+        let source = root.join(node.relative_path.as_str());
+        let Some((width, height, source_size)) = self.io.source_image_info(&source) else {
+            return (0, 0, 0, 0);
+        };
+        let (target_width, target_height) = target_dimensions(width, height, settings.resize);
+        let estimated = estimate_output_bytes(
+            settings.format,
+            settings.quality.0,
+            target_width,
+            target_height,
+        );
+        (source_size, target_width, target_height, estimated)
     }
 
     fn plan_row(
@@ -391,6 +424,49 @@ fn destination_path(
     // output name is a single component, but never hand an escaping path to
     // the filesystem or the trash port.
     destination.starts_with(root).then_some(destination)
+}
+
+fn target_dimensions(width: u32, height: u32, resize: BatchImageResize) -> (u32, u32) {
+    match resize {
+        BatchImageResize::None => (width, height),
+        BatchImageResize::LongestEdge(edge) => {
+            let longest = width.max(height);
+            if longest == 0 || edge == 0 || longest <= edge {
+                return (width, height);
+            }
+            let scale = f64::from(edge) / f64::from(longest);
+            (
+                (f64::from(width) * scale).round().max(1.0) as u32,
+                (f64::from(height) * scale).round().max(1.0) as u32,
+            )
+        }
+        BatchImageResize::Percent(percent) => {
+            let scale = f64::from(percent) / 100.0;
+            (
+                (f64::from(width) * scale).round().max(1.0) as u32,
+                (f64::from(height) * scale).round().max(1.0) as u32,
+            )
+        }
+        BatchImageResize::Exact { width, height } => (width, height),
+    }
+}
+
+fn estimate_output_bytes(
+    format: BatchImageTargetFormat,
+    quality_milli: u16,
+    width: u32,
+    height: u32,
+) -> u64 {
+    let pixels = f64::from(width) * f64::from(height);
+    let quality = f64::from(quality_milli) / 10.0;
+    let bytes_per_pixel = match format {
+        BatchImageTargetFormat::Jpeg => 0.02 + 0.0035 * quality,
+        BatchImageTargetFormat::Heic => (0.02 + 0.0035 * quality) * 0.55,
+        BatchImageTargetFormat::Webp => (0.02 + 0.0035 * quality) * 0.8,
+        BatchImageTargetFormat::Png => 1.8,
+        BatchImageTargetFormat::Tiff => 4.0,
+    };
+    (pixels * bytes_per_pixel).max(1.0) as u64
 }
 
 fn free_suffixed_path(io: &Arc<dyn BatchImageIoPort>, destination: &Path) -> Option<PathBuf> {

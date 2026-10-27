@@ -175,6 +175,17 @@ pub struct BatchImagePlanRow {
     pub entity_id: EntityId,
     pub relative_path: String,
     pub disposition: BatchImagePlanDisposition,
+    /// Source file size, or `0` when metadata was unavailable.
+    #[serde(default)]
+    pub source_size_bytes: u64,
+    /// Estimated output geometry; `0` when the source header was unavailable.
+    #[serde(default)]
+    pub target_width: u32,
+    #[serde(default)]
+    pub target_height: u32,
+    /// Coarse output-size estimate for the preflight UI; `0` when unknown.
+    #[serde(default)]
+    pub estimated_size_bytes: u64,
 }
 
 /// Per-file execution outcome.

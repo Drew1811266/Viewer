@@ -7,6 +7,10 @@ const PLAN: BatchImagePlanRow[] = [
   {
     entityId: 'entity-1',
     relativePath: 'photo.jpg',
+    sourceSizeBytes: 1_048_576,
+    targetWidth: 1024,
+    targetHeight: 768,
+    estimatedSizeBytes: 524_288,
     disposition: { kind: 'convert', destination: 'photo-converted.webp' },
   },
 ]

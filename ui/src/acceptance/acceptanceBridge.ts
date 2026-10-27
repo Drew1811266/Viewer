@@ -100,6 +100,10 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
       return entityIds.map((entityId) => ({
         entityId,
         relativePath: 'batch/fixture.jpg',
+        sourceSizeBytes: 1_048_576,
+        targetWidth: 1024,
+        targetHeight: 768,
+        estimatedSizeBytes: 524_288,
         disposition: { kind: 'convert', destination: 'batch/fixture-converted.jpg' },
       }))
     },

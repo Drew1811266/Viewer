@@ -71,6 +71,9 @@ impl BatchImageIoPort for RecordingIo {
     fn create_directory(&self, path: &Path) -> Result<(), String> {
         fs::create_dir_all(path).map_err(|error| error.to_string())
     }
+    fn source_image_info(&self, path: &Path) -> Option<(u32, u32, u64)> {
+        Some((1024, 768, fs::metadata(path).ok()?.len()))
+    }
     fn available_formats(&self) -> Vec<BatchImageTargetFormat> {
         vec![
             BatchImageTargetFormat::Jpeg,
@@ -172,10 +175,50 @@ async fn plan_reports_destinations_conflicts_and_rejections() {
         plan[0].disposition,
         BatchImagePlanDisposition::Convert { ref destination } if destination == "a-webp.webp"
     ));
+    assert_eq!(plan[0].source_size_bytes, 6);
+    assert_eq!((plan[0].target_width, plan[0].target_height), (1024, 768));
+    assert!(plan[0].estimated_size_bytes > 0);
     assert!(matches!(
         plan[1].disposition,
         BatchImagePlanDisposition::Rejected { .. }
     ));
+    assert_eq!(plan[1].estimated_size_bytes, 0);
+}
+
+#[test]
+fn plan_estimates_percent_and_exact_geometry() {
+    let project = tempfile::tempdir().unwrap();
+    write_tree(project.path());
+    let io = Arc::new(RecordingIo {
+        cancelled_after: usize::MAX,
+        processed: std::sync::Mutex::new(0),
+        swap_fails: false,
+        trash_fails: false,
+    });
+    let service = BatchImageService::new(io);
+    let nodes = vec![node_for(project.path(), "a.jpg")];
+
+    let estimate = |resize| {
+        let mut settings = settings(
+            BatchImageConflictStrategy::Skip,
+            BatchImageOutput::Sibling {
+                suffix: "-x".into(),
+            },
+        );
+        settings.resize = resize;
+        let plan = service.plan(project.path(), &nodes, &settings);
+        (plan[0].target_width, plan[0].target_height)
+    };
+
+    assert_eq!(estimate(BatchImageResize::Percent(50)), (512, 384));
+    assert_eq!(
+        estimate(BatchImageResize::Exact {
+            width: 300,
+            height: 200,
+        }),
+        (300, 200)
+    );
+    assert_eq!(estimate(BatchImageResize::LongestEdge(200)), (200, 150));
 }
 
 #[test]

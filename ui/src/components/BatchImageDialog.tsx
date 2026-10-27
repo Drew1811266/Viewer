@@ -98,7 +98,8 @@ export default function BatchImageDialog({
   }, [entityIds, previewBatchImage, settings])
 
   useEffect(() => {
-    refreshPlan()
+    const timer = window.setTimeout(refreshPlan, 200)
+    return () => window.clearTimeout(timer)
   }, [refreshPlan])
 
   useEffect(() => {
@@ -309,6 +310,9 @@ export default function BatchImageDialog({
                 {plan.slice(0, 8).map((row) => (
                   <li key={row.entityId}>
                     {row.relativePath} → {destinationLabel(row.disposition)}
+                    {row.targetWidth > 0
+                      ? ` · ${row.targetWidth}×${row.targetHeight} · ${formatBytes(row.sourceSizeBytes)} → 约 ${formatBytes(row.estimatedSizeBytes)}`
+                      : null}
                   </li>
                 ))}
                 {plan.length > 8 && <li>…共 {plan.length} 项</li>}
@@ -319,6 +323,18 @@ export default function BatchImageDialog({
       )}
     </ViewerDialog>
   )
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return '—'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`
 }
 
 function destinationLabel(disposition: BatchImagePlanRow['disposition']): string {

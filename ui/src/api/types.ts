@@ -921,6 +921,10 @@ export interface BatchImageSettingsRequest {
 export interface BatchImagePlanRow {
   entityId: string
   relativePath: string
+  sourceSizeBytes: number
+  targetWidth: number
+  targetHeight: number
+  estimatedSizeBytes: number
   disposition:
     | { kind: 'convert'; destination: string }
     | { kind: 'skipped_existing' }

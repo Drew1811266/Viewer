@@ -95,6 +95,10 @@ name = "video_performance_gate"
 path = "../tests/video_performance_gate.rs"
 
 [[test]]
+name = "image_format_matrix"
+path = "../tests/image_format_matrix.rs"
+
+[[test]]
 name = "image_render_runtime"
 path = "../tests/image_render_runtime.rs"
 

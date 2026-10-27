@@ -204,6 +204,7 @@ mod tests {
         BatchImageConflictStrategy, BatchImageOutput, BatchImageQuality, BatchImageResize,
         BatchImageSettings, BatchImageTargetFormat,
     };
+    use viewer_domain::image::ImageFormat;
     use viewer_test_support::image_fixtures::image_fixture;
 
     fn settings(resize: BatchImageResize) -> BatchImageSettings {
@@ -234,6 +235,34 @@ mod tests {
     fn percent_scales_the_longest_edge() {
         let (width, height, _) = encode(BatchImageResize::Percent(50));
         assert_eq!((width, height), (512, 384));
+    }
+
+    #[test]
+    fn quality_reduces_the_encoded_size() {
+        let directory = tempfile::tempdir().unwrap();
+        let encode_at = |quality: u16| {
+            let destination = directory.path().join(format!("q-{quality}.jpg"));
+            let mut settings = settings(BatchImageResize::None);
+            settings.quality = BatchImageQuality(quality);
+            encode_batch_image(&image_fixture("srgb.jpg"), &settings, &destination).unwrap()
+        };
+        let low = encode_at(100).2;
+        let high = encode_at(900).2;
+        assert!(low < high, "low={low} high={high}");
+    }
+
+    #[test]
+    fn wide_gamut_heic_keeps_a_profile() {
+        let directory = tempfile::tempdir().unwrap();
+        let destination = directory.path().join("p3.heic");
+        let mut settings = settings(BatchImageResize::None);
+        settings.format = BatchImageTargetFormat::Heic;
+        encode_batch_image(&image_fixture("p3.jpg"), &settings, &destination).unwrap();
+        let probe = super::super::image_io::ImageIoBackend::default()
+            .probe_sync(&destination)
+            .unwrap();
+        assert_eq!(probe.format, ImageFormat::Heic);
+        assert!(probe.icc_profile_name.is_some());
     }
 
     #[test]

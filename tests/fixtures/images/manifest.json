@@ -222,6 +222,22 @@
       "profile" : "sRGB IEC61966-2.1",
       "sha256" : "ffb89121baa0aafd524f82eb0ed6d0338e596f9a5e2b20d0749348f9d22dc2c7",
       "width" : 1024
+    },
+    "tiny.psd" : {
+      "format" : "psd",
+      "hasAlpha" : false,
+      "height" : 1,
+      "orientation" : 1,
+      "sha256" : "3702889b012ddbb7186abb22c68d1b4d69aaa2d411d6fb686eafd42c9597c145",
+      "width" : 1
+    },
+    "tiny.webp" : {
+      "format" : "webp",
+      "hasAlpha" : false,
+      "height" : 1,
+      "orientation" : 1,
+      "sha256" : "c90cff659645a312a28804965f3dbc34061338f7234ff5d6ddb2c57e9eadec15",
+      "width" : 1
     }
   }
 }

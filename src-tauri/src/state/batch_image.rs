@@ -58,6 +58,13 @@ impl BatchImageIoPort for DesktopBatchImageIo {
             .map_err(|error| format!("trash batch source: {error:?}"))
     }
 
+    async fn swap(&self, left: &Path, right: &Path) -> Result<(), String> {
+        self.ensure_contained(left)?;
+        self.ensure_contained(right)?;
+        viewer_platform_macos::files::swap_paths(left, right)
+            .map_err(|error| format!("swap batch output: {error}"))
+    }
+
     fn path_exists(&self, path: &Path) -> bool {
         path.starts_with(&self.root) && std::fs::symlink_metadata(path).is_ok()
     }

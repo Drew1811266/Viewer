@@ -33,6 +33,9 @@ pub trait BatchImageIoPort: Send + Sync {
         temp: &Path,
     ) -> Result<(u32, u32, u64), ImageError>;
     async fn trash(&self, path: &Path) -> Result<(), String>;
+    /// Atomically exchange `left` and `right` on the same volume. Used to
+    /// replace an existing output without a window in which it is missing.
+    async fn swap(&self, left: &Path, right: &Path) -> Result<(), String>;
     fn path_exists(&self, path: &Path) -> bool;
     fn rename(&self, from: &Path, to: &Path) -> Result<(), String>;
     fn create_directory(&self, path: &Path) -> Result<(), String>;
@@ -300,8 +303,8 @@ impl BatchImageService {
             return Err(BatchImageFailureReason::PlacementFailed);
         }
         let source = root.join(node.relative_path.as_str());
-        let temp = destination.with_extension(format!(
-            "viewer-batch-{}.tmp",
+        let temp = destination.with_file_name(format!(
+            ".viewer-batch-{}.tmp",
             uuid::Uuid::new_v4().simple()
         ));
         let encoded = self
@@ -312,13 +315,17 @@ impl BatchImageService {
         let placed = if self.io.path_exists(destination)
             && matches!(settings.conflict, BatchImageConflictStrategy::Overwrite)
         {
-            // Overwrite keeps the ADR 0002 shape: the original goes to the
-            // system trash immediately before the prepared output renames in.
-            if self.io.trash(destination).await.is_err() {
-                let _ = std::fs::remove_file(&temp);
-                return Err(BatchImageFailureReason::PlacementFailed);
+            // Replace by atomic swap: the destination always holds either the
+            // old or the new bytes. The old bytes move to the hidden temp and
+            // are then moved to the system trash; if that trash step fails the
+            // hidden temp keeps the original recoverable.
+            match self.io.swap(&temp, destination).await {
+                Ok(()) => {
+                    let _ = self.io.trash(&temp).await;
+                    Ok(())
+                }
+                Err(error) => Err(error),
             }
-            self.io.rename(&temp, destination)
         } else {
             self.io.rename(&temp, destination)
         };

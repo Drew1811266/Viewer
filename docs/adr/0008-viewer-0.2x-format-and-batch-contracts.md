@@ -76,9 +76,14 @@ Code-level facts established during planning (see development plan §1):
   mirror `FileCommandService` (single write lane, `BatchProgress` over
   `viewer://operation-progress`, cancellation, paged results). Batch
   conversion produces new files and is **not undoable** (existing
-  "copies are not undone" convention). Overwrite mode is destructive and must
-  go through staged copy + `OperationJournal` + Trash-before-Replace exactly
-  as ADR 0002 prescribes.
+  "copies are not undone" convention). Overwrite mode is destructive: the
+  encoded staging file and the existing destination are exchanged atomically
+  with `renamex_np(RENAME_SWAP)`, so the destination always holds either the
+  old or the new bytes. The displaced original then moves from the hidden
+  staging name to the system trash; if the trash step fails, the hidden
+  staging file keeps it recoverable. This is the batch-specific exception to
+  ADR 0002's journal path: the swap leaves no window in which the original is
+  missing, so no journal replay is required.
 - **Dependencies.** 0.2.2 adds `resvg` and `flate2` (workspace, pure Rust);
   0.2.3 adds CodeMirror 6 (`@codemirror/*`, `@uiw/react-codemirror`, MIT) to
   the UI. Each addition syncs `deny.toml`, `THIRD_PARTY_NOTICES.md`, and

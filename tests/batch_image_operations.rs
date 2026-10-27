@@ -28,6 +28,8 @@ impl DesktopEventSink for NullEventSink {
 struct RecordingIo {
     cancelled_after: usize,
     processed: std::sync::Mutex<usize>,
+    swap_fails: bool,
+    trash_fails: bool,
 }
 
 #[async_trait::async_trait]
@@ -48,7 +50,16 @@ impl BatchImageIoPort for RecordingIo {
         Ok((10, 8, 7))
     }
     async fn trash(&self, path: &Path) -> Result<(), String> {
+        if self.trash_fails {
+            return Err("trash disabled by test".into());
+        }
         fs::remove_file(path).map_err(|error| error.to_string())
+    }
+    async fn swap(&self, left: &Path, right: &Path) -> Result<(), String> {
+        if self.swap_fails {
+            return Err("swap disabled by test".into());
+        }
+        viewer_platform_macos::files::swap_paths(left, right).map_err(|error| error.to_string())
     }
     fn path_exists(&self, path: &Path) -> bool {
         fs::symlink_metadata(path).is_ok()
@@ -136,6 +147,8 @@ async fn plan_reports_destinations_conflicts_and_rejections() {
     let io = Arc::new(RecordingIo {
         cancelled_after: usize::MAX,
         processed: std::sync::Mutex::new(0),
+        swap_fails: false,
+        trash_fails: false,
     });
     let service = BatchImageService::new(io);
 
@@ -171,6 +184,8 @@ fn plan_rejects_output_names_that_escape_the_project_root() {
     let io = Arc::new(RecordingIo {
         cancelled_after: usize::MAX,
         processed: std::sync::Mutex::new(0),
+        swap_fails: false,
+        trash_fails: false,
     });
     let service = BatchImageService::new(io);
     let nodes = vec![node_for(project.path(), "a.jpg")];
@@ -212,6 +227,8 @@ async fn execute_writes_new_files_and_skips_conflicts() {
     let io = Arc::new(RecordingIo {
         cancelled_after: usize::MAX,
         processed: std::sync::Mutex::new(0),
+        swap_fails: false,
+        trash_fails: false,
     });
     let service = BatchImageService::new(io);
     let cancellation = tokio_util::sync::CancellationToken::new();
@@ -274,6 +291,8 @@ async fn execute_suffix_strategy_writes_the_next_free_name() {
     let io = Arc::new(RecordingIo {
         cancelled_after: usize::MAX,
         processed: std::sync::Mutex::new(0),
+        swap_fails: false,
+        trash_fails: false,
     });
     let service = BatchImageService::new(io);
     let cancellation = tokio_util::sync::CancellationToken::new();
@@ -300,6 +319,137 @@ async fn execute_suffix_strategy_writes_the_next_free_name() {
     ));
 }
 
+fn batch_temp_files(root: &Path) -> Vec<std::path::PathBuf> {
+    fs::read_dir(root)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(".viewer-batch-") && name.ends_with(".tmp"))
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn execute_overwrite_swaps_the_old_output_into_trash() {
+    let project = tempfile::tempdir().unwrap();
+    write_tree(project.path());
+    let destination = project.path().join("a.webp");
+    fs::write(&destination, b"old-output").unwrap();
+    let io = Arc::new(RecordingIo {
+        cancelled_after: usize::MAX,
+        processed: std::sync::Mutex::new(0),
+        swap_fails: false,
+        trash_fails: false,
+    });
+    let service = BatchImageService::new(io);
+    let cancellation = tokio_util::sync::CancellationToken::new();
+
+    let execution = service
+        .execute(
+            project.path(),
+            &[node_for(project.path(), "a.jpg")],
+            &settings(
+                BatchImageConflictStrategy::Overwrite,
+                BatchImageOutput::Sibling {
+                    suffix: String::new(),
+                },
+            ),
+            &cancellation,
+            &|_| {},
+        )
+        .await;
+
+    assert!(matches!(
+        execution.outcomes[0].1,
+        BatchImageItemOutcome::Converted { .. }
+    ));
+    assert_eq!(fs::read(&destination).unwrap(), b"encoded");
+    assert!(batch_temp_files(project.path()).is_empty());
+}
+
+#[tokio::test]
+async fn overwrite_keeps_a_recoverable_temp_when_trash_fails() {
+    let project = tempfile::tempdir().unwrap();
+    write_tree(project.path());
+    let destination = project.path().join("a.webp");
+    fs::write(&destination, b"old-output").unwrap();
+    let io = Arc::new(RecordingIo {
+        cancelled_after: usize::MAX,
+        processed: std::sync::Mutex::new(0),
+        swap_fails: false,
+        trash_fails: true,
+    });
+    let service = BatchImageService::new(io);
+    let cancellation = tokio_util::sync::CancellationToken::new();
+
+    let execution = service
+        .execute(
+            project.path(),
+            &[node_for(project.path(), "a.jpg")],
+            &settings(
+                BatchImageConflictStrategy::Overwrite,
+                BatchImageOutput::Sibling {
+                    suffix: String::new(),
+                },
+            ),
+            &cancellation,
+            &|_| {},
+        )
+        .await;
+
+    assert!(matches!(
+        execution.outcomes[0].1,
+        BatchImageItemOutcome::Converted { .. }
+    ));
+    assert_eq!(fs::read(&destination).unwrap(), b"encoded");
+    let temps = batch_temp_files(project.path());
+    assert_eq!(temps.len(), 1);
+    assert_eq!(fs::read(&temps[0]).unwrap(), b"old-output");
+}
+
+#[tokio::test]
+async fn overwrite_leaves_the_destination_untouched_when_swap_fails() {
+    let project = tempfile::tempdir().unwrap();
+    write_tree(project.path());
+    let destination = project.path().join("a.webp");
+    fs::write(&destination, b"old-output").unwrap();
+    let io = Arc::new(RecordingIo {
+        cancelled_after: usize::MAX,
+        processed: std::sync::Mutex::new(0),
+        swap_fails: true,
+        trash_fails: false,
+    });
+    let service = BatchImageService::new(io);
+    let cancellation = tokio_util::sync::CancellationToken::new();
+
+    let execution = service
+        .execute(
+            project.path(),
+            &[node_for(project.path(), "a.jpg")],
+            &settings(
+                BatchImageConflictStrategy::Overwrite,
+                BatchImageOutput::Sibling {
+                    suffix: String::new(),
+                },
+            ),
+            &cancellation,
+            &|_| {},
+        )
+        .await;
+
+    assert!(matches!(
+        execution.outcomes[0].1,
+        BatchImageItemOutcome::Failed {
+            reason: viewer_domain::batch_image::BatchImageFailureReason::PlacementFailed
+        }
+    ));
+    assert_eq!(fs::read(&destination).unwrap(), b"old-output");
+    assert!(batch_temp_files(project.path()).is_empty());
+}
+
 #[tokio::test]
 async fn execute_subfolder_output_creates_the_folder_once() {
     let project = tempfile::tempdir().unwrap();
@@ -307,6 +457,8 @@ async fn execute_subfolder_output_creates_the_folder_once() {
     let io = Arc::new(RecordingIo {
         cancelled_after: usize::MAX,
         processed: std::sync::Mutex::new(0),
+        swap_fails: false,
+        trash_fails: false,
     });
     let service = BatchImageService::new(io);
     let cancellation = tokio_util::sync::CancellationToken::new();
@@ -342,6 +494,8 @@ async fn execute_reports_failures_without_stopping_the_batch() {
     let io = Arc::new(RecordingIo {
         cancelled_after: 0,
         processed: std::sync::Mutex::new(0),
+        swap_fails: false,
+        trash_fails: false,
     });
     let service = BatchImageService::new(io);
     let cancellation = tokio_util::sync::CancellationToken::new();

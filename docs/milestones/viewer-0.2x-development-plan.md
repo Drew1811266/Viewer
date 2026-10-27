@@ -1,6 +1,7 @@
 # Viewer 0.2.x 开发方案（0.2.1–0.2.5）
 
-> Status: Draft（2026-10-25，待评审）
+> Status: Implemented baseline（0.2.5 开发基线，2026-10-27；残余项见
+> [2026-10-27-viewer-0.2.5-closure.md](../quality/2026-10-27-viewer-0.2.5-closure.md)）
 >
 > 需求依据：[viewer-0.2x-target-requirements.md](viewer-0.2x-target-requirements.md)（2026-10-25
 > 修订版，基线 v0.2.0）。

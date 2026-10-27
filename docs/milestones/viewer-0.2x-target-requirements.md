@@ -1,6 +1,7 @@
 # Viewer 0.2.x 功能扩展规划（规划稿）
 
-> Status: Draft（2026-10-13 起草，2026-10-25 修订，待评审）
+> Status: Implemented baseline（0.2.5 开发基线，2026-10-27；残余项见
+> [2026-10-27-viewer-0.2.5-closure.md](../quality/2026-10-27-viewer-0.2.5-closure.md)）
 >
 > 基线：v0.2.0（main = 2297902）
 >

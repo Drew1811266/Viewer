@@ -903,6 +903,25 @@ test('desktop production composition is native-only after renderer migration', a
   )
 })
 
+test('reopening a minimized window keeps the active project', async () => {
+  const source = await read('src-tauri/src/lib.rs')
+  const start = source.indexOf('tauri::RunEvent::Reopen')
+  const end = source.indexOf('tauri::RunEvent::Exit', start)
+  assert.notEqual(start, -1, 'Viewer must handle the macOS Reopen event')
+  assert.notEqual(end, -1, 'the Reopen branch must be followed by the Exit branch')
+  const reopenBranch = source.slice(start, end)
+
+  // Dock activation fires Reopen for minimized/hidden windows too. The close
+  // flow owns the project-closed event; Reopen must only reveal the window.
+  assert.doesNotMatch(
+    reopenBranch,
+    /PROJECT_CLOSED_EVENT/,
+    'Reopen must not emit project-closed for a merely minimized window',
+  )
+  assert.match(reopenBranch, /window\.show\(\)/)
+  assert.match(reopenBranch, /window\.set_focus\(\)/)
+})
+
 test('Apache-2.0 and the Viewer 0.1 direct dependency inventory are frozen', async () => {
   const [license, workspace, packageText, uiPackageText, notices, acknowledgements, ...manifests] =
     await Promise.all([

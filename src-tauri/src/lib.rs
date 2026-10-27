@@ -549,7 +549,11 @@ pub fn run() {
             }
         }
         tauri::RunEvent::Reopen { .. } => {
-            let _ = app.emit(PROJECT_CLOSED_EVENT, ());
+            // Dock activation also fires `Reopen` for a minimized or hidden
+            // window. That is not a project close: the close flow already
+            // emitted `project-closed` (and hid the window) when the user
+            // actually closed it. Re-emitting here would discard a live
+            // project just because the window was minimized.
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();

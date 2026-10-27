@@ -41,7 +41,13 @@ export default function BatchImageDialog({
 }: BatchImageDialogProps) {
   const [format, setFormat] = useState<(typeof FORMATS)[number]['value']>('jpeg')
   const [qualityPercent, setQualityPercent] = useState(85)
-  const [resizeEdge, setResizeEdge] = useState('')
+  const [resizeMode, setResizeMode] = useState<'none' | 'longest_edge' | 'percent' | 'exact'>(
+    'none',
+  )
+  const [resizeEdge, setResizeEdge] = useState('2048')
+  const [resizePercent, setResizePercent] = useState('50')
+  const [resizeWidth, setResizeWidth] = useState('1920')
+  const [resizeHeight, setResizeHeight] = useState('1080')
   const [suffix, setSuffix] = useState('-converted')
   const [subfolder, setSubfolder] = useState('converted')
   const [useSubfolder, setUseSubfolder] = useState(false)
@@ -56,13 +62,29 @@ export default function BatchImageDialog({
       format,
       qualityMilli: Math.round(qualityPercent * 10),
       resize:
-        resizeEdge.trim() === ''
+        resizeMode === 'none'
           ? { kind: 'none' }
-          : { kind: 'longest_edge', edge: Number(resizeEdge) },
+          : resizeMode === 'longest_edge'
+            ? { kind: 'longest_edge', edge: Number(resizeEdge) }
+            : resizeMode === 'percent'
+              ? { kind: 'percent', percent: Number(resizePercent) }
+              : { kind: 'exact', width: Number(resizeWidth), height: Number(resizeHeight) },
       output: useSubfolder ? { kind: 'subfolder', name: subfolder } : { kind: 'sibling', suffix },
       conflict,
     }),
-    [conflict, format, qualityPercent, resizeEdge, subfolder, suffix, useSubfolder],
+    [
+      conflict,
+      format,
+      qualityPercent,
+      resizeEdge,
+      resizeHeight,
+      resizeMode,
+      resizePercent,
+      resizeWidth,
+      subfolder,
+      suffix,
+      useSubfolder,
+    ],
   )
 
   const refreshPlan = useCallback(() => {
@@ -158,7 +180,7 @@ export default function BatchImageDialog({
               <div className="batch-image-quality">
                 <input
                   type="range"
-                  min={10}
+                  min={0}
                   max={100}
                   step={5}
                   value={qualityPercent}
@@ -168,15 +190,64 @@ export default function BatchImageDialog({
                 <span>{qualityPercent}%</span>
               </div>
             </ViewerField>
-            <ViewerField label="最长边上限（像素，留空不缩放）" inline>
-              <input
-                type="number"
-                min={1}
-                value={resizeEdge}
-                aria-label="最长边像素"
-                placeholder="例如 2048"
-                onChange={(event) => setResizeEdge(event.currentTarget.value)}
-              />
+            <ViewerField label="尺寸修改" inline>
+              <div className="batch-image-resize">
+                <select
+                  aria-label="尺寸修改方式"
+                  value={resizeMode}
+                  onChange={(event) =>
+                    setResizeMode(
+                      event.currentTarget.value as 'none' | 'longest_edge' | 'percent' | 'exact',
+                    )
+                  }
+                >
+                  <option value="none">不修改尺寸</option>
+                  <option value="longest_edge">最长边</option>
+                  <option value="percent">按百分比</option>
+                  <option value="exact">精确像素</option>
+                </select>
+                {resizeMode === 'longest_edge' ? (
+                  <input
+                    type="number"
+                    min={1}
+                    value={resizeEdge}
+                    aria-label="最长边像素"
+                    placeholder="例如 2048"
+                    onChange={(event) => setResizeEdge(event.currentTarget.value)}
+                  />
+                ) : null}
+                {resizeMode === 'percent' ? (
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={resizePercent}
+                    aria-label="缩放百分比"
+                    onChange={(event) => setResizePercent(event.currentTarget.value)}
+                  />
+                ) : null}
+                {resizeMode === 'exact' ? (
+                  <>
+                    <input
+                      type="number"
+                      min={1}
+                      max={8192}
+                      value={resizeWidth}
+                      aria-label="输出宽度"
+                      onChange={(event) => setResizeWidth(event.currentTarget.value)}
+                    />
+                    <span>×</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={8192}
+                      value={resizeHeight}
+                      aria-label="输出高度"
+                      onChange={(event) => setResizeHeight(event.currentTarget.value)}
+                    />
+                  </>
+                ) : null}
+              </div>
             </ViewerField>
             <ViewerField label="输出位置" inline>
               <div className="batch-image-output-choice">

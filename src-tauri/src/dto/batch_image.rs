@@ -16,6 +16,8 @@ use viewer_domain::batch_image::{
 pub enum BatchImageResizeDto {
     None,
     LongestEdge { edge: u32 },
+    Percent { percent: u16 },
+    Exact { width: u32, height: u32 },
 }
 
 impl From<BatchImageResizeDto> for BatchImageResize {
@@ -23,6 +25,8 @@ impl From<BatchImageResizeDto> for BatchImageResize {
         match value {
             BatchImageResizeDto::None => Self::None,
             BatchImageResizeDto::LongestEdge { edge } => Self::LongestEdge(edge),
+            BatchImageResizeDto::Percent { percent } => Self::Percent(percent),
+            BatchImageResizeDto::Exact { width, height } => Self::Exact { width, height },
         }
     }
 }
@@ -207,6 +211,30 @@ mod tests {
         let dto: BatchImageSettingsDto = serde_json::from_value(value).unwrap();
         let settings = BatchImageSettings::try_from(dto).unwrap();
         assert_eq!(settings.resize, BatchImageResize::LongestEdge(1_600));
+
+        for (resize, expected) in [
+            (
+                json!({ "kind": "percent", "percent": 50 }),
+                BatchImageResize::Percent(50),
+            ),
+            (
+                json!({ "kind": "exact", "width": 640, "height": 480 }),
+                BatchImageResize::Exact {
+                    width: 640,
+                    height: 480,
+                },
+            ),
+        ] {
+            let dto: BatchImageSettingsDto = serde_json::from_value(json!({
+                "format": "jpeg",
+                "qualityMilli": 850,
+                "resize": resize,
+                "output": { "kind": "subfolder", "name": "converted" },
+                "conflict": "skip"
+            }))
+            .unwrap();
+            assert_eq!(BatchImageSettings::try_from(dto).unwrap().resize, expected);
+        }
         assert_eq!(
             settings.output,
             BatchImageOutput::Sibling {

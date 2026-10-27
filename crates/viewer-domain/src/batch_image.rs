@@ -33,13 +33,21 @@ impl BatchImageTargetFormat {
     }
 }
 
-/// Resize rule for converted outputs. `LongestEdge` only ever shrinks;
-/// upsampling a smaller image is not offered.
+/// Maximum edge accepted by [`BatchImageResize::Exact`]. The exact mode
+/// allocates a bitmap of the requested geometry, so an unbounded value would
+/// let a bad preview request exhaust memory.
+pub const MAX_BATCH_EXACT_EDGE: u32 = 8_192;
+
+/// Resize rule for converted outputs. `LongestEdge` and `Percent` only ever
+/// shrink; `Exact` writes the requested width x height and may change the
+/// source aspect ratio.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BatchImageResize {
     None,
     LongestEdge(u32),
+    Percent(u16),
+    Exact { width: u32, height: u32 },
 }
 
 /// Where converted outputs are written. Outputs are always new files; the
@@ -120,6 +128,19 @@ impl BatchImageSettings {
             && edge == 0
         {
             return Err("longest edge must be positive");
+        }
+        if let BatchImageResize::Percent(percent) = self.resize
+            && !(1..=100).contains(&percent)
+        {
+            return Err("percentage must be within 1..=100");
+        }
+        if let BatchImageResize::Exact { width, height } = self.resize
+            && (width == 0
+                || height == 0
+                || width > MAX_BATCH_EXACT_EDGE
+                || height > MAX_BATCH_EXACT_EDGE)
+        {
+            return Err("exact dimensions must be within 1..=8192");
         }
         self.output.validate()
     }
@@ -273,6 +294,27 @@ mod tests {
         settings.quality = BatchImageQuality::DEFAULT;
         settings.resize = BatchImageResize::LongestEdge(0);
         assert!(settings.validate().is_err());
+        settings.resize = BatchImageResize::Percent(0);
+        assert!(settings.validate().is_err());
+        settings.resize = BatchImageResize::Percent(101);
+        assert!(settings.validate().is_err());
+        settings.resize = BatchImageResize::Percent(50);
+        assert!(settings.validate().is_ok());
+        settings.resize = BatchImageResize::Exact {
+            width: 0,
+            height: 100,
+        };
+        assert!(settings.validate().is_err());
+        settings.resize = BatchImageResize::Exact {
+            width: 8_193,
+            height: 100,
+        };
+        assert!(settings.validate().is_err());
+        settings.resize = BatchImageResize::Exact {
+            width: 640,
+            height: 480,
+        };
+        assert!(settings.validate().is_ok());
         settings.resize = BatchImageResize::None;
         settings.output = BatchImageOutput::Subfolder {
             name: "../outside".into(),

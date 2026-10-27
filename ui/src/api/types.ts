@@ -909,7 +909,11 @@ export type BatchImageTargetFormat = 'jpeg' | 'png' | 'heic' | 'tiff' | 'webp'
 export interface BatchImageSettingsRequest {
   format: BatchImageTargetFormat
   qualityMilli: number
-  resize: { kind: 'none' } | { kind: 'longest_edge'; edge: number }
+  resize:
+    | { kind: 'none' }
+    | { kind: 'longest_edge'; edge: number }
+    | { kind: 'percent'; percent: number }
+    | { kind: 'exact'; width: number; height: number }
   output: { kind: 'sibling'; suffix: string } | { kind: 'subfolder'; name: string }
   conflict: 'skip' | 'suffix' | 'overwrite'
 }

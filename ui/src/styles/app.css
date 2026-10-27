@@ -3309,10 +3309,15 @@ summary:focus-visible,
 }
 
 .batch-image-form .batch-image-quality,
-.batch-image-form .batch-image-output-choice {
+.batch-image-form .batch-image-output-choice,
+.batch-image-form .batch-image-resize {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.batch-image-form .batch-image-resize input[type="number"] {
+  width: 96px;
 }
 
 .batch-image-plan {

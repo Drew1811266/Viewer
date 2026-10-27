@@ -459,15 +459,22 @@ impl DesktopRuntime {
         newline_style: TextNewlineStyle,
         acknowledge_encoding_conversion: bool,
     ) -> Result<SaveTextResultDto, CommandError> {
-        let (active, index, reconciler) = {
+        // A save is a project write: keep the lifecycle read lease so an
+        // open/close transition cannot swap the project underneath it, and
+        // take the session write lane so file commands cannot move the target
+        // between validation and the atomic rename.
+        let _lifecycle = self.project_lifecycle_gate.read().await;
+        let (active, index, reconciler, write_lane) = {
             let session = self.session.lock().await;
             let session = session.as_ref().ok_or_else(project_not_open)?;
             (
                 session.active.clone(),
                 Arc::clone(&session.index),
                 Arc::clone(&session.reconciler),
+                Arc::clone(&session.write_lane),
             )
         };
+        let _write_guard = write_lane.lock().await;
         if active.access != ProjectAccess::ReadWrite {
             return Err(project_read_only_operation());
         }
@@ -493,6 +500,7 @@ impl DesktopRuntime {
         .await
         .map_err(|_| internal_command_error())?
         .map_err(CommandError::from)?;
+        drop(_write_guard);
 
         // The atomic rename installs a fresh inode at the path. Run the
         // canonical scoped reconcile for the file's folder so the session

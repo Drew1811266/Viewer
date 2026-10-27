@@ -221,7 +221,7 @@ impl DesktopRuntime {
                 store,
                 Arc::clone(&session.marker_projection),
                 Arc::clone(&session.undo_stack),
-                Arc::clone(&session.marker_lock),
+                Arc::clone(&session.write_lane),
                 Arc::clone(&session.file_undo_port),
             )
         };

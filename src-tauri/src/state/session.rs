@@ -61,7 +61,7 @@ impl DesktopRuntime {
         index: Arc<SessionIndex>,
         portable_store: Option<Arc<PortableMarkerStore>>,
         portable_database_path: Option<&Path>,
-        marker_lock: Arc<Mutex<()>>,
+        write_lane: Arc<Mutex<()>>,
         undo_stack: Arc<StdMutex<UndoStack>>,
     ) -> Result<OrganizationServices, CommandError> {
         if active.access != ProjectAccess::ReadWrite {
@@ -154,7 +154,7 @@ impl DesktopRuntime {
             active.access,
             Arc::clone(&self.coordinator),
             port,
-            marker_lock,
+            write_lane,
             undo_stack,
         ));
         let operations = Arc::new(OperationRuntime::new(service, Arc::clone(&self.events)));
@@ -266,7 +266,7 @@ impl DesktopRuntime {
         let mut snapshot = ProjectSnapshot::from(&active);
         let active_session_id = active.session_id;
         let scan_task_id = TaskId::new();
-        let marker_lock = Arc::new(Mutex::new(()));
+        let write_lane = Arc::new(Mutex::new(()));
         let undo_stack = Arc::new(StdMutex::new(UndoStack::new(active_session_id)));
         let (review, review_changes) = match self.prepare_review_services(
             &active,
@@ -293,7 +293,7 @@ impl DesktopRuntime {
                 Arc::clone(&index),
                 portable_store.clone(),
                 portable_database_path.as_deref(),
-                Arc::clone(&marker_lock),
+                Arc::clone(&write_lane),
                 Arc::clone(&undo_stack),
             )
             .await
@@ -333,7 +333,7 @@ impl DesktopRuntime {
                     Arc::clone(&index),
                     marker_metadata,
                     Arc::clone(&self.clock),
-                    Arc::clone(&marker_lock),
+                    Arc::clone(&write_lane),
                     case_sensitive,
                 )
                 .map_err(|_| operation_backend_unavailable())?,
@@ -388,7 +388,7 @@ impl DesktopRuntime {
                 image: Arc::clone(&image),
                 events: Arc::clone(&self.events),
                 portable_store: portable_store.clone(),
-                marker_lock: Arc::clone(&marker_lock),
+                write_lane: Arc::clone(&write_lane),
                 scan_ready,
                 derived_scheduler: Arc::clone(&self.derived_scheduler),
                 video_index: Arc::clone(&video_index),
@@ -414,7 +414,7 @@ impl DesktopRuntime {
             index,
             portable_store,
             marker_projection,
-            marker_lock,
+            write_lane,
             undo_stack,
             file_undo_port,
             operations,
@@ -472,8 +472,8 @@ impl DesktopRuntime {
         // after this point must never resurrect a frontend session whose
         // backend resources are already being dismantled.
         let _ = self.project_service.close();
-        let marker_lock = Arc::clone(&session.marker_lock);
-        let _marker_guard = marker_lock.lock().await;
+        let write_lane = Arc::clone(&session.write_lane);
+        let _write_guard = write_lane.lock().await;
         session
             .undo_stack
             .lock()

@@ -91,6 +91,7 @@ impl DesktopRuntime {
         entity_ids: Vec<EntityId>,
         settings: BatchImageSettings,
     ) -> Result<Vec<crate::dto::BatchImagePlanRowDto>, CommandError> {
+        let _lifecycle = self.project_lifecycle_gate.read().await;
         let (active, index) = {
             let session = self.session.lock().await;
             let session = session.as_ref().ok_or_else(project_not_open)?;
@@ -114,13 +115,15 @@ impl DesktopRuntime {
         entity_ids: Vec<EntityId>,
         settings: BatchImageSettings,
     ) -> Result<crate::dto::BatchImageExecutionDto, CommandError> {
-        let (active, index, events) = {
+        let _lifecycle = self.project_lifecycle_gate.read().await;
+        let (active, index, events, write_lane) = {
             let session = self.session.lock().await;
             let session = session.as_ref().ok_or_else(project_not_open)?;
             (
                 session.active.clone(),
                 Arc::clone(&session.index),
                 Arc::clone(&self.events),
+                Arc::clone(&session.write_lane),
             )
         };
         if active.access != ProjectAccess::ReadWrite {
@@ -128,9 +131,9 @@ impl DesktopRuntime {
         }
         let nodes = indexed_nodes(index.as_ref(), &entity_ids)?;
 
-        // One batch at a time: the lane mirrors the file-command write lane
-        // so batch outputs and file operations never interleave.
-        let _lane = self.batch_image_lane.lock().await;
+        // One project write at a time: batches, text saves, and file
+        // commands share the session write lane so outputs never interleave.
+        let _lane = write_lane.lock().await;
         let cancellation = tokio_util::sync::CancellationToken::new();
         {
             let mut active_cancel = self

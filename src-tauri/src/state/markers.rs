@@ -64,7 +64,7 @@ impl DesktopRuntime {
         entity_ids: &[EntityId],
         patch: MarkerPatch,
     ) -> Result<MarkerBatchResultDto, CommandError> {
-        let (active, index, store, projection, marker_lock, undo_stack) = {
+        let (active, index, store, projection, write_lane, undo_stack) = {
             let session = self.session.lock().await;
             let session = session.as_ref().ok_or_else(project_not_open)?;
             validate_project_request(&session.active, expected_session, expected_generation)?;
@@ -89,11 +89,11 @@ impl DesktopRuntime {
                 Arc::clone(&session.index),
                 store,
                 Arc::clone(&session.marker_projection),
-                Arc::clone(&session.marker_lock),
+                Arc::clone(&session.write_lane),
                 Arc::clone(&session.undo_stack),
             )
         };
-        let _marker_guard = marker_lock.lock().await;
+        let _write_guard = write_lane.lock().await;
         self.ensure_project_current(active.session_id, active.generation)
             .await?;
         let ids = entity_ids.to_vec();

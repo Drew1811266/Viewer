@@ -285,7 +285,7 @@ struct DesktopSession {
     index: Arc<SessionIndex>,
     portable_store: Option<Arc<PortableMarkerStore>>,
     marker_projection: Arc<dyn MarkerProjectionPort>,
-    marker_lock: Arc<Mutex<()>>,
+    write_lane: Arc<Mutex<()>>,
     undo_stack: Arc<StdMutex<UndoStack>>,
     file_undo_port: Arc<dyn UndoFilePort>,
     operations: Option<Arc<OperationRuntime>>,
@@ -321,7 +321,7 @@ struct ScanServices {
     image: Arc<dyn ImagePort>,
     events: Arc<dyn DesktopEventSink>,
     portable_store: Option<Arc<PortableMarkerStore>>,
-    marker_lock: Arc<Mutex<()>>,
+    write_lane: Arc<Mutex<()>>,
     scan_ready: tokio::sync::watch::Sender<bool>,
     derived_scheduler: Arc<DerivedWorkScheduler>,
     video_index: Arc<VideoIndexRuntime>,
@@ -373,7 +373,6 @@ pub struct DesktopRuntime {
     image_render_lifecycle: StdMutex<Option<std::sync::Weak<dyn ImageRenderClosePort>>>,
     project_lifecycle_gate: Arc<RwLock<()>>,
     session: Mutex<Option<DesktopSession>>,
-    batch_image_lane: Arc<Mutex<()>>,
     active_batch_image_cancel: Arc<StdMutex<Option<tokio_util::sync::CancellationToken>>>,
 }
 
@@ -555,7 +554,6 @@ impl DesktopRuntime {
             image_render_lifecycle: StdMutex::new(None),
             project_lifecycle_gate: Arc::new(RwLock::new(())),
             session: Mutex::new(None),
-            batch_image_lane: Arc::new(Mutex::new(())),
             active_batch_image_cancel: Arc::new(StdMutex::new(None)),
         }
     }

@@ -168,7 +168,7 @@ pub(super) async fn run_scan(
         image,
         events,
         portable_store,
-        marker_lock,
+        write_lane,
         scan_ready,
         derived_scheduler,
         video_index,
@@ -249,7 +249,7 @@ pub(super) async fn run_scan(
         }
     }
     if let Some(store) = portable_store {
-        let _marker_guard = marker_lock.lock().await;
+        let _write_guard = write_lane.lock().await;
         hydrate_portable_markers(&index, store.as_ref())?;
     }
     let result = run_derived_indexing(

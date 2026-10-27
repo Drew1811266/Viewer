@@ -893,8 +893,13 @@ test('desktop production composition is native-only after renderer migration', a
   )
   assert.match(
     surfaceSource,
-    /props\.renderer\?\.backend === 'native'/,
-    'the production native viewport must remain the selected renderer path',
+    /shouldUseNativeViewport\(renderer, props\.file\)/,
+    'the production surface must route through the native viewport selector',
+  )
+  assert.match(
+    surfaceSource,
+    /renderer\?\.backend === 'native'/,
+    'the selector must still gate the native viewport on the native backend',
   )
 })
 

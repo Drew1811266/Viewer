@@ -18,6 +18,17 @@
 | [product/DOCUMENTATION_MAINTENANCE.md](product/DOCUMENTATION_MAINTENANCE.md) | Current | — |
 | [CHANGELOG.md](../CHANGELOG.md) | Current | — |
 
+## 0.3.0 规划、研究与设计
+
+| Document | Status | Replaced by |
+| --- | --- | --- |
+| [milestones/viewer-0.3x-target-requirements.md](milestones/viewer-0.3x-target-requirements.md) | Active planning | — |
+| [milestones/viewer-0.3x-development-plan.md](milestones/viewer-0.3x-development-plan.md) | Active planning | — |
+| [design/0.3.0/README.md](design/0.3.0/README.md) | Visual spec ready for review | — |
+| [design/0.3.0/pen/overview.png](design/0.3.0/pen/overview.png) | Visual overview | — |
+| [quality/2026-10-28-asr-model-research.md](quality/2026-10-28-asr-model-research.md) | Research draft | — |
+| [quality/2026-10-28-annotation-tools-research.md](quality/2026-10-28-annotation-tools-research.md) | Research draft | — |
+
 ## 当前工程与治理文档
 
 | Document | Status | Replaced by |

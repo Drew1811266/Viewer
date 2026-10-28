@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Viewer 0.3.0 · 视觉稿总览</title>
+<style>
+  @font-face { font-family: Roboto; src: url(assets/Roboto.woff2) format("woff2"); font-weight: 100 900; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#eef3f1; color:#171d1c; font-family:Roboto,"PingFang SC",sans-serif; }
+  header { padding:32px 40px 20px; max-width:1500px; margin:0 auto; display:flex; align-items:flex-end; gap:20px; }
+  h1 { font-size:28px; margin:0; letter-spacing:-.5px; }
+  p { margin:4px 0 0; color:#3f4948; font-size:13px; }
+  .meta { margin-left:auto; font-size:12px; color:#3f4948; text-align:right; }
+  main { max-width:1500px; margin:0 auto; padding:0 40px 48px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px; }
+  .card { background:#fff; border:1px solid #bec9c7; border-radius:14px; overflow:hidden; text-decoration:none; color:inherit; transition:border-color .15s, box-shadow .15s; }
+  .card:hover { border-color:#00696d; box-shadow:0 4px 14px rgba(0,0,0,.08); }
+  img { width:100%; aspect-ratio:16/10; object-fit:cover; display:block; background:#d6dbd9; }
+  .cap { padding:10px 12px; display:flex; align-items:center; gap:8px; font-size:12px; }
+  .num { font-family:monospace; color:#00696d; font-weight:700; }
+  .name { font-weight:600; }
+  .file { margin-left:auto; color:#6f7978; font-size:10px; font-family:monospace; }
+  @media (max-width:1100px) { main { grid-template-columns:repeat(2,minmax(0,1fr)); padding:0 24px 32px; } header { padding:24px; } }
+</style></head>
+<body>
+<header><div><h1>Viewer 0.3.0 · 视觉稿总览</h1><p>Material Design 3 · 浅色 · 1440×900 · 23 屏</p></div><div class="meta">点击任意画面查看单屏<br>源文件 screens.html</div></header>
+<main><a class="card" href="screens.html?screen=welcome" target="_blank">
+      <img src="screens/welcome.png" alt="项目选择">
+      <div class="cap"><span class="num">01</span><span class="name">项目选择</span><span class="file">welcome.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=workspace-grid" target="_blank">
+      <img src="screens/workspace-grid.png" alt="工作区 · 网格">
+      <div class="cap"><span class="num">02</span><span class="name">工作区 · 网格</span><span class="file">workspace-grid.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=workspace-list" target="_blank">
+      <img src="screens/workspace-list.png" alt="工作区 · 列表">
+      <div class="cap"><span class="num">03</span><span class="name">工作区 · 列表</span><span class="file">workspace-list.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=preview-image" target="_blank">
+      <img src="screens/preview-image.png" alt="图片预览">
+      <div class="cap"><span class="num">04</span><span class="name">图片预览</span><span class="file">preview-image.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=preview-text" target="_blank">
+      <img src="screens/preview-text.png" alt="Markdown 预览">
+      <div class="cap"><span class="num">05</span><span class="name">Markdown 预览</span><span class="file">preview-text.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=preview-video" target="_blank">
+      <img src="screens/preview-video.png" alt="视频预览">
+      <div class="cap"><span class="num">06</span><span class="name">视频预览</span><span class="file">preview-video.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=preview-other" target="_blank">
+      <img src="screens/preview-other.png" alt="其他文件">
+      <div class="cap"><span class="num">07</span><span class="name">其他文件</span><span class="file">preview-other.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=review-default" target="_blank">
+      <img src="screens/review-default.png" alt="评审工作台 · 默认">
+      <div class="cap"><span class="num">08</span><span class="name">评审工作台 · 默认</span><span class="file">review-default.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=review-selected" target="_blank">
+      <img src="screens/review-selected.png" alt="评审工作台 · 选中与样式">
+      <div class="cap"><span class="num">09</span><span class="name">评审工作台 · 选中与样式</span><span class="file">review-selected.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=review-text" target="_blank">
+      <img src="screens/review-text.png" alt="评审工作台 · 文字标注与语音入口">
+      <div class="cap"><span class="num">10</span><span class="name">评审工作台 · 文字标注与语音入口</span><span class="file">review-text.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=review-voice" target="_blank">
+      <img src="screens/review-voice.png" alt="评审工作台 · 语音转写">
+      <div class="cap"><span class="num">11</span><span class="name">评审工作台 · 语音转写</span><span class="file">review-voice.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=review-voice-error" target="_blank">
+      <img src="screens/review-voice-error.png" alt="评审工作台 · 麦克风权限">
+      <div class="cap"><span class="num">12</span><span class="name">评审工作台 · 麦克风权限</span><span class="file">review-voice-error.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=review-readonly" target="_blank">
+      <img src="screens/review-readonly.png" alt="评审工作台 · 只读解释">
+      <div class="cap"><span class="num">13</span><span class="name">评审工作台 · 只读解释</span><span class="file">review-readonly.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=review-start" target="_blank">
+      <img src="screens/review-start.png" alt="开始评审对话框">
+      <div class="cap"><span class="num">14</span><span class="name">开始评审对话框</span><span class="file">review-start.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=review-complete" target="_blank">
+      <img src="screens/review-complete.png" alt="完成评审对话框">
+      <div class="cap"><span class="num">15</span><span class="name">完成评审对话框</span><span class="file">review-complete.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=history" target="_blank">
+      <img src="screens/history.png" alt="评审历史">
+      <div class="cap"><span class="num">16</span><span class="name">评审历史</span><span class="file">history.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=batch-rename" target="_blank">
+      <img src="screens/batch-rename.png" alt="批量重命名">
+      <div class="cap"><span class="num">17</span><span class="name">批量重命名</span><span class="file">batch-rename.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=batch-image" target="_blank">
+      <img src="screens/batch-image.png" alt="批量处理图片">
+      <div class="cap"><span class="num">18</span><span class="name">批量处理图片</span><span class="file">batch-image.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=settings" target="_blank">
+      <img src="screens/settings.png" alt="设置 · 语音">
+      <div class="cap"><span class="num">19</span><span class="name">设置 · 语音</span><span class="file">settings.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=conflict" target="_blank">
+      <img src="screens/conflict.png" alt="冲突对话框">
+      <div class="cap"><span class="num">20</span><span class="name">冲突对话框</span><span class="file">conflict.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=empty-search" target="_blank">
+      <img src="screens/empty-search.png" alt="搜索无结果">
+      <div class="cap"><span class="num">21</span><span class="name">搜索无结果</span><span class="file">empty-search.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=migration" target="_blank">
+      <img src="screens/migration.png" alt="旧版评审迁移">
+      <div class="cap"><span class="num">22</span><span class="name">旧版评审迁移</span><span class="file">migration.png</span></div>
+    </a>
+<a class="card" href="screens.html?screen=tool-gallery" target="_blank">
+      <img src="screens/tool-gallery.png" alt="标注工具一览">
+      <div class="cap"><span class="num">23</span><span class="name">标注工具一览</span><span class="file">tool-gallery.png</span></div>
+    </a></main>
+</body></html>

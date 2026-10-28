@@ -436,3 +436,43 @@ Final result: passed
 - Windows-native rendering and input validation remain explicitly deferred until Windows development begins.
 
 Final result: passed
+
+## 2026-10-28 — 0.3.0 Material 3 visual spec (pen.dev)
+
+### Status
+
+**Ready for user review — not yet signed off.** This entry records the visual draft only;
+0.3.0 implementation acceptance remains open.
+
+- Authoritative source: `/Users/abc/Project/9.22/design.pen` (pen.dev, outside Git).
+- Overview: `docs/design/0.3.0/pen/overview.png`.
+- Scope: 21 frames at `1440 × 900`, light theme only, seed `#00696D`, density −1.
+- Deferred: batch rename / batch image processing (after 0.3.0); angle/area/multi-segment
+  measurement (0.3.x).
+
+### Coverage
+
+| Area | Frames |
+| --- | --- |
+| Project + workspace | 01 项目选择; 02 网格; 03 列表 |
+| Preview | 04 图片; 05 文本; 06 视频; 07 其他格式 |
+| Review | 08 默认; 09 选中标注; 10 文字标注; 11 语音输入; 12 录音失败; 13 只读 |
+| Flow | 14 开始评审; 15 完成评审; 16 评审历史 |
+| Settings / edge | 17 设置; 18 外部修改冲突; 19 空搜索结果; 20 数据迁移 |
+| Appendix | 21 标注工具一览 |
+
+### Review notes
+
+- Review workbench: 72 px tool rail, 332 px feedback rail, neutral canvas; selected and
+  text/voice states share the same geometry.
+- Measurement: distance + horizontal/vertical constraint only; labels are pixel values.
+- Read-only is explained by a banner and a clear next action, not by disabled color alone.
+- Tool gallery documents 11 tools (selection + 10 marks); the rail exposes 7 groups.
+- All frames export cleanly at 2880×1800; no placeholder frames remain.
+
+### Evidence
+
+- `node docs/design/0.3.0/check.mjs` — pass for the legacy 23-screen HTML: all 23 states
+  `1440×900`, no missing icon IDs, no errors. Pen frame export is the current evidence.
+- Pen `Export` of all 21 frames; contact sheet assembled from those exports.
+- Visual severity for this draft: not yet rated; user sign-off required.

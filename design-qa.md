@@ -20,42 +20,42 @@ The browser layer exhaustively verifies the visual state matrix; the native laye
 
 ## Historical atlas acceptance scope
 
-This pass verifies the highest-priority visual-atlas corrections against the
-approved Viewer visual-upgrade specification. The accepted screenshots were
+This pass verifies the highest-priority visual-atlas corrections against the  
+approved Viewer visual-upgrade specification. The accepted screenshots were  
 captured after the corrections and are stored in:
 
 `target/final-design-acceptance-2026-07-31/`
 
-The compact captures use a 1024×720 Viewer viewport. The wide captures use the
-atlas's 1440×900 Viewer viewport, fitted inside a 1280×720 outer browser
+The compact captures use a 1024×720 Viewer viewport. The wide captures use the  
+atlas's 1440×900 Viewer viewport, fitted inside a 1280×720 outer browser  
 capture.
 
 ## Corrected findings
 
-| Step | Surface | Evidence | Health | Acceptance note |
-| --- | --- | --- | --- | --- |
-| 01 | Collapsed sidebar | `01-collapsed-sidebar-1024x720.jpg` | Pass | The 52 px rail now exposes one centered, accessible expand control; project text no longer collides with it. |
-| 02 | Advanced filter | `02-advanced-filter-1024x720.jpg` | Pass | Trigger and panel both derive `6` from the same active-condition model; the panel opens in place. |
-| 03 | Read-only menu | `03-readonly-menu-1024x720.jpg` | Pass | Unavailable actions are visibly muted, carry a read-only label, and use disabled semantics. |
-| 04 | Radial click | `04-radial-click-1024x720.jpg` | Pass | The primary radial menu is visible in the Viewer shell instead of a rectangular substitute. |
-| 05 | Radial mark | `05-radial-mark-1024x720.jpg` | Pass | The mark secondary fan uses the approved radial geometry and remains attached to its primary sector. |
-| 06 | Radial organize | `06-radial-organize-1024x720.jpg` | Pass | The organize secondary fan is visually distinct and preserves the same center and sector rhythm. |
-| 07 | Radial disabled | `07-radial-disabled-1024x720.jpg` | Pass | Dashed boundaries, reduced emphasis, and the unavailable label make the state unambiguous. |
-| 08 | Radial read-only | `08-radial-readonly-1024x720.jpg` | Pass | The center and affected actions clearly communicate read-only mode. |
-| 09 | Radial keyboard | `09-radial-keyboard-1024x720.jpg` | Pass | Keyboard focus is visible on a sector without being confused with selection. |
-| 10 | Keyboard selection | `10-keyboard-selection-1024x720.jpg` | Pass | Enter/Space selection is visible on the image card and reflected by `aria-selected`. |
-| 11 | Scanning progress | `11-scanning-progress-1024x720.jpg` | Pass | Status and progress are visible and expose live-region/progressbar semantics. |
-| 12 | Batch dialog | `12-batch-dialog-1024x720.jpg` | Pass | The modal scrim covers the entire Viewer shell, including toolbar and sidebar; dialog labelling is explicit. |
-| 13 | Forced-colors | `13-forced-colors-1024x720.jpg` | Pass | System color tokens and explicit boundaries preserve hierarchy without relying on shadows. |
-| 14 | 200% reflow | `14-zoom-200-1024x720.jpg` | Pass | The real Viewer shell reflows at 200%; the primary action remains reachable. |
-| 15 | Wide main atlas | `wide-00-main-atlas-1280x720.jpg` | Pass | The atlas state switcher occupies reserved space and no longer overlays product controls. |
-| 16 | Wide browser | `wide-01-browser-1280x720.jpg` | Pass | Main navigation, content rail, and image grid remain aligned at the 1440×900 Viewer viewport. |
-| 17 | Wide filter | `wide-02-advanced-filter-1280x720.jpg` | Pass | The filter popover stays anchored and unclipped in the wide shell. |
-| 18 | Wide radial mark | `wide-03-radial-mark-1280x720.jpg` | Pass | Primary and secondary radial geometry stays centered and legible at the wide viewport. |
-| 19 | Wide preview | `wide-04-preview-zoom-1280x720.jpg` | Pass | Preview content, chrome, and zoom controls retain clear separation. |
-| 20 | Wide dialog | `wide-05-batch-dialog-1280x720.jpg` | Pass | Modal scale, focus hierarchy, and full-shell scrim remain correct at the wide viewport. |
-| 21 | Wide results | `wide-06-results-1280x720.jpg` | Pass | Result density and hierarchy remain stable without overlap or clipping. |
-| 22 | Wide 200% reflow | `wide-07-zoom-200-1280x720.jpg` | Pass | The accessibility demonstration remains a real reflowed shell rather than an explanatory card. |
+| Step | Surface            | Evidence                               | Health | Acceptance note                                                                                              |
+| ---- | ------------------ | -------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
+| 01   | Collapsed sidebar  | `01-collapsed-sidebar-1024x720.jpg`    | Pass   | The 52 px rail now exposes one centered, accessible expand control; project text no longer collides with it. |
+| 02   | Advanced filter    | `02-advanced-filter-1024x720.jpg`      | Pass   | Trigger and panel both derive `6` from the same active-condition model; the panel opens in place.            |
+| 03   | Read-only menu     | `03-readonly-menu-1024x720.jpg`        | Pass   | Unavailable actions are visibly muted, carry a read-only label, and use disabled semantics.                  |
+| 04   | Radial click       | `04-radial-click-1024x720.jpg`         | Pass   | The primary radial menu is visible in the Viewer shell instead of a rectangular substitute.                  |
+| 05   | Radial mark        | `05-radial-mark-1024x720.jpg`          | Pass   | The mark secondary fan uses the approved radial geometry and remains attached to its primary sector.         |
+| 06   | Radial organize    | `06-radial-organize-1024x720.jpg`      | Pass   | The organize secondary fan is visually distinct and preserves the same center and sector rhythm.             |
+| 07   | Radial disabled    | `07-radial-disabled-1024x720.jpg`      | Pass   | Dashed boundaries, reduced emphasis, and the unavailable label make the state unambiguous.                   |
+| 08   | Radial read-only   | `08-radial-readonly-1024x720.jpg`      | Pass   | The center and affected actions clearly communicate read-only mode.                                          |
+| 09   | Radial keyboard    | `09-radial-keyboard-1024x720.jpg`      | Pass   | Keyboard focus is visible on a sector without being confused with selection.                                 |
+| 10   | Keyboard selection | `10-keyboard-selection-1024x720.jpg`   | Pass   | Enter/Space selection is visible on the image card and reflected by `aria-selected`.                         |
+| 11   | Scanning progress  | `11-scanning-progress-1024x720.jpg`    | Pass   | Status and progress are visible and expose live-region/progressbar semantics.                                |
+| 12   | Batch dialog       | `12-batch-dialog-1024x720.jpg`         | Pass   | The modal scrim covers the entire Viewer shell, including toolbar and sidebar; dialog labelling is explicit. |
+| 13   | Forced-colors      | `13-forced-colors-1024x720.jpg`        | Pass   | System color tokens and explicit boundaries preserve hierarchy without relying on shadows.                   |
+| 14   | 200% reflow        | `14-zoom-200-1024x720.jpg`             | Pass   | The real Viewer shell reflows at 200%; the primary action remains reachable.                                 |
+| 15   | Wide main atlas    | `wide-00-main-atlas-1280x720.jpg`      | Pass   | The atlas state switcher occupies reserved space and no longer overlays product controls.                    |
+| 16   | Wide browser       | `wide-01-browser-1280x720.jpg`         | Pass   | Main navigation, content rail, and image grid remain aligned at the 1440×900 Viewer viewport.                |
+| 17   | Wide filter        | `wide-02-advanced-filter-1280x720.jpg` | Pass   | The filter popover stays anchored and unclipped in the wide shell.                                           |
+| 18   | Wide radial mark   | `wide-03-radial-mark-1280x720.jpg`     | Pass   | Primary and secondary radial geometry stays centered and legible at the wide viewport.                       |
+| 19   | Wide preview       | `wide-04-preview-zoom-1280x720.jpg`    | Pass   | Preview content, chrome, and zoom controls retain clear separation.                                          |
+| 20   | Wide dialog        | `wide-05-batch-dialog-1280x720.jpg`    | Pass   | Modal scale, focus hierarchy, and full-shell scrim remain correct at the wide viewport.                      |
+| 21   | Wide results       | `wide-06-results-1280x720.jpg`         | Pass   | Result density and hierarchy remain stable without overlap or clipping.                                      |
+| 22   | Wide 200% reflow   | `wide-07-zoom-200-1280x720.jpg`        | Pass   | The accessibility demonstration remains a real reflowed shell rather than an explanatory card.               |
 
 ## Automated verification
 
@@ -70,30 +70,30 @@ capture.
 
 ## Visual acceptance conclusion
 
-No blocking overlap, clipping, state ambiguity, or atlas-control obstruction
-was found in either the complete product evidence or the accepted historical
-atlas board. Filter, radial-menu, read-only, keyboard, progress, dialog,
-target-size, inspector-width, and contrast-risk contracts have visual,
+No blocking overlap, clipping, state ambiguity, or atlas-control obstruction  
+was found in either the complete product evidence or the accepted historical  
+atlas board. Filter, radial-menu, read-only, keyboard, progress, dialog,  
+target-size, inspector-width, and contrast-risk contracts have visual,  
 automated and representative macOS-native evidence.
 
-This acceptance does not claim full WCAG conformance. Native macOS/Windows
-screen-reader output, OS high-contrast rendering, platform font rasterization,
-and physical input-device behavior require platform-specific testing in
-packaged application builds. Windows-native verification remains a future
+This acceptance does not claim full WCAG conformance. Native macOS/Windows  
+screen-reader output, OS high-contrast rendering, platform font rasterization,  
+and physical input-device behavior require platform-specific testing in  
+packaged application builds. Windows-native verification remains a future  
 platform task because the Windows version is not yet under development.
 
 ## Historical Figma atlas audit board
 
-- File:
+- File:  
   [Viewer Final UI Visual Acceptance — 2026-07-31](https://www.figma.com/design/oCtWdesfu5wPx2m9QW1g6Y)
 - Section: `Viewer Final UI Visual Acceptance — 2026-07-31`
-- Structure: 22 accepted screenshot cards, each with step number, health, name,
+- Structure: 22 accepted screenshot cards, each with step number, health, name,  
   and finding-specific acceptance note.
-- Layout verification: 15 cards in row one, 7 cards in row two, 200 px
+- Layout verification: 15 cards in row one, 7 cards in row two, 200 px  
   horizontal gaps, and a 600 px row gap.
-- Visual verification:
+- Visual verification:  
   `target/final-design-acceptance-2026-07-31/figma-audit-board.png`
-- Structural verification: all 22 cards contain exactly one accepted
+- Structural verification: all 22 cards contain exactly one accepted  
   screenshot; the audit section is the only top-level canvas node.
 
 ## 2026-08-06 — Square Image Card Selection
@@ -116,12 +116,12 @@ platform task because the Windows version is not yet under development.
 
 ### State and fidelity review
 
-| State | Evidence | Result |
-| --- | --- | --- |
-| `THU-04` resting cards | Both browser viewports | Square card edges; no selection overlay or geometry shift. |
-| `THU-05` single selection | Both browser viewports plus native `1024 × 720` | One 2 px accent boundary encloses the thumbnail and filename; no thumbnail-only ring remains. |
-| `THU-06` multiple selection | Both browser viewports | Exactly one complete-card boundary appears on each of three selected cards. |
-| `THU-07` keyboard focus | Both browser viewports | The complete-card selection boundary remains independent from the outer keyboard-focus treatment. |
+| State                       | Evidence                                        | Result                                                                                            |
+| --------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `THU-04` resting cards      | Both browser viewports                          | Square card edges; no selection overlay or geometry shift.                                        |
+| `THU-05` single selection   | Both browser viewports plus native `1024 × 720` | One 2 px accent boundary encloses the thumbnail and filename; no thumbnail-only ring remains.     |
+| `THU-06` multiple selection | Both browser viewports                          | Exactly one complete-card boundary appears on each of three selected cards.                       |
+| `THU-07` keyboard focus     | Both browser viewports                          | The complete-card selection boundary remains independent from the outer keyboard-focus treatment. |
 
 - Typography: font family, size, weight, filename baseline, and selection-summary hierarchy remain unchanged; minor native rasterization differences are platform rendering, not token drift.
 - Spacing and layout rhythm: moving the overlay does not change card measurement, image-stage height, filename row, grid gaps, or the selection-summary position.
@@ -130,6 +130,7 @@ platform task because the Windows version is not yet under development.
 - Copy and content: source and native fixtures intentionally use different filenames and counts, while label hierarchy and the `已选择 1 项` guidance remain consistent.
 - Interaction and layering: the organization handle stays above the non-interactive overlay, pointer events pass through the overlay, and focus remains separately visible.
 - Scope protection: folder filmstrips, search-result rows, other-file rows, and non-image card families retain their existing geometry.
+
 
 ### Checklist
 
@@ -164,32 +165,32 @@ Final result: passed
 
 ### Real macOS capture inventory
 
-| Evidence | Pixels | State and inspection result |
-| --- | ---: | --- |
-| `target/design-qa-video-compact-native/01-paused-wide.png` | `1280 × 720` | 16:9 paused wide; upper metadata/navigation and lower timeline/transport are localized overlays with no layout band or transparent gap. |
-| `target/design-qa-video-compact-native/02-playing-wide.png` | `1280 × 720` | Playing at `00:00.833`; native frame remains dominant and chrome does not change the window ratio. |
-| `target/design-qa-video-compact-native/03-compact-1024x576.png` | `1024 × 576` | Compact branch; More replaces the frame/volume/rate cluster without collision or duplicate visible controls. |
-| `target/design-qa-video-compact-native/04-narrow-720x405.png` | `720 × 405` | Narrow branch; one-row top chrome and compact lower controls remain readable and inside the stage. |
-| `target/design-qa-video-compact-native/05-portrait-ratio-450x800.png` | `450 × 800` | Rotation-aware 9:16 preview; window constraint changes once and fitted content is neither cropped nor stretched. |
-| `target/design-qa-video-compact-native/06-ended-wide.png` | `1280 × 720` | Exact `2 / 2` ended state; colorful terminal frame is retained with no black replacement. |
-| `target/design-qa-video-compact-native/12-final-post-done-restored.jpeg` | `1229 × 768` | Final fixed build after Done; project grid, selection, ordinary frame, and window content are restored. |
+| Evidence                                                                    |       Pixels | State and inspection result                                                                                                                 |
+| --------------------------------------------------------------------------- | -----------: | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `target/design-qa-video-compact-native/01-paused-wide.png`                  | `1280 × 720` | 16:9 paused wide; upper metadata/navigation and lower timeline/transport are localized overlays with no layout band or transparent gap.     |
+| `target/design-qa-video-compact-native/02-playing-wide.png`                 | `1280 × 720` | Playing at `00:00.833`; native frame remains dominant and chrome does not change the window ratio.                                          |
+| `target/design-qa-video-compact-native/03-compact-1024x576.png`             | `1024 × 576` | Compact branch; More replaces the frame/volume/rate cluster without collision or duplicate visible controls.                                |
+| `target/design-qa-video-compact-native/04-narrow-720x405.png`               |  `720 × 405` | Narrow branch; one-row top chrome and compact lower controls remain readable and inside the stage.                                          |
+| `target/design-qa-video-compact-native/05-portrait-ratio-450x800.png`       |  `450 × 800` | Rotation-aware 9:16 preview; window constraint changes once and fitted content is neither cropped nor stretched.                            |
+| `target/design-qa-video-compact-native/06-ended-wide.png`                   | `1280 × 720` | Exact `2 / 2` ended state; colorful terminal frame is retained with no black replacement.                                                   |
+| `target/design-qa-video-compact-native/12-final-post-done-restored.jpeg`    | `1229 × 768` | Final fixed build after Done; project grid, selection, ordinary frame, and window content are restored.                                     |
 | `target/design-qa-video-compact-native/13-final-post-done-free-resize.jpeg` | `1030 × 768` | Final fixed build after a real right-edge drag; ordinary Viewer is freely resized to a non-16:9 frame, process alive, project state intact. |
-| `target/design-qa-video-compact-native/14-final-paused-clean.jpeg` | `1072 × 603` | Final development app left running for inspection in a clean paused compact state. |
+| `target/design-qa-video-compact-native/14-final-paused-clean.jpeg`          | `1072 × 603` | Final development app left running for inspection in a clean paused compact state.                                                          |
 
 Every listed image was opened and inspected after capture. No desktop pixel, black/transparent seam, crop/stretch, control overlap, detached oversized card, weak primary icon, or subject-blocking full-width opaque band is visible.
 
 ### Real interaction evidence
 
-| Check | Real result |
-| --- | --- |
-| 16:9 initial sizing | Opening `h264-1080p.mp4` produced `1280 × 720`; the ratio was owned immediately by the native window. |
+| Check                     | Real result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 16:9 initial sizing       | Opening `h264-1080p.mp4` produced `1280 × 720`; the ratio was owned immediately by the native window.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Eight live-resize handles | Final-app before/after results: right `1072 × 603 → 1136 × 639`, left `1136 × 639 → 1056 × 594`, top `1056 × 594 → 985 × 554`, bottom `985 × 554 → 1054 × 593`, top-left `1054 × 593 → 1011 × 569`, top-right `1011 × 569 → 969 × 545`, bottom-right `970 × 546 → 919 × 517`, bottom-left `919 × 517 → 868 × 488`. Maximum absolute error from 16:9 was `0.000976`; every fresh post-drag state kept timeline `0.466667`, preview alive, and no React catch-up jump. Durable per-handle evidence: `target/design-qa-video-compact-native/logs/15-live-resize-bounds.log`, `target/design-qa-video-compact-native/logs/24-eight-handle-final.json`, and `target/design-qa-video-compact-native/resize-handles-final/{handle}-{before,after}.jpeg`. |
-| Scroll containment | Vertical and horizontal gestures over title, native video, timeline, and empty overlay left the `720 × 405` window and `1.966667` timeline value unchanged; no document/UI movement occurred. |
-| Timeline click/drag | A click changed `1.966667 → 0.566667` immediately; a drag from local x `180 → 460` changed it to `1.533333` and committed the corresponding native frame. |
-| Ratio replacement | Navigation exercised 16:9 and portrait fixtures; portrait display settled at `450 × 800` (9:16) without retaining the previous constraint. |
-| Fullscreen round-trip | Entered and exited with the actual fullscreen control. Fullscreen showed an owned light-neutral contain-fit region with no desktop/black leak; exit restored the portrait 9:16 constraint. |
-| Ended state | At exact duration `2 / 2`, the useful final color frame remained visible; no black terminal surface appeared. |
-| Done restoration | Done restored the exact `1229 × 768` ordinary project window. A production defect discovered here was corrected; the final build then resized freely to `1030 × 768` while remaining alive and preserving project selection. |
+| Scroll containment        | Vertical and horizontal gestures over title, native video, timeline, and empty overlay left the `720 × 405` window and `1.966667` timeline value unchanged; no document/UI movement occurred.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Timeline click/drag       | A click changed `1.966667 → 0.566667` immediately; a drag from local x `180 → 460` changed it to `1.533333` and committed the corresponding native frame.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Ratio replacement         | Navigation exercised 16:9 and portrait fixtures; portrait display settled at `450 × 800` (9:16) without retaining the previous constraint.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Fullscreen round-trip     | Entered and exited with the actual fullscreen control. Fullscreen showed an owned light-neutral contain-fit region with no desktop/black leak; exit restored the portrait 9:16 constraint.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Ended state               | At exact duration `2 / 2`, the useful final color frame remained visible; no black terminal surface appeared.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Done restoration          | Done restored the exact `1229 × 768` ordinary project window. A production defect discovered here was corrected; the final build then resized freely to `1030 × 768` while remaining alive and preserving project selection.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ### Visual comparison findings
 
@@ -210,6 +211,7 @@ Every listed image was opened and inspected after capture. No desktop pixel, bla
 - `pnpm verify` itself is **not green**: the one intended invocation exited `1` in policy, and a later accidental second invocation was terminated and is not evidence.
 - The corrected policy suite passed `26/26`. Every stage after policy in the actual `verify` chain was then executed independently with exact logs and exit files under `target/design-qa-video-compact-native/logs/final-head-segmented/`: packaging `30/30`, clean wrapper `11/11`, UI check, UI tests `966 passed / 1 skipped`, UI build, Rust format, Rust clippy, Rust workspace tests, Tauri security `8/8`, cargo-deny bans/licenses/sources, npm licenses `140 packages / 11 expressions`, and bundled-video licenses all passed.
 - The first Rust workspace segment exposed one scheduler-sensitive test deadline (`TimedOut` instead of the expected `StdoutTooLarge`). The existing focused test passed alone in `0.54 s`; its non-target deadline was widened from `1 s` to `5 s` without weakening the overflow/reap assertions, and only the failed Rust workspace gate was rerun, then passed. This segmented evidence supplies final implementation confidence but is not described as a successful `pnpm verify` run.
+
 
 final result: passed
 
@@ -262,18 +264,18 @@ final result: passed
 
 ### Fidelity and behavior review
 
-| Surface | Result | Acceptance note |
-| --- | --- | --- |
-| Layout hierarchy | Pass | Video remains the dominant surface; metadata, Done, page navigation, timeline, transport, and settings form three localized layers instead of full-width opaque bands. |
-| Wide controls | Pass | At `1440 × 900`, frame stepping, play/pause, volume, rate, and fullscreen remain inline with one timeline and one accessible instance of every control. |
-| Narrow controls | Pass | At `720 × 720`, the dock is `688 px` wide inside `16 px` gutters with no horizontal overflow; frame step, volume, and rate move behind one More trigger. |
-| Geometry | Pass | The React stage remains the single clipped container and retains the existing native `matteInsets`; CSS does not create a second media rectangle or crop the video. |
-| First-frame transition | Pass | Ambient blue-gray matte and letterbox space remain stable until the active generation reveals the native first frame; the `120 ms` veil is removed under reduced motion. |
-| Control priority | Pass | Play/pause is the only accent-filled primary action; secondary icon buttons retain visible boundaries, hover/focus states, and `44 × 44` minimum targets. |
-| Idle and focus | Pass | Playing chrome shares one visibility transition; paused, ended, failed, adjusting, and focus-within states remain visible. Fullscreen cursor hiding follows the same idle state. |
-| Accessibility | Pass | Chinese accessible names, native range/select controls, focus restoration from More, forced-colors system tokens, reduced motion, and keyboard ownership remain covered. |
-| Typography and content | Pass | Viewer typography and dynamic filename/duration remain intact; hierarchy matches the Figma intent without copying its placeholder media or decorative geometry. |
-| Icons and imagery | Pass | Existing Lucide registry icons are reused; the product video fixture is intentionally different from the abstract Figma placeholder and keeps `contain` framing. |
+| Surface                | Result | Acceptance note                                                                                                                                                                  |
+| ---------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Layout hierarchy       | Pass   | Video remains the dominant surface; metadata, Done, page navigation, timeline, transport, and settings form three localized layers instead of full-width opaque bands.           |
+| Wide controls          | Pass   | At `1440 × 900`, frame stepping, play/pause, volume, rate, and fullscreen remain inline with one timeline and one accessible instance of every control.                          |
+| Narrow controls        | Pass   | At `720 × 720`, the dock is `688 px` wide inside `16 px` gutters with no horizontal overflow; frame step, volume, and rate move behind one More trigger.                         |
+| Geometry               | Pass   | The React stage remains the single clipped container and retains the existing native `matteInsets`; CSS does not create a second media rectangle or crop the video.              |
+| First-frame transition | Pass   | Ambient blue-gray matte and letterbox space remain stable until the active generation reveals the native first frame; the `120 ms` veil is removed under reduced motion.         |
+| Control priority       | Pass   | Play/pause is the only accent-filled primary action; secondary icon buttons retain visible boundaries, hover/focus states, and `44 × 44` minimum targets.                        |
+| Idle and focus         | Pass   | Playing chrome shares one visibility transition; paused, ended, failed, adjusting, and focus-within states remain visible. Fullscreen cursor hiding follows the same idle state. |
+| Accessibility          | Pass   | Chinese accessible names, native range/select controls, focus restoration from More, forced-colors system tokens, reduced motion, and keyboard ownership remain covered.         |
+| Typography and content | Pass   | Viewer typography and dynamic filename/duration remain intact; hierarchy matches the Figma intent without copying its placeholder media or decorative geometry.                  |
+| Icons and imagery      | Pass   | Existing Lucide registry icons are reused; the product video fixture is intentionally different from the abstract Figma placeholder and keeps `contain` framing.                 |
 
 ### Findings and iteration history
 
@@ -283,6 +285,7 @@ final result: passed
 - P2 resolved: the original visual-acceptance fixture supported only `1024 × 720` and `1440 × 900`; forcing a `720 px` browser around the `1024 px` frame falsely reported overflow. `720 × 720` is now an explicit, non-default acceptance viewport, and fresh browser metrics report frame/body/player width `720`, dock width `688`, and horizontal overflow `false` with no console warnings or errors.
 - Intentional adaptation: production uses real fitted video imagery, existing Viewer primitives, and the native surface contract rather than Figma's abstract placeholder shapes. Navigation and dock are grouped into the approved shared safe region so they cannot overlap even when the media aspect ratio changes.
 - The visual-acceptance runner produced all requested product images. Its comparison wrapper returned nonzero only because no legacy atlas `reference.png` exists for these new video states and the newly added `720 × 720` viewport; the authoritative reference for this redesign is the Figma source above.
+
 
 ### Verification
 
@@ -304,12 +307,12 @@ final result: passed
 
 ### Audit and correction
 
-| Region | Reported defect | Corrected result |
-| --- | --- | --- |
-| Native letterbox | The Web document became transparent across the whole window while the native video occupied only its fitted center rectangle. The underlying browser screen leaked through as a blue top strip and unrelated imagery below the video. | The fitted native rectangle now publishes exact top/right/bottom/left insets. A solid theater matte covers only the transparent area outside that rectangle, while the center stays transparent for the native video. |
-| Metadata | The filename and duration sat inside another dark card over the leaked background, adding unnecessary visual weight. | Passive metadata is flat on the theater matte; the actionable Done button retains a clear boundary. |
-| Playback controls | A second large floating card was stacked over the bottom leak, making the lower third appear oversized and detached from the player. | Timeline and controls sit directly on the stable matte. Individual buttons retain high-contrast borders, white icons, and an accent primary action. |
-| Video framing | Removing the original gradients exposed implementation details outside the native surface. | The full video remains visible at its original aspect ratio; no crop, stretch, or gradient transition is introduced. |
+| Region            | Reported defect                                                                                                                                                                                                                       | Corrected result                                                                                                                                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Native letterbox  | The Web document became transparent across the whole window while the native video occupied only its fitted center rectangle. The underlying browser screen leaked through as a blue top strip and unrelated imagery below the video. | The fitted native rectangle now publishes exact top/right/bottom/left insets. A solid theater matte covers only the transparent area outside that rectangle, while the center stays transparent for the native video. |
+| Metadata          | The filename and duration sat inside another dark card over the leaked background, adding unnecessary visual weight.                                                                                                                  | Passive metadata is flat on the theater matte; the actionable Done button retains a clear boundary.                                                                                                                   |
+| Playback controls | A second large floating card was stacked over the bottom leak, making the lower third appear oversized and detached from the player.                                                                                                  | Timeline and controls sit directly on the stable matte. Individual buttons retain high-contrast borders, white icons, and an accent primary action.                                                                   |
+| Video framing     | Removing the original gradients exposed implementation details outside the native surface.                                                                                                                                            | The full video remains visible at its original aspect ratio; no crop, stretch, or gradient transition is introduced.                                                                                                  |
 
 ### Verification
 
@@ -332,14 +335,14 @@ Final result: passed
 
 ### Comparison findings
 
-| Region | Result | Acceptance note |
-| --- | --- | --- |
-| Video frame | Pass | The full-width top and bottom gradient scrims are absent; frame brightness remains unchanged outside localized controls. |
-| Metadata and Done | Pass | Filename, duration, and Done use compact high-contrast capsules instead of a darkened top edge. |
-| Page navigation | Pass | The page capsule remains separate; enabled arrows are white with visible button boundaries and disabled arrows remain recognizable. |
-| Timeline | Pass | The track, progress, thumb, and elapsed/total time are visibly stronger without shading the surrounding frame. |
-| Transport and settings | Pass | The inset rounded dock defines the control region; all external SVG icons render white, and play/pause uses a solid accent surface. |
-| Window edge | Pass | The dock remains inset and rounded; it does not form a full-width black band or black transition edge. |
+| Region                 | Result | Acceptance note                                                                                                                     |
+| ---------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Video frame            | Pass   | The full-width top and bottom gradient scrims are absent; frame brightness remains unchanged outside localized controls.            |
+| Metadata and Done      | Pass   | Filename, duration, and Done use compact high-contrast capsules instead of a darkened top edge.                                     |
+| Page navigation        | Pass   | The page capsule remains separate; enabled arrows are white with visible button boundaries and disabled arrows remain recognizable. |
+| Timeline               | Pass   | The track, progress, thumb, and elapsed/total time are visibly stronger without shading the surrounding frame.                      |
+| Transport and settings | Pass   | The inset rounded dock defines the control region; all external SVG icons render white, and play/pause uses a solid accent surface. |
+| Window edge            | Pass   | The dock remains inset and rounded; it does not form a full-width black band or black transition edge.                              |
 
 ### Correction history
 
@@ -372,14 +375,14 @@ Final result: passed
 
 ### Fidelity review
 
-| Region | Result | Acceptance note |
-| --- | --- | --- |
-| Full-window theater stage | Pass | Playback fills one clipped dark stage; the former white content canvas and exposed lower strip are gone. |
-| Top title bar | Pass | Filename and duration sit over a dark gradient at the upper-left; the Done action remains reachable at the upper-right. |
-| Timeline and transport | Pass | Timeline spans the lower stage, playback is the emphasized primary control, and secondary controls use low-contrast translucent surfaces. |
-| Page navigation | Pass | The page pill is centered above the bottom transport area and remains within the clipped video stage. |
-| Native-video layering | Pass | The visible player root and stage remain transparent so the macOS native surface is not covered; DOM scrims and controls render above it. |
-| Responsive and accessibility states | Pass | Compact layout, reduced motion, forced colors, disabled navigation, and keyboard-owned controls retain explicit styling and focused tests. |
+| Region                              | Result | Acceptance note                                                                                                                            |
+| ----------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Full-window theater stage           | Pass   | Playback fills one clipped dark stage; the former white content canvas and exposed lower strip are gone.                                   |
+| Top title bar                       | Pass   | Filename and duration sit over a dark gradient at the upper-left; the Done action remains reachable at the upper-right.                    |
+| Timeline and transport              | Pass   | Timeline spans the lower stage, playback is the emphasized primary control, and secondary controls use low-contrast translucent surfaces.  |
+| Page navigation                     | Pass   | The page pill is centered above the bottom transport area and remains within the clipped video stage.                                      |
+| Native-video layering               | Pass   | The visible player root and stage remain transparent so the macOS native surface is not covered; DOM scrims and controls render above it.  |
+| Responsive and accessibility states | Pass   | Compact layout, reduced motion, forced colors, disabled navigation, and keyboard-owned controls retain explicit styling and focused tests. |
 
 ### Findings and correction history
 
@@ -388,6 +391,7 @@ Final result: passed
 - P1: acceptance rendering initially placed the synthetic native frame behind the underlying workspace. Correction: the acceptance-only frame and preview received explicit sibling z-order without changing production native layering.
 - P1: the lower page-navigation area could appear outside the video boundary and expose unrelated content. Correction: all player chrome is nested inside the absolutely positioned, overflow-clipped stage; the page pill is anchored `154 px` above the lower edge and controls `24 px` above it.
 - Intentional differences: the generated direction uses a neutral child-video placeholder, while product acceptance uses the repository's existing video-state asset; Viewer keeps its own icon set and typography, and contain-fit playback preserves the complete frame instead of imitating the source crop.
+
 
 ### Verification
 

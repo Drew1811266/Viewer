@@ -4,7 +4,7 @@
 >
 > 需求依据：[viewer-0.3x-target-requirements.md](viewer-0.3x-target-requirements.md)
 >
-> 视觉依据：[0.3.0 视觉规格](../design/0.3.0/README.md)（21 屏浅色 M3 稿）。
+> 视觉依据：[0.3.0 视觉规格](../design/0.3.0/README.md)（23 屏浅色 M3 稿）。
 >
 > 本文把 0.3.0 的三条主线（评审工具、离线语音、Material Design 3）展开为可执行任务。
 > 任务编号 `T-03A/B/C/D-xx`；每个任务给出代码落点、测试与完成定义。所有落点均已对照
@@ -230,15 +230,13 @@ pub struct AnnotationStyle {
 - 测试：顺序、快捷键唯一性、输入框内不触发、只读不触发、每工具默认样式。
 - 完成定义：工具栏/菜单/快捷键测试全绿。
 
-**T-03A-09 — 常驻工具轨 + 样式选项**
+**T-03A-09 — 顶部标记菜单 + 样式选项**
 
-- 落点：`AnnotationToolbar.tsx` 重写为 `ReviewToolRail`/`ReviewToolBar`（保留文件名以减少迁移），
-  `AnnotationStyleBar.tsx`（新）、`review.css`。
-- 宽窗口：左侧垂直工具轨（图标 + tooltip + 快捷键）；窄窗口：顶部水平工具条 + overflow。
+- 落点：`AnnotationToolbar.tsx`、`AnnotationToolMenu.tsx`、`AnnotationStyleBar.tsx`（新）、`review.css`。
+- 保留当前“顶部工具栏 + 标记菜单 + 320px 意见栏”；不新增左侧常驻工具轨。
 - 样式条：8 色、3 档线宽、透明度（荧光笔）、文字字号（文字）、虚线（直线/箭头）；每种工具记住上次样式。
-- 不再用 popover 选工具；保留 `AnnotationToolMenu` 仅作为窄屏 overflow 菜单。
-- 测试：11 个入口可点、可键盘、active 状态、窄屏 overflow、样式持久化到本次会话。
-- 完成定义：键盘可完成所有工具切换；无“先开菜单再选工具”。
+- 测试：11 个入口可点、可键盘、active 状态、快捷键、样式持久化到本次会话。
+- 完成定义：键盘可完成所有工具切换；不需要先打开二级模态。
 
 **T-03A-10 — 新工具交互**
 
@@ -414,10 +412,10 @@ pub struct AnnotationStyle {
 - `docs/adr/0011-material-design-3-design-system.md`。
 - 方向：**克制的 M3**——中性表面、单一品牌种子、图片优先；使用标准 M3 组件与 motion，
   不采用实验性 Expressive API；桌面密度 -1。
-- 产出 21 张 1440×900 全界面视觉稿：项目选择、工作区网格/列表、四类预览、评审工作台
-  （默认/选中/文字/录音/权限/只读）、开始/完成、历史、设置、冲突、空态、迁移、工具总览；
-  全部为浅色。源文件 `/Users/abc/Project/9.22/design.pen`（pen.dev，不进入 Git）；
-  总览 `docs/design/0.3.0/pen/overview.png`。批量重命名/处理图片延后到 0.3.0 之后。
+- 产出 23 张 1440×900 全界面视觉稿：项目入口、分类/网格/搜索、图片/文本/视频/其他预览、
+  评审（默认/选中/文字语音/权限/只读）、对比、存档/历史/迁移、设置、批量重命名/图片、
+  文件操作、状态板、工具总览；全部为浅色。源文件 `/Users/abc/Project/9.22/design.pen`
+  （pen.dev，不进入 Git）；总览 `docs/design/0.3.0/pen/overview.png`。
 - 完成定义：用户逐屏确认后才进入全站迁移；确认记录写入 `design-qa.md`。
 
 **T-03C-02 — token 生成与主题**
@@ -455,7 +453,7 @@ pub struct AnnotationStyle {
 
 **T-03C-05 — M3 primitives 第二批**
 
-- 新增/升级：progress（linear/circular）、snackbar、card、list、navigation rail/drawer、
+- 新增/升级：progress（linear/circular）、snackbar、card、list、
   top app bar、tabs、switch、slider、badge、tooltip。
 - 所有交互组件支持键盘、焦点环、disabled/read-only、reduced motion。
 - 完成定义：组件级 a11y 测试；无原生控件外观残留（除 checkbox/radio 语义）。
@@ -463,8 +461,8 @@ pub struct AnnotationStyle {
 **T-03C-06 — App shell 与导航**
 
 - 落点：`ui/src/App.tsx`、`Workspace*`、侧栏/顶部栏。
-- M3 navigation rail + secondary pane（文件夹树）；top app bar + search bar；
-  responsive：窄窗口折叠为 drawer；不改变现有信息架构。
+- top app bar + 文件夹栏（secondary pane）；不新增一级 navigation rail；
+  responsive：窄窗口折叠文件夹栏；不改变现有信息架构。
 - 完成定义：打开项目/浏览/切换视图的路径与 0.2.5 等价；键盘/读屏可用。
 
 **T-03C-07 — 工作区/网格/空态**
@@ -476,7 +474,7 @@ pub struct AnnotationStyle {
 
 **T-03C-08 — 预览界面**
 
-- 图片/文本/视频/其他文件预览 chrome、工具栏、侧栏、状态条 M3 化；
+- 图片/文本/视频/其他文件预览 chrome、工具栏、状态条 M3 化；
   画布与 video surface 本身不改渲染，只改周边控件。
 - 浅色下图片 matte 保持中性，不染色彩；画布区域不跟随界面强调色。
 - 完成定义：viewing 28 + video 12 状态更新；画布性能不回归。
@@ -485,12 +483,12 @@ pub struct AnnotationStyle {
 
 - 落点：`ImageReviewWorkspace.tsx`、`ReviewContextBar`、`ReviewFeedbackRail`、
   `ReviewInspector`、`AnnotationToolbar`、`FeedbackComposer`。
-- 工具轨、样式条、意见栏、只读横幅、语音按钮统一 M3；桌面密度紧凑。
+- 顶部工具/标记菜单、样式条、意见栏、只读横幅、语音按钮统一 M3；桌面密度紧凑。
 - 完成定义：review 37 + feedback 15 状态更新；与工作流 A/B 的真机验收合并。
 
 **T-03C-10 — 对话框与流程**
 
-- 项目打开/迁移/开始评审/完成/归档/历史/冲突/设置等全部 M3 dialog、
+- 项目打开/迁移/存档/历史/冲突/设置/批量/文件操作等全部 M3 dialog、
   menu、snackbar、progress。
 - 完成定义：dialog 7 状态 + 新增语音设置状态；无嵌套 modal 死路。
 
@@ -554,9 +552,9 @@ pub struct AnnotationStyle {
 
 | 阶段 | 内容 | 退出条件 |
 | --- | --- | --- |
-| S0 决策/Spike | D1–D8 确认；ASR 四模型 bake-off；v5 兼容 spike；21 屏视觉稿逐屏确认 | 三项 spike 有数据；ADR 0009/0010/0011 草案；用户确认路线 |
+| S0 决策/Spike | D1–D8 确认；ASR 四模型 bake-off；v5 兼容 spike；23 屏视觉稿逐屏确认 | 三项 spike 有数据；ADR 0009/0010/0011 草案；用户确认路线 |
 | S1 基础 | M3 tokens/primitives 第一批；`AnnotationStyle` + v5 协议；工具注册表 | token/协议单测绿；v4 fixture 可读；现有 UI 不回归 |
-| S2 标注 | 渲染样式、工具轨、新工具、选择编辑、撤销、Composer、只读 | 11 个入口可用；200 条性能达标；A 验收目录更新 |
+| S2 标注 | 渲染样式、顶部标记菜单、新工具、选择编辑、撤销、Composer、只读 | 11 个入口可用；200 条性能达标；A 验收目录更新 |
 | S3 语音 | 端口/采集/ASR 适配器/IPC/UI/设置/模型打包 | 断网全流程；CER/WER 达标；七类错误手验 |
 | S4 M3 页面 | shell → 工作区 → 预览 → 评审 → 弹窗 | 全站无旧视觉；浅色/高对比通过 |
 | S5 收口 | 性能、a11y、打包、文档、真机验收 | 发布门槛 §10 全绿；用户确认 |
@@ -593,6 +591,6 @@ pub struct AnnotationStyle {
 ## 12. 待确认问题
 
 1. **安装包预算**：Qwen3-ASR-0.6B 约 937 MB 的增量是否可接受？若不可接受，优先 Whisper turbo/small 或 Paraformer。
-2. **视觉稿确认**：21 张画面是否逐屏通过？特别是评审工具轨 7 个常驻分组 + 长按变体、意见栏 332px、只读 banner 的密度。
+2. **视觉稿确认**：23 张画面是否逐屏通过？特别是顶部标记菜单的 11 个入口、320px 意见栏、只读 banner 的密度。
 3. **验收语料**：语音准确率用本地真实口述语料验收，是否接受“不提交仓库、只记录指标与日期”？
 4. **设置范围**：语音设置是否暴露“更换模型”，还是只显示内置模型状态与许可证？

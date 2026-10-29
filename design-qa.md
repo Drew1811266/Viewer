@@ -437,7 +437,7 @@ Final result: passed
 
 Final result: passed
 
-## 2026-10-28 — 0.3.0 Material 3 visual spec (pen.dev)
+## 2026-10-28 — 0.3.0 Material 3 visual spec (pen.dev) — superseded
 
 ### Status
 
@@ -489,3 +489,66 @@ defects.
 - Status: correction plan proposed; no 0.3.0 design or product acceptance is claimed.
 - Next: confirm the information-architecture and screen-scope decisions in the audit,
   then rebuild affected frames against the actual 0.2.5 UI.
+
+## 2026-10-29 — 0.3.0 visual spec corrected to current product IA
+
+### Status
+
+**Corrected draft for review — not signed off.** The 21-screen draft was withdrawn; this
+entry records the 23-frame rebuild against the actual 0.2.5 interface.
+
+- Authoritative source: `/Users/abc/Project/9.22/design.pen` (pen.dev, outside Git).
+- Overview: `docs/design/0.3.0/pen/overview.png`.
+- Frame map: `docs/design/0.3.0/pen/README.md`.
+- Audit trail: `docs/design/0.3.0/AUDIT-2026-10-29.md`.
+- Current-UI evidence: `docs/design/0.3.0/audit/current/`.
+
+### Corrected scope
+
+- Removed the invented navigation rail, review rounds/participants, history statistics,
+  Markdown-summary export, and chart/KPI sample assets.
+- Restored the actual shell: 52 px top bar + 220 px folder sidebar + content; no primary
+  navigation rail. Preview pages have no permanent metadata sidebar.
+- Restored continuous review as an image-preview workbench: top toolbar + 320 px feedback
+  rail, current/archived feedback, archive/history/import actions; no start/complete rounds.
+- Restored history, migration, settings, batch renaming/image processing, and file
+  operations as modals with their real fields.
+- Added the current compare view and the 0.3.0 text/voice states inside the feedback rail.
+- Kept measurement scope to distance + horizontal/vertical constraint only.
+
+### Coverage (23 frames)
+
+| # | Frame | # | Frame |
+| --- | --- | --- | --- |
+| 01 | 项目入口 | 13 | 评审 · 只读 |
+| 02 | 工作区 · 分类概览 | 14 | 多图对比 |
+| 03 | 工作区 · 内容网格 | 15 | 存档意见 |
+| 04 | 工作区 · 搜索结果 | 16 | 历史意见 |
+| 05 | 图片预览 | 17 | 旧记录迁移 |
+| 06 | 文本预览 | 18 | 设置 |
+| 07 | 视频预览 | 19 | 批量重命名 |
+| 08 | 其他文件预览 | 20 | 批量处理图片 |
+| 09 | 评审 · 默认 | 21 | 文件操作 |
+| 10 | 评审 · 选中与样式 | 22 | 状态与恢复 |
+| 11 | 评审 · 文字与语音 | 23 | 标注工具 |
+| 12 | 评审 · 麦克风权限 | | |
+
+### Visual checks
+
+- All frames are 1440×900; product/design imagery replaces the charts.
+- Review frames use the real 320 px feedback rail and inline card editor, not a floating
+  composer; the only overlay is the 0.3.0 style bar/selection handles.
+- Read-only uses a banner inserted below the toolbar, not an overlay.
+- Modals use a dimmed current screen as context; dialog content stays inside its bounds.
+- Tool gallery distinguishes current 5 tools from 0.3.0 additions; point is labelled “点”,
+  not “图钉”.
+- Remaining known limitation: this is a static visual draft; native hover, focus, motion,
+  long-text overflow, 1024×720 compaction, and all error states still need implementation
+  and real-device acceptance.
+
+### Evidence
+
+- Pen exports for all 23 frames + `overview.png`.
+- `node docs/design/0.3.0/check.mjs` still passes the older static HTML only; it is not
+  evidence for the Pen frames.
+- No 0.3.0 product acceptance is claimed.

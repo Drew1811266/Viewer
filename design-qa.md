@@ -476,3 +476,16 @@ Final result: passed
   `1440×900`, no missing icon IDs, no errors. Pen frame export is the current evidence.
 - Pen `Export` of all 21 frames; contact sheet assembled from those exports.
 - Visual severity for this draft: not yet rated; user sign-off required.
+
+## 2026-10-29 — 0.3.0 visual spec correction (withdrawn)
+
+The 2026-10-28 Pen visual draft is **withdrawn from implementation review** after a
+product-truth audit found invented navigation, review rounds/participants, history
+statistics, and chart-like sample assets; it also has reproducible overlap and clipping
+defects.
+
+- Audit: `docs/design/0.3.0/AUDIT-2026-10-29.md`.
+- Current-UI evidence: `docs/design/0.3.0/audit/current/`.
+- Status: correction plan proposed; no 0.3.0 design or product acceptance is claimed.
+- Next: confirm the information-architecture and screen-scope decisions in the audit,
+  then rebuild affected frames against the actual 0.2.5 UI.

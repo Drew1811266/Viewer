@@ -374,6 +374,7 @@ fn logical_point_target(project_id: ProjectId, stream: ReviewStreamId) -> Stored
             revision_id: target_revision_id,
             asset_version_id: asset_id,
             anchor: FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.25, 0.4).unwrap()),
+            style: None,
             availability: ReviewAvailability::Ready,
         }],
     }];

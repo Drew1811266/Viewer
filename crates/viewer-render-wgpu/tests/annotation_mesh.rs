@@ -153,9 +153,9 @@ fn selected_handles_have_visible_white_interiors_and_full_size_hit_targets() {
         "handles need a contrasting white interior"
     );
     assert!(
-        mesh.vertices().iter().any(|vertex| vertex.edge_px == 12.0),
-        "handle solid core must remain 24 logical pixels in diameter; the \
-         rasterized rim only carries the 0.5px antialiasing outset"
+        mesh.vertices().iter().any(|vertex| vertex.edge_px == 4.0),
+        "handle solid core is 8 logical pixels; the 24px target remains a \
+         hit-test constant, not a visible square"
     );
 }
 
@@ -224,8 +224,9 @@ fn maximum_length_stroke_stays_within_linear_mesh_bounds() {
 
     // 2047 stroke quads (4 verts / 6 indices each) plus one ordinal badge:
     // two AA circles of 16 segments (96 verts / 96 indices).
-    assert!(mesh.vertices().len() <= 2_047 * 4 + 128);
-    assert!(mesh.indices().len() <= 2_047 * 6 + 144);
+    // The v2 halo doubles the segment quads for every stroked point.
+    assert!(mesh.vertices().len() <= 2_047 * 4 * 2 + 128);
+    assert!(mesh.indices().len() <= 2_047 * 6 * 2 + 144);
 }
 
 #[test]
@@ -244,6 +245,55 @@ fn draft_geometry_is_present_without_an_ordinal_label() {
 
     assert!(!mesh.vertices().is_empty());
     assert!(mesh.ordinal_labels().is_empty());
+}
+
+#[test]
+fn multiply_style_isolates_the_colored_body_for_the_multiply_pipeline() {
+    let mut highlighter = node(
+        "highlighter",
+        1,
+        AnnotationGeometry::Stroke {
+            points: vec![
+                NormalizedPoint::new(0.2, 0.2).unwrap(),
+                NormalizedPoint::new(0.6, 0.25).unwrap(),
+            ],
+        },
+    );
+    highlighter.style = AnnotationStyle {
+        halo: false,
+        multiply: true,
+        color: [1.0, 0.86, 0.1, 0.35],
+        ..AnnotationStyle::default()
+    };
+    let scene = SceneSnapshot::new(SceneRevision(9), vec![highlighter], None).unwrap();
+    let mesh = AnnotationMeshBuilder::default().build(&scene).unwrap();
+
+    assert!(mesh.geometry_index_ranges().is_empty());
+    assert_eq!(mesh.multiply_geometry_index_ranges().len(), 1);
+    let range = mesh.multiply_geometry_index_ranges()[0].clone();
+    assert!(range.end > range.start);
+    assert!(range.end as usize <= mesh.indices().len());
+
+    let mut haloed = node(
+        "haloed",
+        2,
+        AnnotationGeometry::Rectangle {
+            rect: NormalizedRect::new(0.1, 0.1, 0.2, 0.2).unwrap(),
+        },
+    );
+    haloed.style = AnnotationStyle {
+        halo: true,
+        multiply: true,
+        ..AnnotationStyle::default()
+    };
+    let scene = SceneSnapshot::new(SceneRevision(10), vec![haloed], None).unwrap();
+    let mesh = AnnotationMeshBuilder::default().build(&scene).unwrap();
+    assert_eq!(mesh.geometry_index_ranges().len(), 1);
+    assert_eq!(mesh.multiply_geometry_index_ranges().len(), 1);
+    assert_eq!(
+        mesh.geometry_index_ranges()[0].end,
+        mesh.multiply_geometry_index_ranges()[0].start
+    );
 }
 
 #[test]
@@ -270,4 +320,91 @@ fn dashed_style_is_retained_as_segment_shader_metadata() {
     assert!(segments.iter().all(|vertex| vertex.dashed));
     assert!(segments.iter().any(|vertex| vertex.segment_factor == 0.0));
     assert!(segments.iter().any(|vertex| vertex.segment_factor == 1.0));
+}
+
+#[test]
+fn halo_is_a_white_underlay_and_can_be_disabled() {
+    let mut rect = node(
+        "rect",
+        1,
+        AnnotationGeometry::Rectangle {
+            rect: NormalizedRect::new(0.2, 0.2, 0.3, 0.3).unwrap(),
+        },
+    );
+    rect.style.line_width_px = 2.0;
+    let scene = SceneSnapshot::new(SceneRevision(1), vec![rect.clone()], None).unwrap();
+    let mesh = AnnotationMeshBuilder::default().build(&scene).unwrap();
+    assert!(
+        mesh.vertices()
+            .iter()
+            .any(|vertex| vertex.kind == VertexKind::Segment
+                && vertex.color == [1.0, 1.0, 1.0, 0.9]
+                && (vertex.edge_px - 2.5).abs() < 0.0001),
+        "the white halo runs at stroke width + 1.5px per side"
+    );
+
+    rect.style.halo = false;
+    let scene = SceneSnapshot::new(SceneRevision(2), vec![rect], None).unwrap();
+    let mesh = AnnotationMeshBuilder::default().build(&scene).unwrap();
+    assert!(
+        !mesh
+            .vertices()
+            .iter()
+            .any(|vertex| vertex.color == [1.0, 1.0, 1.0, 0.9]),
+        "highlighter and explicitly halo-less strokes must stay clean"
+    );
+}
+
+#[test]
+fn selected_badges_use_a_color_disc_white_digits_and_a_lavender_ring() {
+    let mut point = node(
+        "point",
+        3,
+        AnnotationGeometry::Point {
+            position: NormalizedPoint::new(0.5, 0.5).unwrap(),
+        },
+    );
+    point.selected = true;
+    let scene = SceneSnapshot::new(SceneRevision(1), vec![point], None).unwrap();
+    let mesh = AnnotationMeshBuilder::default().build(&scene).unwrap();
+    let label = &mesh.ordinal_labels()[0];
+    assert_eq!(label.text, "3");
+    assert_eq!(label.color, [1.0, 1.0, 1.0, 1.0]);
+    assert!(
+        mesh.vertices()
+            .iter()
+            .any(|vertex| vertex.color[0] > 0.5 && vertex.color[2] > 0.99 && vertex.color[1] < 0.6),
+        "selected badges keep the lavender ring"
+    );
+}
+
+#[test]
+fn rounded_rectangle_arcs_replace_the_sharp_corner() {
+    let mut rect = node(
+        "rounded",
+        1,
+        AnnotationGeometry::Rectangle {
+            rect: NormalizedRect::new(0.2, 0.2, 0.4, 0.2).unwrap(),
+        },
+    );
+    rect.style.corner_radius = [0.02, 0.02];
+    let scene = SceneSnapshot::new(SceneRevision(1), vec![rect], None).unwrap();
+    let mesh = AnnotationMeshBuilder::default().build(&scene).unwrap();
+
+    assert!(
+        !mesh.vertices().iter().any(|vertex| {
+            vertex.kind == VertexKind::Segment && vertex.source_position == [0.2, 0.2]
+        }),
+        "the sharp corner should be replaced by an arc"
+    );
+    assert!(
+        mesh.vertices().iter().any(|vertex| {
+            vertex.kind == VertexKind::Segment
+                && vertex.source_position[0] > 0.2
+                && vertex.source_position[0] < 0.22
+                && vertex.source_position[1] > 0.2
+                && vertex.source_position[1] < 0.22
+        }),
+        "arc samples must sit inside the rounded corner box"
+    );
 }

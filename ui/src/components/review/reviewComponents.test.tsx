@@ -193,7 +193,17 @@ function continuousArchiveCoordinator(
             streamId: 'stream-c',
             snapshotId: 'snapshot-c',
             parent: null,
-            assets: [],
+            assets: [
+              {
+                id: 'asset-c',
+                sourceEntityId: null,
+                relativePath: '衣服/商品-01.jpg',
+                evidence: { sizeBytes: 1, modifiedNs: '1', blake3: null },
+                media: { kind: 'image', width: 100, height: 100 },
+                producerAssetId: null,
+                parentAssetVersionId: null,
+              },
+            ],
             feedback: [
               {
                 id: archiveTarget.feedbackId,
@@ -697,8 +707,7 @@ describe('review workspace components', () => {
     fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
     await waitFor(() => expect(continuous.previewArchive).toHaveBeenCalledOnce())
 
-    const targetName =
-      /Feedback ID feedback-c · Text revision text-c · Target ID target-c · Target revision target-c-revision/
+    const targetName = /商品-01\.jpg · 整图意见 · 意见 1/
     fireEvent.click(screen.getByRole('checkbox', { name: targetName }))
 
     const moved = screen.getByRole('heading', { name: '将移入历史' }).parentElement
@@ -752,8 +761,7 @@ describe('review workspace components', () => {
     fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
     await waitFor(() => expect(previewArchive).toHaveBeenCalledOnce())
 
-    const targetName =
-      /Feedback ID feedback-c · Text revision text-c · Target ID target-c · Target revision target-c-revision/
+    const targetName = /商品-01\.jpg · 整图意见 · 意见 1/
     expect(screen.getByRole('checkbox', { name: targetName })).toBeChecked()
     expect(screen.getByRole('button', { name: '确认存档' })).toBeDisabled()
 
@@ -766,7 +774,7 @@ describe('review workspace components', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: targetName }))
     await waitFor(() => expect(previewArchive).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(screen.getByRole('button', { name: '确认存档' })).toBeEnabled())
-    const moved = screen.getByRole('heading', { name: '将移入历史' }).parentElement
+    const moved = screen.getByRole('heading', { name: /将移入历史/ }).parentElement
     if (moved === null) throw new Error('Missing moved-to-history section')
     expect(within(moved).getByText(targetName)).toBeVisible()
   })

@@ -143,6 +143,7 @@ pub(super) fn continue_historical(
             revision_id,
             asset_version_id: binding.new_asset_version_id,
             anchor: binding.anchor.clone(),
+            style: None,
             availability: ReviewAvailability::Ready,
         });
     }

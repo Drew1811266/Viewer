@@ -236,9 +236,14 @@ export function workspaceBridge(id: string): ViewerBridge {
     },
     async getViewerSettings() {
       return {
-        schemaVersion: 4,
+        schemaVersion: 5,
         thumbnailDensity: density,
         magnifier: { shape: 'circle', magnification: 2, area: 'small' },
+        speech: {
+          inputMode: 'click',
+          locale: 'simplified_chinese',
+          autoPunctuation: true,
+        },
       }
     },
     async queryFolder(entityId, showingAggregate) {
@@ -309,8 +314,8 @@ function workspaceRecipe(id: string): () => boolean {
       if (!separator.dataset.acceptanceActed) {
         separator.dataset.acceptanceActed = 'true'
         separator.dispatchEvent(pointerEvent('pointerdown', { clientX: 220, button: 0 }))
-        window.dispatchEvent(pointerEvent('pointermove', { clientX: 320, button: 0 }))
-        window.dispatchEvent(pointerEvent('pointerup', { clientX: 320, button: 0 }))
+        window.dispatchEvent(pointerEvent('pointermove', { clientX: 388, button: 0, buttons: 1 }))
+        window.dispatchEvent(pointerEvent('pointerup', { clientX: 388, button: 0 }))
       }
       return separator.getAttribute('aria-valuenow') === '320'
     }

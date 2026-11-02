@@ -141,10 +141,10 @@ describe('Viewer viewing acceptance scenes', () => {
       ),
     )
     expect(lens).toHaveAttribute('data-shape', 'circle')
-    expect(lens).toHaveStyle({ width: '200px', height: '200px' })
+    expect(lens).toHaveStyle({ width: '180px', height: '180px' })
     expect(Number(lens.style.getPropertyValue('--magnifier-scale'))).toBeCloseTo(2 * (576 / 560))
-    expect(lens.style.getPropertyValue('--magnifier-x')).toBe('438px')
-    expect(lens.style.getPropertyValue('--magnifier-y')).toBe('358px')
+    expect(lens.style.getPropertyValue('--magnifier-x')).toBe('428px')
+    expect(lens.style.getPropertyValue('--magnifier-y')).toBe('348px')
     expect(lens.style.getPropertyValue('--magnifier-x')).not.toBe('320px')
     expect(getComputedStyle(lens.parentElement as HTMLElement).cursor).not.toBe('none')
     expect(source.getAttribute('src')).toContain(encodeURIComponent('商品-02.jpg'))
@@ -177,7 +177,7 @@ describe('Viewer viewing acceptance scenes', () => {
       ),
     )
     expect(Number(lens.style.getPropertyValue('--magnifier-scale'))).toBeCloseTo(2 * (763.2 / 373))
-    expect(lens.style.getPropertyValue('--magnifier-x')).toBe('838px')
+    expect(lens.style.getPropertyValue('--magnifier-x')).toBe('828px')
   })
 
   it.each([
@@ -205,6 +205,17 @@ describe('Viewer viewing acceptance scenes', () => {
     rendered.unmount()
   })
 
+  it('renders the Markdown edit-split acceptance state', async () => {
+    const rendered = renderScene('DOC-08')
+    await waitFor(() =>
+      expect(document.querySelector('.markdown-editor-body--editing')).not.toBeNull(),
+    )
+    expect(screen.getByText('Markdown 源码')).toBeVisible()
+    expect(document.querySelector('.markdown-editor-columns')).toHaveAttribute('data-view', 'split')
+    expect(document.querySelector('.markdown-editor-source')).not.toBeNull()
+    expect(screen.getByText('实时渲染')).toBeVisible()
+    rendered.unmount()
+  })
   it('renders independent dual text panes and both unsupported states', async () => {
     const dual = renderScene('DOC-05')
     await waitFor(() => expect(screen.getAllByTestId(/^text-pane-/)).toHaveLength(2))

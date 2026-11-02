@@ -220,6 +220,7 @@ fn v3_and_v4_emit_distinct_protocol_versions_for_the_same_legacy_state() {
 
     let v3 = super::v3::encode_state_v3(&record).unwrap();
     let v4 = super::v4::encode_state_v4(&record).unwrap();
+    let v5 = super::v5::encode_state_v5(&record).unwrap();
 
     assert_eq!(
         serde_json::from_slice::<Value>(&v3).unwrap()["protocolVersion"],
@@ -229,8 +230,14 @@ fn v3_and_v4_emit_distinct_protocol_versions_for_the_same_legacy_state() {
         serde_json::from_slice::<Value>(&v4).unwrap()["protocolVersion"],
         "viewer.review/4"
     );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&v5).unwrap()["protocolVersion"],
+        "viewer.review/5"
+    );
     assert!(super::v3::decode_state_v3(&v4).is_err());
     assert!(super::v4::decode_state_v4(&v3).is_err());
+    assert!(super::v4::decode_state_v4(&v5).is_err());
+    assert!(super::v5::decode_state_v5(&v4).is_err());
 }
 
 #[test]

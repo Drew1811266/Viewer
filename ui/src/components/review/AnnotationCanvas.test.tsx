@@ -18,6 +18,16 @@ function controller(
   return {
     protocol: 'legacy',
     tool: 'browse',
+    annotationStyle: {
+      tool: 'rectangle',
+      color: 'red',
+      width: 'medium',
+      opacityPercent: 100,
+      dashed: false,
+    },
+    styleBusy: false,
+    canUndo: false,
+    canRedo: false,
     editor: {
       activeTool: 'browse',
       temporarilyPanning: false,
@@ -51,6 +61,9 @@ function controller(
     preparedImage: null,
     leaveConfirmation: null,
     setTool: vi.fn(),
+    setAnnotationStyle: vi.fn(),
+    undo: vi.fn(),
+    redo: vi.fn(),
     setTemporaryPan: vi.fn(),
     beginAnnotation: vi.fn(),
     updateDraftAnchor: vi.fn(),
@@ -80,8 +93,11 @@ describe('AnnotationCanvas', () => {
       moveTo: vi.fn(),
       lineTo: vi.fn(),
       closePath: vi.fn(),
+      arcTo: vi.fn(),
       stroke: vi.fn(),
+      fill: vi.fn(),
       strokeRect: vi.fn(),
+      fillRect: vi.fn(),
       save: vi.fn(),
       restore: vi.fn(),
       setLineDash: vi.fn(),
@@ -110,13 +126,30 @@ describe('AnnotationCanvas', () => {
       />,
     )
     expect(context.setLineDash).toHaveBeenCalledWith([6, 4])
-    expect(context.strokeRect).toHaveBeenCalledOnce()
-    const rect = context.strokeRect.mock.calls[0] ?? []
-    expect(rect[0]).toBeCloseTo(64)
-    expect(rect[1]).toBeCloseTo(96)
-    expect(rect[2]).toBeCloseTo(128)
-    expect(rect[3]).toBeCloseTo(144)
+    expect(context.stroke).toHaveBeenCalledOnce()
+    expect(context.fill).toHaveBeenCalledOnce()
+    expect(context.moveTo).toHaveBeenCalledWith(68, 96)
+    const lineTo = context.lineTo.mock.calls[0] ?? []
+    expect(lineTo[0]).toBeCloseTo(188)
+    expect(lineTo[1]).toBeCloseTo(96)
   })
+
+  it('double-clicks a selected annotation to edit its text in browse mode', () => {
+    const review = controller({ tool: 'browse', selectedItemId: 'target-1' })
+    render(<AnnotationCanvas projection={PROJECTION} controller={review} />)
+    fireEvent.doubleClick(screen.getByTestId('annotation-canvas'))
+
+    expect(review.beginFeedbackTextEdit).toHaveBeenCalledExactlyOnceWith('target-1')
+  })
+  it('clears the selection when empty canvas is clicked', () => {
+    const review = controller({ selectedItemId: 'target-1' })
+    render(<AnnotationCanvas projection={PROJECTION} controller={review} />)
+    const canvas = screen.getByTestId('annotation-canvas')
+    fireEvent.pointerDown(canvas, { clientX: 600, clientY: 400, pointerId: 3 })
+    expect(review.selectFeedback).toHaveBeenCalledWith(null)
+    expect(review.replaceFeedbackAnchor).not.toHaveBeenCalled()
+  })
+
   it('selects a numbered marker and provides keyboard rectangle movement', () => {
     const review = controller({ selectedItemId: 'target-1' })
     const parentKeyDown = vi.fn()
@@ -141,7 +174,7 @@ describe('AnnotationCanvas', () => {
       width: 0.3,
       height: 0.4,
     })
-    expect(screen.getAllByRole('button', { name: /调整意见 1/ })).toHaveLength(4)
+    expect(screen.getAllByRole('button', { name: /调整意见 1/ })).toHaveLength(8)
     const handle = screen.getByRole('button', { name: '调整意见 1 右下角' })
     fireEvent.keyDown(handle, { key: 'ArrowRight', shiftKey: true })
     expect(review.replaceFeedbackAnchor).toHaveBeenLastCalledWith('target-1', {
@@ -248,6 +281,102 @@ describe('AnnotationCanvas', () => {
     expect(parentPointerDown).not.toHaveBeenCalled()
   })
 
+  it('supports Enter, Backspace, and the visible finish control while drawing a polygon', async () => {
+    const review = controller({
+      tool: 'polygon',
+      editor: {
+        activeTool: 'polygon',
+        temporarilyPanning: false,
+        selectedItemId: null,
+        phase: {
+          status: 'drawing',
+          draftAnchor: { kind: 'image_polygon', points: [{ x: 0.1, y: 0.1 }] },
+        },
+      },
+    })
+    render(<AnnotationCanvas projection={PROJECTION} controller={review} />)
+    const canvas = screen.getByTestId('annotation-canvas')
+
+    fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 41 })
+    fireEvent.pointerDown(canvas, { clientX: 330, clientY: 68, pointerId: 42 })
+    fireEvent.pointerDown(canvas, { clientX: 330, clientY: 260, pointerId: 43 })
+    expect(screen.getByText('已放置 3 个点')).toBeVisible()
+
+    fireEvent.keyDown(window, { key: 'Backspace' })
+    expect(review.updateDraftAnchor).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: 'image_polygon', points: expect.any(Array) }),
+    )
+    const afterBackspace = vi.mocked(review.updateDraftAnchor).mock.calls.at(-1)?.[0]
+    if (afterBackspace?.kind !== 'image_polygon') throw new Error('expected polygon draft')
+    expect(afterBackspace.points).toHaveLength(2)
+
+    fireEvent.pointerDown(canvas, { clientX: 330, clientY: 260, pointerId: 44 })
+    fireEvent.keyDown(window, { key: 'Enter' })
+    await waitFor(() =>
+      expect(review.finishDrawing).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'image_polygon' }),
+      ),
+    )
+  })
+
+  it('finishes a polygon from the explicit 完成 control', async () => {
+    const review = controller({
+      tool: 'polygon',
+      editor: {
+        activeTool: 'polygon',
+        temporarilyPanning: false,
+        selectedItemId: null,
+        phase: {
+          status: 'drawing',
+          draftAnchor: { kind: 'image_polygon', points: [{ x: 0.1, y: 0.1 }] },
+        },
+      },
+    })
+    render(<AnnotationCanvas projection={PROJECTION} controller={review} />)
+    const canvas = screen.getByTestId('annotation-canvas')
+
+    fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 51 })
+    fireEvent.pointerDown(canvas, { clientX: 330, clientY: 68, pointerId: 52 })
+    fireEvent.pointerDown(canvas, { clientX: 330, clientY: 260, pointerId: 53 })
+    fireEvent.click(screen.getByRole('button', { name: '完成' }))
+
+    await waitFor(() =>
+      expect(review.finishDrawing).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'image_polygon' }),
+      ),
+    )
+  })
+  it('builds a polygon from successive canvas clicks and closes near the first point', async () => {
+    const review = controller({ tool: 'polygon' })
+    render(<AnnotationCanvas projection={PROJECTION} controller={review} />)
+    const canvas = screen.getByTestId('annotation-canvas')
+
+    fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 31 })
+    expect(review.beginDrawing).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'image_polygon' }),
+      undefined,
+    )
+
+    fireEvent.pointerDown(canvas, { clientX: 330, clientY: 68, pointerId: 32 })
+    fireEvent.pointerDown(canvas, { clientX: 330, clientY: 260, pointerId: 33 })
+    expect(review.updateDraftAnchor).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: 'image_polygon' }),
+    )
+
+    fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 34 })
+    await waitFor(() =>
+      expect(review.finishDrawing).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'image_polygon',
+          points: expect.arrayContaining([
+            { x: 0.1, y: 0.1 },
+            { x: 0.5, y: 0.1 },
+            { x: 0.5, y: 0.5 },
+          ]),
+        }),
+      ),
+    )
+  })
   it('creates point and directional arrow anchors through one pointer lifecycle', () => {
     const pointReview = controller({ tool: 'point' })
     const pointView = render(<AnnotationCanvas projection={PROJECTION} controller={pointReview} />)
@@ -413,7 +542,7 @@ describe('AnnotationCanvas', () => {
       height: 0.4,
     })
 
-    expect(screen.getAllByRole('button', { name: /调整意见 3/ })).toHaveLength(4)
+    expect(screen.getAllByRole('button', { name: /调整意见 3/ })).toHaveLength(8)
     const handle = screen.getByRole('button', { name: '调整意见 3 右下角' })
     fireEvent.pointerDown(handle, { clientX: 330, clientY: 260, pointerId: 23 })
     fireEvent.pointerMove(window, { clientX: 394, clientY: 308, pointerId: 23 })

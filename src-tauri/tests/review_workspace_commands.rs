@@ -86,6 +86,7 @@ fn save(asset: AssetVersionId) -> ReviewWorkspaceCommand {
         feedback_id: None,
         text: "袖口收紧，保留材质".into(),
         targets: vec![TargetEdit::Add {
+            style: None,
             asset_version_id: asset,
             anchor: FeedbackAnchor::Asset,
         }],

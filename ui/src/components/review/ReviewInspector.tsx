@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { eligibleReviewTargetIds } from '../../app/review/reviewModel'
 import type { ReviewSessionCoordinator } from '../../app/review/useReviewSessionCoordinator'
 import ViewerButton, { ViewerIconButton } from '../ui/ViewerButton'
+import FeedbackTextInput from './FeedbackTextInput'
 
 interface ReviewInspectorProps {
   review: ReviewSessionCoordinator
@@ -60,18 +61,16 @@ export default function ReviewInspector({
           <p>{editor.targetEntityIds.length} 个已选目标可添加意见</p>
           {ineligibleCount > 0 && <p>{ineligibleCount} 个所选项目不属于本轮素材</p>}
           <label htmlFor="review-feedback-text">返工意见</label>
-          <textarea
+          <FeedbackTextInput
             id="review-feedback-text"
             value={editor.text}
+            onChange={review.setEditorText}
+            onSave={submit}
+            ariaLabel="返工意见"
             disabled={editor.saveState === 'saving'}
-            onChange={(event) => review.setEditorText(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && event.metaKey) {
-                event.preventDefault()
-                submit()
-              }
-            }}
             rows={5}
+            className="review-editor__input"
+            micClassName="review-editor__mic"
           />
           <div className="review-editor__actions">
             <span>⌘ Enter 提交</span>

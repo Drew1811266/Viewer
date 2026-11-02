@@ -3,8 +3,9 @@ use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
 use crate::review::{
-    AssetVersion, FeedbackAnchor, MAX_ASSETS_PER_ROUND, MAX_FEEDBACK_ITEMS_PER_ROUND,
-    MAX_FEEDBACK_TEXT_BYTES, MAX_IMAGE_STROKE_POINTS_PER_ROUND, MAX_TARGETS_PER_FEEDBACK,
+    AnnotationStyle, AssetVersion, FeedbackAnchor, MAX_ASSETS_PER_ROUND,
+    MAX_FEEDBACK_ITEMS_PER_ROUND, MAX_FEEDBACK_TEXT_BYTES, MAX_IMAGE_STROKE_POINTS_PER_ROUND,
+    MAX_TARGETS_PER_FEEDBACK,
     round::{asset_is_valid, validate_anchor},
 };
 use crate::{
@@ -94,10 +95,32 @@ pub struct VersionedTarget {
     pub revision_id: ReviewTargetRevisionId,
     pub asset_version_id: AssetVersionId,
     pub anchor: FeedbackAnchor,
+    pub style: Option<AnnotationStyle>,
     pub availability: ReviewAvailability,
 }
 
 impl VersionedTarget {
+    pub fn new(
+        id: ReviewTargetId,
+        revision: ReviewTargetRevisionId,
+        asset: AssetVersionId,
+        anchor: FeedbackAnchor,
+        style: Option<AnnotationStyle>,
+        availability: ReviewAvailability,
+    ) -> Result<Self, ContinuousReviewError> {
+        if style.is_some_and(|style| !style.accepts(&anchor)) {
+            return Err(ContinuousReviewError::InvalidData);
+        }
+        Ok(Self {
+            id,
+            revision_id: revision,
+            asset_version_id: asset,
+            anchor,
+            style,
+            availability,
+        })
+    }
+
     pub fn asset(
         id: ReviewTargetId,
         revision: ReviewTargetRevisionId,
@@ -108,6 +131,7 @@ impl VersionedTarget {
             revision_id: revision,
             asset_version_id: asset,
             anchor: FeedbackAnchor::Asset,
+            style: None,
             availability: ReviewAvailability::Ready,
         }
     }
@@ -307,6 +331,12 @@ impl ContinuousReviewState {
                     .get(&target.asset_version_id)
                     .ok_or(MissingReference)?;
                 validate_anchor(asset, &target.anchor).map_err(|_| InvalidData)?;
+                if target
+                    .style
+                    .is_some_and(|style| !style.accepts(&target.anchor))
+                {
+                    return Err(InvalidData);
+                }
                 points += stroke_points(target);
                 if points > MAX_IMAGE_STROKE_POINTS_PER_ROUND {
                     return Err(LimitExceeded);
@@ -321,5 +351,76 @@ fn stroke_points(target: &VersionedTarget) -> usize {
     match &target.anchor {
         FeedbackAnchor::ImageStroke(stroke) => stroke.points().len(),
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::review::{
+        AnnotationColor, AnnotationStyle, AnnotationTextSize, AnnotationTool, AnnotationWidth,
+        NormalizedPoint,
+    };
+
+    fn target(anchor: FeedbackAnchor, style: Option<AnnotationStyle>) -> VersionedTarget {
+        VersionedTarget::new(
+            ReviewTargetId::from_u128(2),
+            ReviewTargetRevisionId::from_u128(3),
+            AssetVersionId::from_u128(1),
+            anchor,
+            style,
+            ReviewAvailability::Ready,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn versioned_target_rejects_styles_that_do_not_match_the_anchor() {
+        let point = FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.1, 0.2).unwrap());
+        let point_style = AnnotationStyle::new(
+            AnnotationTool::Point,
+            AnnotationColor::Red,
+            AnnotationWidth::Medium,
+            100,
+            false,
+            None,
+        )
+        .unwrap();
+        let text_style = AnnotationStyle::new(
+            AnnotationTool::Text,
+            AnnotationColor::Yellow,
+            AnnotationWidth::Medium,
+            100,
+            false,
+            Some(AnnotationTextSize::Medium),
+        )
+        .unwrap();
+
+        assert_eq!(
+            target(point.clone(), Some(point_style)).style,
+            Some(point_style)
+        );
+        assert!(
+            VersionedTarget::new(
+                ReviewTargetId::from_u128(2),
+                ReviewTargetRevisionId::from_u128(3),
+                AssetVersionId::from_u128(1),
+                point,
+                Some(text_style),
+                ReviewAvailability::Ready,
+            )
+            .is_err()
+        );
+        assert!(
+            VersionedTarget::new(
+                ReviewTargetId::from_u128(2),
+                ReviewTargetRevisionId::from_u128(3),
+                AssetVersionId::from_u128(1),
+                FeedbackAnchor::Asset,
+                Some(point_style),
+                ReviewAvailability::Ready,
+            )
+            .is_err()
+        );
     }
 }

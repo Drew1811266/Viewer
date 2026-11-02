@@ -1,4 +1,5 @@
 import type { ViewerBridge } from '../../api/viewer'
+import type { SpeechServicePort } from '../../speech/SpeechServiceContext'
 
 export type { ReviewWorkspacePort } from '../../api/reviewWorkspaceTypes'
 
@@ -65,6 +66,7 @@ export interface WorkspacePorts {
   preview: PreviewDataPort
   playback: VideoPlaybackPort
   settings: SettingsPort
+  speech: SpeechServicePort
   emptyProject: EmptyProjectPort
   shell: WorkspaceShellPort
   review: ReviewPort
@@ -101,6 +103,14 @@ export function createWorkspacePorts(bridge: ViewerBridge): WorkspacePorts {
     settings: {
       videoCacheStats: bridge.videoCacheStats,
       videoCacheClear: bridge.videoCacheClear,
+    },
+    speech: {
+      speechStatus: bridge.speechStatus,
+      requestSpeechPermissions: bridge.requestSpeechPermissions,
+      startSpeechCapture: bridge.startSpeechCapture,
+      stopSpeechCapture: bridge.stopSpeechCapture,
+      cancelSpeechCapture: bridge.cancelSpeechCapture,
+      openSpeechSettings: bridge.openSpeechSettings,
     },
     emptyProject: {
       chooseProject: bridge.chooseProject,

@@ -117,6 +117,16 @@ function controllerFixture(
   return {
     protocol: 'legacy',
     tool: 'browse',
+    annotationStyle: {
+      tool: 'rectangle',
+      color: 'red',
+      width: 'medium',
+      opacityPercent: 100,
+      dashed: false,
+    },
+    styleBusy: false,
+    canUndo: false,
+    canRedo: false,
     editor: {
       activeTool: 'browse',
       temporarilyPanning: false,
@@ -139,6 +149,9 @@ function controllerFixture(
     preparedImage: null,
     leaveConfirmation: null,
     setTool: vi.fn(),
+    setAnnotationStyle: vi.fn(),
+    undo: vi.fn(),
+    redo: vi.fn(),
     setTemporaryPan: vi.fn(),
     beginAnnotation: vi.fn(),
     updateDraftAnchor: vi.fn(),
@@ -253,9 +266,9 @@ describe('ImageReviewWorkspace', () => {
       'data-has-magnifier-overlay',
       'true',
     )
-    fireEvent.click(screen.getByRole('button', { name: '调整意见 1 区域' }))
+    fireEvent.click(screen.getByRole('button', { name: '调整意见 1 标注' }))
     expect(controller.selectFeedback).toHaveBeenCalledWith('feedback-1')
-    expect(controller.setTool).toHaveBeenCalledWith('rectangle')
+    expect(controller.setTool).toHaveBeenCalledWith('browse')
   })
 
   it('shares extended markup with the magnifier while keeping edit controls in the stage overlay', () => {
@@ -288,7 +301,7 @@ describe('ImageReviewWorkspace', () => {
     )
     expect(screen.getAllByTestId('annotation-marker')).toHaveLength(3)
     expect(screen.getByTestId('annotation-canvas')).toBeVisible()
-    expect(screen.getAllByRole('button', { name: /调整意见 3/ })).toHaveLength(4)
+    expect(document.querySelectorAll('.annotation-geometry-handle')).toHaveLength(8)
   })
 
   it('uses only the retained native scene when the native backend is active', () => {
@@ -311,7 +324,7 @@ describe('ImageReviewWorkspace', () => {
       'data-has-magnifier-overlay',
       'true',
     )
-    fireEvent.click(screen.getByRole('button', { name: '调整意见 1 区域' }))
+    fireEvent.click(screen.getByRole('button', { name: '调整意见 1 标注' }))
     expect(controller.selectFeedback).toHaveBeenCalledExactlyOnceWith('feedback-1')
     expect(controller.setTool).toHaveBeenCalledExactlyOnceWith('browse')
     expect(controller.beginRedraw).not.toHaveBeenCalled()
@@ -319,6 +332,24 @@ describe('ImageReviewWorkspace', () => {
     expect(controller.beginAnnotation).not.toHaveBeenCalled()
   })
 
+  it('routes the polygon tool to the Canvas overlay even when the native backend is active', () => {
+    const controller = controllerFixture([
+      savedRect('feedback-1', 1, '衣领边缘需要更平整', 0.1, 0.1, 0.2, 0.15),
+    ])
+    controller.tool = 'polygon'
+    const renderer = {
+      backend: 'native' as const,
+      open: vi.fn(),
+      listen: vi.fn(),
+    }
+
+    render(
+      <ImageReviewWorkspace {...surfaceFixture()} controller={controller} renderer={renderer} />,
+    )
+
+    expect(screen.getByTestId('preview-surface')).not.toHaveAttribute('data-has-native-binding')
+    expect(screen.getByTestId('annotation-canvas')).toBeVisible()
+  })
   it('routes tool shortcuts, suppresses them in text input, and keeps completion separate', () => {
     const controller = controllerFixture([])
     render(<ImageReviewWorkspace {...surfaceFixture()} controller={controller} />)

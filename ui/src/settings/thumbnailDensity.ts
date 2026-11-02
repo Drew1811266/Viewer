@@ -11,7 +11,7 @@ export interface ThumbnailLevelOption {
 export const THUMBNAIL_LEVELS = [
   { level: 1, density: 'compact', height: 96 },
   { level: 2, density: 'standard', height: 132 },
-  { level: 3, density: 'large', height: 168 },
+  { level: 3, density: 'large', height: 164 },
   { level: 4, density: 'extra_large', height: 204 },
   { level: 5, density: 'maximum', height: 240 },
 ] as const satisfies readonly ThumbnailLevelOption[]

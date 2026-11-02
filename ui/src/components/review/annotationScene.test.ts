@@ -78,18 +78,49 @@ describe('annotation scene', () => {
         ordinalRadius: 14,
       }),
     ).toBe(2)
-    const rectangle = context.strokeRect.mock.calls[0] ?? []
-    expect(rectangle[0]).toBeCloseTo(20)
-    expect(rectangle[1]).toBeCloseTo(20)
-    expect(rectangle[2]).toBeCloseTo(60)
-    expect(rectangle[3]).toBeCloseTo(40)
+    expect(context.moveTo).toHaveBeenCalledWith(24, 20)
+    expect(context.lineTo).toHaveBeenCalledWith(76, 20)
     expect(context.moveTo).toHaveBeenCalledWith(40, 30)
     expect(context.lineTo).toHaveBeenCalledWith(80, 50)
-    expect(context.stroke).toHaveBeenCalledOnce()
+    expect(context.stroke).toHaveBeenCalledTimes(4)
     expect(context.arc).not.toHaveBeenCalled()
     expect(context.fillText).not.toHaveBeenCalled()
-    expect(context.value.lineWidth).toBe(3)
-    expect(context.value.strokeStyle).toBe('#b42318')
+    expect(context.fill).toHaveBeenCalledOnce()
+    expect(context.value.lineWidth).toBe(4)
+    expect(context.value.strokeStyle).toBe('rgba(198, 40, 40, 1)')
+  })
+
+  it('replaces the edited item instead of drawing a duplicate transient', () => {
+    const rect = feedback('rect', 1, RECT)
+    const draft: ReviewAnchor = { kind: 'image_rect', x: 0.5, y: 0.1, width: 0.2, height: 0.3 }
+    const scene = buildAnnotationScene({
+      feedback: [rect],
+      selectedItemId: 'rect',
+      transientAnchor: draft,
+      editingItemId: 'rect',
+      editingOperation: 'geometry',
+    })
+    expect(scene).toHaveLength(1)
+    expect(scene[0]).toMatchObject({
+      itemId: 'rect',
+      ordinal: 1,
+      anchor: draft,
+      appearance: 'transient',
+    })
+  })
+
+  it('keeps a single item and its draft text while text is being edited', () => {
+    const text = feedback('text', 1, { kind: 'image_text', x: 0.2, y: 0.2 })
+    const scene = buildAnnotationScene({
+      feedback: [text],
+      selectedItemId: 'text',
+      transientAnchor: { kind: 'image_text', x: 0.2, y: 0.2 },
+      transientText: '草稿文字',
+      editingItemId: 'text',
+      editingOperation: 'text',
+    })
+    expect(scene).toHaveLength(1)
+    expect(scene[0]).toMatchObject({ itemId: 'text', text: '草稿文字' })
   })
 
   it('paints point, directional arrow, and ellipse geometry through the shared scene', () => {
@@ -112,10 +143,9 @@ describe('annotation scene', () => {
         ordinalRadius: 14,
       }),
     ).toBe(3)
-    expect(context.arc).toHaveBeenCalledWith(50, 40, 7, 0, Math.PI * 2)
+    expect(context.arc).not.toHaveBeenCalled()
     expect(context.moveTo).toHaveBeenCalledWith(40, 30)
-    expect(context.lineTo).toHaveBeenCalledWith(160, 70)
-    expect(context.lineTo.mock.calls).toHaveLength(3)
+    expect(context.moveTo).toHaveBeenCalledWith(160, 70)
     expect(context.ellipse).toHaveBeenCalledWith(110, 40, 40, 25, 0, 0, Math.PI * 2)
   })
 
@@ -162,8 +192,8 @@ describe('annotation scene', () => {
     expect(annotationMarkerPoint(STROKE)).toEqual({ x: 0.4, y: 0.5 })
     expect(context.arc).toHaveBeenNthCalledWith(1, 80, 20, 15, 0, Math.PI * 2)
     expect(context.arc).toHaveBeenNthCalledWith(2, 80, 50, 15, 0, Math.PI * 2)
-    expect(context.fillText).toHaveBeenNthCalledWith(1, '7', 80, 20)
-    expect(context.fillText).toHaveBeenNthCalledWith(2, '8', 80, 50)
+    expect(context.fillText).toHaveBeenNthCalledWith(1, '7', 80, 20.5)
+    expect(context.fillText).toHaveBeenNthCalledWith(2, '8', 80, 50.5)
   })
 
   it('chooses an in-bounds ordinal candidate that clears target geometry', () => {
@@ -177,7 +207,7 @@ describe('annotation scene', () => {
         lineWidth: 2,
         ordinalRadius: 14,
       }),
-    ).toEqual({ x: 170, y: 25 })
+    ).toEqual({ x: 190, y: 5 })
     expect(
       annotationOrdinalPoint(
         { kind: 'image_arrow', tail: { x: 0.2, y: 0.3 }, head: { x: 0.8, y: 0.7 } },
@@ -234,12 +264,12 @@ describe('annotation scene', () => {
 
     expect(painted).toBe(1)
     expect(context.value.lineWidth).toBe(lineWidth)
-    expect(context.value.strokeStyle).toBe('#d92d20')
-    const ordinalClearance = 14 + lineWidth + 4
+    expect(context.value.strokeStyle).toBe('rgba(198, 40, 40, 1)')
+    const ordinalClearance = 10 + lineWidth + 4
     expect(context.arc).toHaveBeenCalledWith(
       80 + ordinalClearance,
       60 + ordinalClearance,
-      14,
+      10,
       0,
       Math.PI * 2,
     )
@@ -280,7 +310,7 @@ describe('annotation scene', () => {
     expect(context.value.lineWidth).toBe(4)
   })
 
-  it('uses the CanvasText fallback and retains transient dash geometry in the lens', () => {
+  it('uses the upgraded transient rectangle style and retains dash geometry in the lens', () => {
     const context = canvasContext()
     createAnnotationMagnifierPainter(
       buildAnnotationScene({
@@ -297,7 +327,7 @@ describe('annotation scene', () => {
       pixelRatio: 1,
     })
 
-    expect(context.value.strokeStyle).toBe('CanvasText')
+    expect(context.value.strokeStyle).toBe('rgba(198, 40, 40, 1)')
     expect(context.setLineDash).toHaveBeenCalledWith([6, 4])
   })
 })
@@ -333,9 +363,12 @@ function canvasContext() {
     lineTo: vi.fn(),
     stroke: vi.fn(),
     strokeRect: vi.fn(),
+    fillRect: vi.fn(),
     arc: vi.fn(),
     ellipse: vi.fn(),
     fill: vi.fn(),
+    closePath: vi.fn(),
+    arcTo: vi.fn(),
     fillText: vi.fn(),
   }
   return {

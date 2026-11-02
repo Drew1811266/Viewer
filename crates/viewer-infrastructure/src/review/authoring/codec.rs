@@ -1,4 +1,4 @@
-use crate::review::{ReviewProtocolError, v3, v4};
+use crate::review::{ReviewProtocolError, v3, v4, v5};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fmt::Display, str::FromStr};
 use viewer_application::review_workspace::{
@@ -162,6 +162,7 @@ pub(super) fn encode(
     let state_bytes = match value.publication_protocol {
         ReviewPublicationProtocol::V3 => v3::encode_authoring_state(&state_record),
         ReviewPublicationProtocol::V4 => v4::encode_authoring_state(&state_record),
+        ReviewPublicationProtocol::V5 => v5::encode_authoring_state(&state_record),
     }
     .map_err(protocol_error)?;
     let state: serde_json::Value =
@@ -179,6 +180,7 @@ pub(super) fn encode(
             match value.publication_protocol {
                 ReviewPublicationProtocol::V3 => v3::encode_archive_v3(&record),
                 ReviewPublicationProtocol::V4 => v4::encode_archive_v4(&record),
+                ReviewPublicationProtocol::V5 => v5::encode_archive_v5(&record),
             }
             .map_err(protocol_error)
             .and_then(json_value)
@@ -339,9 +341,23 @@ pub(super) fn decode(
     }
     let state_bytes =
         serde_json::to_vec(&record.state).map_err(|_| ReviewCommitError::Integrity)?;
+    let publication_protocol = record.publication_protocol;
     let state_record = match record.publication_protocol {
         ReviewPublicationProtocol::V3 => v3::decode_authoring_state(&state_bytes),
-        ReviewPublicationProtocol::V4 => v4::decode_authoring_state(&state_bytes),
+        ReviewPublicationProtocol::V4 => match v4::decode_authoring_state(&state_bytes) {
+            Ok(value) => Ok(value),
+            // Early 0.3.0 builds wrote v5 styles into a v4 authoring state.
+            // Decode it with the compatibility reader; the store promotes the
+            // in-memory protocol to v5 after canonical-byte validation.
+            Err(ReviewProtocolError::InvalidData) => {
+                // Keep the stored v4 protocol here: canonical-byte validation
+                // must compare against the original v4 document. The store
+                // promotes the in-memory protocol to v5 after that check.
+                v3::decode_authoring_state_v4_with_style(&state_bytes)
+            }
+            Err(error) => Err(error),
+        },
+        ReviewPublicationProtocol::V5 => v5::decode_authoring_state(&state_bytes),
     }
     .map_err(protocol_error)?;
     let generated = record.generated.try_into_domain()?;
@@ -354,6 +370,7 @@ pub(super) fn decode(
             match record.publication_protocol {
                 ReviewPublicationProtocol::V3 => v3::decode_archive_v3(&bytes),
                 ReviewPublicationProtocol::V4 => v4::decode_archive_v4(&bytes),
+                ReviewPublicationProtocol::V5 => v5::decode_archive_v5(&bytes),
             }
             .map_err(protocol_error)
         })
@@ -380,7 +397,7 @@ pub(super) fn decode(
             sequence: record.sequence,
             snapshot_id,
         },
-        publication_protocol: record.publication_protocol,
+        publication_protocol,
         production: record
             .production
             .map(ProductionWire::try_into_domain)
@@ -412,7 +429,8 @@ fn validate_context(
         || value.state.project_id != project_id
         || value.state.stream_id != stream_id
         || value.generated.created_at_ms < 0
-        || value.publication_protocol.promote_for(&value.state) != value.publication_protocol
+        || (value.publication_protocol.promote_for(&value.state) != value.publication_protocol
+            && !legacy_v4_style(value))
     {
         return Err(ReviewCommitError::Integrity);
     }
@@ -430,6 +448,16 @@ fn validate_context(
     unique(value.archives.iter().map(|value| value.archive_id))?;
     unique(value.adopted_usage.iter().map(|value| value.id))?;
     Ok(())
+}
+
+fn legacy_v4_style(value: &StoredAuthoringState) -> bool {
+    value.publication_protocol == ReviewPublicationProtocol::V4
+        && value
+            .state
+            .feedback
+            .iter()
+            .flat_map(|item| &item.targets)
+            .any(|target| target.style.is_some())
 }
 
 fn validate_generated(value: &GeneratedReviewIds) -> Result<(), ReviewCommitError> {

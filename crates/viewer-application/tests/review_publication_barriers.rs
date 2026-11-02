@@ -59,6 +59,7 @@ fn state(snapshot: u128, text_revision: u128, target_revision: u128) -> Continuo
                 revision_id: ReviewTargetRevisionId::from_u128(target_revision),
                 asset_version_id: AssetVersionId::from_u128(1),
                 anchor: FeedbackAnchor::Asset,
+                style: None,
                 availability: ReviewAvailability::Ready,
             }],
             history_ref: None,

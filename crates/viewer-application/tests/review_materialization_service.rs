@@ -252,6 +252,7 @@ async fn one_job_materializes_exact_target_and_advances_published_head_last() {
                 targets: vec![TargetEdit::Add {
                     asset_version_id: asset.id,
                     anchor: FeedbackAnchor::Asset,
+                    style: None,
                 }],
             },
         )

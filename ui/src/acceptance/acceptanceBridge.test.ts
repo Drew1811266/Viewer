@@ -12,6 +12,7 @@ describe('Viewer visual acceptance bridge', () => {
         'beginFinderDrag',
         'cancelBatchImage',
         'cancelOperation',
+        'cancelSpeechCapture',
         'cancelTask',
         'chooseProject',
         'closeProject',
@@ -33,6 +34,7 @@ describe('Viewer visual acceptance bridge', () => {
         'listenScan',
         'listenVideo',
         'openExternalLink',
+        'openSpeechSettings',
         'openPermissionSettings',
         'openProject',
         'operationResults',
@@ -46,6 +48,7 @@ describe('Viewer visual acceptance bridge', () => {
         'projectSnapshot',
         'queryFolder',
         'requestImage',
+        'requestSpeechPermissions',
         'revealProjectInFileManager',
         'reviewAbandon',
         'reviewAddFeedback',
@@ -66,6 +69,9 @@ describe('Viewer visual acceptance bridge', () => {
         'searchTextSnippet',
         'selectionInfo',
         'setReviewState',
+        'speechStatus',
+        'startSpeechCapture',
+        'stopSpeechCapture',
         'toggleFavorite',
         'undoLastOperation',
         'updateViewerSettings',
@@ -87,9 +93,10 @@ describe('Viewer visual acceptance bridge', () => {
       ].sort(),
     )
     await expect(bridge.getViewerSettings()).resolves.toEqual({
-      schemaVersion: 4,
+      schemaVersion: 5,
       thumbnailDensity: 'standard',
       magnifier: { shape: 'circle', magnification: 2, area: 'small' },
+      speech: { inputMode: 'click', locale: 'simplified_chinese', autoPunctuation: true },
     })
     await expect(bridge.projectSnapshot()).resolves.toMatchObject({
       displayName: '测试图',

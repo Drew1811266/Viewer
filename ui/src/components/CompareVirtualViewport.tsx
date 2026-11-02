@@ -71,6 +71,7 @@ export default function CompareVirtualViewport({
     const node = viewportRef.current
     if (node === null || plan.scrollAxis !== 'horizontal') return
     const nativeWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.defaultPrevented) return
       translateHorizontalWheel(
         node,
         event.deltaX,
@@ -95,7 +96,8 @@ export default function CompareVirtualViewport({
   }
 
   const wheel: WheelEventHandler<HTMLDivElement> = (event) => {
-    if (plan.scrollAxis !== 'horizontal' || event.nativeEvent.defaultPrevented) return
+    if (plan.scrollAxis !== 'horizontal' || event.ctrlKey || event.nativeEvent.defaultPrevented)
+      return
     translateHorizontalWheel(
       event.currentTarget,
       event.deltaX,
@@ -138,6 +140,7 @@ export default function CompareVirtualViewport({
       aria-label="滚动图片对比"
       className="compare-scroll-viewport"
       data-axis={plan.scrollAxis}
+      data-compare-columns={plan.columns}
       onScroll={scrolled}
       onWheel={wheel}
       onKeyDown={keyDown}

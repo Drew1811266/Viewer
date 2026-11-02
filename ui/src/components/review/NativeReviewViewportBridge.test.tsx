@@ -54,6 +54,20 @@ describe('NativeReviewViewportBridge', () => {
     expect(binding?.scene.annotations[0]?.selected).toBe(true)
   })
 
+  it('marks the annotation style bar as a native input exclusion region', () => {
+    const controller = controllerFixture()
+    controller.tool = 'rectangle'
+    render(
+      <NativeReviewViewportBridge controller={controller}>
+        {({ editor }) => editor(PROJECTION)}
+      </NativeReviewViewportBridge>,
+    )
+
+    expect(screen.getByTestId('annotation-style-bar')).toHaveAttribute(
+      'data-native-input-exclusion',
+      'true',
+    )
+  })
   it('cancels only the active geometry edit and ignores completion rejected by staging', () => {
     const controller = controllerFixture()
     let publish: ((event: ImageRendererEvent) => void) | null = null
@@ -117,6 +131,56 @@ describe('NativeReviewViewportBridge', () => {
     expect(controller.replaceFeedbackAnchor).not.toHaveBeenCalled()
   })
 
+  it('opens text editing on a repeated native click within the double-click window', () => {
+    const controller = controllerFixture()
+    let publish: ((event: ImageRendererEvent) => void) | null = null
+    const child = ({
+      binding,
+    }: {
+      binding: import('../../rendering/imageRendererTypes').ImageRendererViewportBinding
+    }) => {
+      publish = binding.onEvent
+      return null
+    }
+    render(<NativeReviewViewportBridge controller={controller}>{child}</NativeReviewViewportBridge>)
+    const event = {
+      type: 'geometry_edit_started' as const,
+      sessionId: '1',
+      assetGeneration: 1,
+      annotationId: 'target-1',
+      geometry: { type: 'point' as const, position: { x: 0.2, y: 0.3 } },
+    }
+    act(() => {
+      publish?.(event)
+      publish?.(event)
+    })
+    expect(controller.beginFeedbackTextEdit).toHaveBeenCalledExactlyOnceWith('target-1')
+  })
+
+  it('opens text editing when the native selection event repeats', () => {
+    const controller = controllerFixture()
+    let publish: ((event: ImageRendererEvent) => void) | null = null
+    const child = ({
+      binding,
+    }: {
+      binding: import('../../rendering/imageRendererTypes').ImageRendererViewportBinding
+    }) => {
+      publish = binding.onEvent
+      return null
+    }
+    render(<NativeReviewViewportBridge controller={controller}>{child}</NativeReviewViewportBridge>)
+    const event = {
+      type: 'selection_changed' as const,
+      sessionId: '1',
+      assetGeneration: 1,
+      annotationId: 'target-1',
+    }
+    act(() => {
+      publish?.(event)
+      publish?.(event)
+    })
+    expect(controller.beginFeedbackTextEdit).toHaveBeenCalledExactlyOnceWith('target-1')
+  })
   it('keeps the browse input tool while a geometry edit stages without changing redraw tools', () => {
     const controller = controllerFixture()
     controller.tool = 'browse'
@@ -258,6 +322,7 @@ describe('NativeReviewViewportBridge', () => {
     expect(controller.beginDrawing).toHaveBeenCalledWith(
       { kind: 'image_point', x: 0.2, y: 0.3 },
       undefined,
+      { tool: 'point', color: 'red', width: 'medium', opacityPercent: 100, dashed: false },
     )
     expect(controller.updateDraftAnchor).toHaveBeenCalledWith({
       kind: 'image_point',
@@ -332,6 +397,16 @@ function controllerFixture(): ImageReviewWorkbenchController {
   return {
     protocol: 'continuous',
     tool: 'point',
+    annotationStyle: {
+      tool: 'point',
+      color: 'red',
+      width: 'medium',
+      opacityPercent: 100,
+      dashed: false,
+    },
+    styleBusy: false,
+    canUndo: false,
+    canRedo: false,
     editor: {
       activeTool: 'point',
       temporarilyPanning: false,
@@ -350,6 +425,9 @@ function controllerFixture(): ImageReviewWorkbenchController {
     leaveConfirmation: null,
     pendingMutationId: null,
     setTool: vi.fn(),
+    setAnnotationStyle: vi.fn(),
+    undo: vi.fn(),
+    redo: vi.fn(),
     setTemporaryPan: vi.fn(),
     beginAnnotation: vi.fn(),
     beginDrawing: vi.fn(() => true),

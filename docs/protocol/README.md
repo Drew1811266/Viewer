@@ -33,7 +33,20 @@ project/
     └── recovery/                           # Bounded private recovery input / legacy-index backups
 ```
 
-## 当前 v3/v4 持续评审语义
+## 标注样式（v5 可选字段）
+
+v5 的每个 `target` 可以带一个可选的 `style`：
+
+```json
+{"tool":"rectangle","color":"red","width":"medium","opacityPercent":100,"dashed":false}
+```
+
+- 缺省时不写该字段；v3/v4 数据按 anchor 推导默认样式。
+- 颜色是 8 个命名色，宽度是 `thin|medium|thick`；透明度 20–100；荧光笔固定 35 且不可虚线；字号只对文字工具生效。
+- style 参与 revision/hash/归档/恢复与证据 PNG，不属于 anchor。
+- 0.2.5 不读 v5；0.3 读 v3/v4/v5。理由见 [ADR 0009](../adr/0009-annotation-style-and-review-protocol-v5.md)。
+
+## 当前 v3/v4/v5 持续评审语义
 
 - `current` 是某一 Review Stream 现在仍有效的**完整自然语言要求集合**。成功保存先在本地
   authoring 控制面持久化完整逻辑状态，再由后台任务生成证据并原子发布公开索引；没有“完成本轮”
@@ -41,7 +54,7 @@ project/
 - 用户没有评价的素材不产生意见记录。批量网格和大图预览都不记录“已浏览”；曝光、停留、
   滚动或播放行为不能被读取方解释为通过。
 - Feedback 文字是返工意图的权威表达；版本化 Target/Anchor 只把文字关联到精确素材版本和
-  几何。v3 支持整图、图片矩形和图片画笔；v4 还支持图片点、箭头和椭圆。所有图片坐标都相对
+  几何。v3 支持整图、图片矩形和图片画笔；v4 还支持图片点、箭头和椭圆；v5 增加文字、直线、多边形 anchor 与 target style。所有图片坐标都相对
   方向校正后的完整图片归一化到 `[0, 1]`；画笔为 2–2048 个有效点。`imageArrow.tail` 是箭尾，
   `imageArrow.head` 是箭头指向、需要关注的目标位置，读取方不得把两端对调。原图永不被标注写回。
 - 文字编辑、重绘、删除和后补意见形成新 revision/state。withdrawal 是类型化移除事实，不会
@@ -88,13 +101,17 @@ Viewer 当前在一个项目中维护至多一个无 Production Scope 的手动 
 - [`viewer-review-state-v4.schema.json`](viewer-review-state-v4.schema.json)
 - [`viewer-review-archive-v4.schema.json`](viewer-review-archive-v4.schema.json)
 - [`viewer-review-read-result-v4.schema.json`](viewer-review-read-result-v4.schema.json)
+- [`viewer-review-index-v5.schema.json`](viewer-review-index-v5.schema.json)
+- [`viewer-review-state-v5.schema.json`](viewer-review-state-v5.schema.json)
+- [`viewer-review-archive-v5.schema.json`](viewer-review-archive-v5.schema.json)
+- [`viewer-review-read-result-v5.schema.json`](viewer-review-read-result-v5.schema.json)
 - [`viewer-review-usage-v1.schema.json`](viewer-review-usage-v1.schema.json)
 
 v1 索引保留 `completedRoundIds`。v2 索引以 `completedRounds` 保存每个历史 Round 的
 `reviewRoundId`、`protocolVersion`、相对 `location` 和文件字节的 `blake3`，因此同一 Stream
 可以包含 v1 文件与 v2 bundle。索引的主版本不等于所有历史 Round 的版本；读取方必须按
-记录声明分派。v3 Stream 在首次保存点、箭头或椭圆时单向提升为 v4；一旦提升，后来删除扩展
-几何也不会降回 v3。v3 状态和历史仍按 v3 原样读取，v3 解码器拒绝 v4 文档，v4 解码器也不把
+记录声明分派。v3 Stream 在首次保存点、箭头或椭圆时单向提升为 v4；首次保存文字、直线、多边形或
+`style` 时进一步提升为 v5。一旦提升，后来删除扩展几何或样式也不会降回旧版本。v3 状态和历史仍按 v3 原样读取，v3 解码器拒绝 v4 文档，v4 解码器也不把
 v3 文档冒充 v4。v1 `imageRegion` 仅按 v1 规则读取，不得当作 v2/v3/v4 Anchor 静默改写。含旧数据
 的项目必须通过 Viewer 的显式迁移检查；旧字节和历史证据保持不变，旧 Completed 不自动成为持续评审 current。
 

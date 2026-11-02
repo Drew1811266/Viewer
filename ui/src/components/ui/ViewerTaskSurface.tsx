@@ -5,6 +5,7 @@ export interface ViewerTaskSurfaceProps {
   current: number
   total: number
   indeterminate?: boolean
+  statusLabel?: string
   children: ReactNode
 }
 
@@ -13,6 +14,7 @@ export default function ViewerTaskSurface({
   current,
   total,
   indeterminate = false,
+  statusLabel,
   children,
 }: ViewerTaskSurfaceProps) {
   const safeTotal = Math.max(0, total)
@@ -30,7 +32,10 @@ export default function ViewerTaskSurface({
     >
       <div className="viewer-task-surface__header">
         <strong>{children}</strong>
-        <span>{indeterminate ? '处理中' : `${safeCurrent} / ${safeTotal}`}</span>
+        <span>
+          {indeterminate ? '处理中' : `${safeCurrent} / ${safeTotal}`}
+          {statusLabel === undefined ? '' : ` · ${statusLabel}`}
+        </span>
       </div>
       <div className="viewer-task-surface__track" aria-hidden="true">
         <div className="viewer-task-surface__fill" />

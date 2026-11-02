@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.5"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.87"
 license = "Apache-2.0"
@@ -35,10 +35,13 @@ notify = { version = "8.2.0", default-features = false, features = ["macos_fseve
 notify-debouncer-full = { version = "0.7.0", default-features = false, features = ["macos_fsevent"] }
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "block2", "NSApplication", "NSAttributedString", "NSBox", "NSColor", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSFont", "NSGraphics", "NSGraphicsContext", "NSImage", "NSOpenGL", "NSOpenGLView", "NSPasteboard", "NSResponder", "NSStringDrawing", "NSView", "NSWindow", "NSWorkspace", "objc2-core-foundation", "objc2-core-graphics"] }
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = ["std", "block2", "AVCaptureDevice", "AVMediaFormat"] }
+objc2-avf-audio = { version = "0.3.2", default-features = false, features = ["std", "AVAudioFormat", "AVAudioRecorder", "AVAudioTypes"] }
+objc2-speech = { version = "0.3.2", default-features = false, features = ["std", "block2", "SFErrors", "SFSpeechRecognitionRequest", "SFSpeechRecognitionResult", "SFSpeechRecognitionTask", "SFSpeechRecognizer", "SFTranscription"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFData", "CFDictionary", "CFNumber", "CFString", "CFURL"] }
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGBitmapContext", "CGColorSpace", "CGContext", "CGImage", "CGPath", "CGPDFDocument", "CGPDFPage"] }
 objc2-core-video = { version = "0.3.2", default-features = false, features = ["std", "CVBase", "CVDisplayLink", "CVHostTime", "CVReturn", "objc2-core-graphics"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "block2", "NSError", "NSFileManager", "NSNotification", "NSObject", "NSOperation", "NSString", "NSURL"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "block2", "NSError", "NSFileManager", "NSLocale", "NSNotification", "NSObject", "NSOperation", "NSString", "NSURL", "NSValue"] }
 objc2-image-io = { version = "0.3.2", default-features = false, features = ["std", "CGImageDestination", "CGImageProperties", "CGImageSource", "objc2-core-graphics"] }
 objc2-metal-kit = { version = "0.3.2", default-features = false, features = ["std", "MTKView", "objc2-app-kit", "objc2-core-foundation"] }
 objc2-quick-look-thumbnailing = { version = "0.3.2", default-features = false, features = ["std", "QLThumbnailGenerationRequest", "QLThumbnailGenerator", "QLThumbnailRepresentation", "block2", "objc2-core-foundation", "objc2-core-graphics"] }

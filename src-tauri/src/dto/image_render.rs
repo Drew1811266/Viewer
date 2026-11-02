@@ -167,6 +167,16 @@ pub struct ImageRenderAnnotationStyleDto {
     pub color: [f32; 4],
     pub line_width_px: f32,
     pub dashed: bool,
+    #[serde(default = "default_annotation_halo")]
+    pub halo: bool,
+    #[serde(default)]
+    pub corner_radius: [f32; 2],
+    #[serde(default)]
+    pub multiply: bool,
+}
+
+fn default_annotation_halo() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -349,8 +359,33 @@ pub enum ImageRenderEventDto {
 
 #[cfg(test)]
 mod tests {
-    use super::ImageRenderEventDto;
+    use super::{ImageRenderAnnotationStyleDto, ImageRenderEventDto};
 
+    #[test]
+    fn annotation_style_defaults_halo_and_accepts_corner_radius() {
+        let plain: ImageRenderAnnotationStyleDto = serde_json::from_value(serde_json::json!({
+            "color": [0.7, 0.13, 0.09, 1.0],
+            "lineWidthPx": 2.0,
+            "dashed": false
+        }))
+        .unwrap();
+        assert!(plain.halo);
+        assert_eq!(plain.corner_radius, [0.0, 0.0]);
+        assert!(!plain.multiply);
+
+        let rounded: ImageRenderAnnotationStyleDto = serde_json::from_value(serde_json::json!({
+            "color": [0.7, 0.13, 0.09, 1.0],
+            "lineWidthPx": 2.0,
+            "dashed": false,
+            "halo": false,
+            "cornerRadius": [0.004, 0.008],
+            "multiply": true
+        }))
+        .unwrap();
+        assert!(!rounded.halo);
+        assert_eq!(rounded.corner_radius, [0.004, 0.008]);
+        assert!(rounded.multiply);
+    }
     #[test]
     fn detail_availability_wire_contract_is_nonterminal_and_versioned() {
         for available in [false, true] {

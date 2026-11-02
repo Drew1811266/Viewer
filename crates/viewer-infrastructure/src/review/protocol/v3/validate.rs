@@ -87,6 +87,9 @@ pub(super) fn state(record: &ReviewStateRecord) -> Result<(), ReviewProtocolErro
                     | FeedbackAnchor::ImageStroke(_)
                     | FeedbackAnchor::ImageRect(_)
                     | FeedbackAnchor::ImageEllipse(_)
+                    | FeedbackAnchor::ImageText(_)
+                    | FeedbackAnchor::ImageLine(_)
+                    | FeedbackAnchor::ImagePolygon(_)
             ) {
                 local_keys
                     .entry(target.asset_version_id)
@@ -219,7 +222,10 @@ pub(super) fn feedback_for(
     if feedback
         .iter()
         .flat_map(|item| &item.targets)
-        .any(|target| !protocol.supports_anchor(&target.anchor))
+        .any(|target| {
+            !protocol.supports_anchor(&target.anchor)
+                || (protocol != ContinuousReviewProtocol::V5 && target.style.is_some())
+        })
     {
         Err(ReviewProtocolError::InvalidData)
     } else {

@@ -24,10 +24,10 @@ describe('atlas-to-product migration coverage', () => {
   it('tracks every audited state exactly once', () => {
     const audit = ids('../../docs/reviews/2026-08-02-viewer-atlas-product-component-gap-audit.md')
     const ledger = ids('../../docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md')
-    expect(audit).toHaveLength(104)
-    expect(new Set(audit).size).toBe(104)
-    expect(ledger).toHaveLength(104)
-    expect(new Set(ledger).size).toBe(104)
+    expect(audit).toHaveLength(107)
+    expect(new Set(audit).size).toBe(107)
+    expect(ledger).toHaveLength(107)
+    expect(new Set(ledger).size).toBe(107)
     expect([...ledger].sort()).toEqual([...audit].sort())
     expect(
       ACCEPTANCE_STATE_DEFINITIONS.filter(({ sceneGroup }) => sceneGroup !== 'review').map(
@@ -40,7 +40,7 @@ describe('atlas-to-product migration coverage', () => {
     const ledgerRows = rows(
       '../../docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md',
     )
-    expect(ledgerRows).toHaveLength(104)
+    expect(ledgerRows).toHaveLength(107)
     for (const row of ledgerRows) expect(row[6]).not.toBe('not-recorded')
   })
 })

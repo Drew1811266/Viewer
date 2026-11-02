@@ -8,7 +8,7 @@ import type {
   ReviewUsageImportPreview,
   ReviewWorkspaceView,
 } from './reviewWorkspaceViewTypes'
-import type { ReviewAnchor } from './types'
+import type { ReviewAnchor, ReviewAnnotationStyle } from './types'
 
 export type * from './reviewWorkspaceViewTypes'
 
@@ -52,8 +52,19 @@ export type ReviewHistorySelector =
   | { kind: 'archive'; archiveId: string }
   | { kind: 'legacy'; roundId: string }
 export type ReviewTargetEdit =
-  | { kind: 'add'; assetVersionId: string; anchor: ReviewAnchor }
-  | { kind: 'redraw'; key: ReviewTargetVersionKey; assetVersionId: string; anchor: ReviewAnchor }
+  | {
+      kind: 'add'
+      assetVersionId: string
+      anchor: ReviewAnchor
+      style?: ReviewAnnotationStyle | null
+    }
+  | {
+      kind: 'redraw'
+      key: ReviewTargetVersionKey
+      assetVersionId: string
+      anchor: ReviewAnchor
+      style?: ReviewAnnotationStyle | null
+    }
 export type ReviewSourceBindingConfirmation =
   | { kind: 'user_confirmed' }
   | { kind: 'producer_verified_and_position_confirmed'; usageId: string }

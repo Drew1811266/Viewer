@@ -1,7 +1,49 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-pub const VIEWER_SETTINGS_SCHEMA_VERSION: u32 = 4;
+pub const VIEWER_SETTINGS_SCHEMA_VERSION: u32 = 5;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpeechInputMode {
+    #[default]
+    Click,
+    Hold,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpeechLocale {
+    #[default]
+    SimplifiedChinese,
+    English,
+}
+
+impl SpeechLocale {
+    pub fn bcp47(self) -> &'static str {
+        match self {
+            Self::SimplifiedChinese => "zh-CN",
+            Self::English => "en-US",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SpeechPreferences {
+    pub input_mode: SpeechInputMode,
+    pub locale: SpeechLocale,
+    pub auto_punctuation: bool,
+}
+
+impl Default for SpeechPreferences {
+    fn default() -> Self {
+        Self {
+            input_mode: SpeechInputMode::Click,
+            locale: SpeechLocale::SimplifiedChinese,
+            auto_punctuation: true,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -73,6 +115,7 @@ pub struct MagnifierPreferences {
 pub struct ViewerSettings {
     pub thumbnail_density: ThumbnailDensity,
     pub magnifier: MagnifierPreferences,
+    pub speech: SpeechPreferences,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
@@ -139,8 +182,8 @@ mod tests {
     }
 
     #[test]
-    fn default_settings_use_schema_four_and_small_circle_two_x_magnifier() {
-        assert_eq!(VIEWER_SETTINGS_SCHEMA_VERSION, 4);
+    fn default_settings_use_schema_five_and_small_circle_two_x_magnifier() {
+        assert_eq!(VIEWER_SETTINGS_SCHEMA_VERSION, 5);
         assert_eq!(
             ViewerSettings::default(),
             ViewerSettings {
@@ -149,6 +192,11 @@ mod tests {
                     shape: MagnifierShape::Circle,
                     magnification: MagnifierMagnification::Two,
                     area: MagnifierArea::Small,
+                },
+                speech: SpeechPreferences {
+                    input_mode: SpeechInputMode::Click,
+                    locale: SpeechLocale::SimplifiedChinese,
+                    auto_punctuation: true,
                 },
             }
         );
@@ -180,6 +228,11 @@ mod tests {
                 shape: MagnifierShape::RoundedRectangle,
                 magnification: MagnifierMagnification::Three,
                 area: MagnifierArea::Large,
+            },
+            speech: SpeechPreferences {
+                input_mode: SpeechInputMode::Hold,
+                locale: SpeechLocale::English,
+                auto_punctuation: false,
             },
         };
 

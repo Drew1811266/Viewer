@@ -76,7 +76,7 @@ export default function FolderTree({
       ) : (
         <VirtualList
           items={visible}
-          rowHeight={24}
+          rowHeight={22}
           height={height}
           overscan={6}
           viewportProps={{ 'data-organization-drop-surface': '' }}
@@ -121,6 +121,7 @@ export default function FolderTree({
                 ) : (
                   <span className="folder-disclosure-placeholder" aria-hidden="true" />
                 )}
+                <ViewerIcon name="folder" size={14} className="folder-row-icon" />
                 <span className="folder-name">{folder.name}</span>
                 <span className="folder-marker-badge" aria-label={folderMarkerAriaLabel(folder)}>
                   {folderMarkerLabel(folder)}

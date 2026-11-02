@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode, RefObject } from 'react'
 import { useEffect, useId, useRef } from 'react'
+import { ViewerIconButton } from './ViewerButton'
 
 export interface ViewerDialogProps {
   title: string
@@ -11,6 +12,7 @@ export interface ViewerDialogProps {
   returnFocusRef?: RefObject<HTMLElement | null>
   destructive?: boolean
   size?: 'small' | 'medium' | 'large'
+  showClose?: boolean
 }
 
 const FOCUSABLE =
@@ -26,6 +28,7 @@ export default function ViewerDialog({
   returnFocusRef,
   destructive = false,
   size = 'small',
+  showClose = true,
 }: ViewerDialogProps) {
   const titleId = useId()
   const descriptionId = useId()
@@ -34,7 +37,9 @@ export default function ViewerDialog({
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const target =
-      initialFocusRef?.current ?? dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)
+      initialFocusRef?.current ??
+      dialogRef.current?.querySelector<HTMLElement>(`.viewer-dialog__body ${FOCUSABLE}`) ??
+      dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)
     target?.focus()
     return () => (returnFocusRef?.current ?? previous)?.focus()
   }, [initialFocusRef, returnFocusRef])
@@ -81,8 +86,19 @@ export default function ViewerDialog({
         style={{ '--viewer-dialog-footer': footer === undefined ? '0' : '1' } as CSSProperties}
       >
         <header className="viewer-dialog__header">
-          <h2 id={titleId}>{title}</h2>
-          {description === undefined ? null : <p id={descriptionId}>{description}</p>}
+          <div className="viewer-dialog__heading">
+            <h2 id={titleId}>{title}</h2>
+            {description === undefined ? null : <p id={descriptionId}>{description}</p>}
+          </div>
+          {showClose && (
+            <ViewerIconButton
+              icon="x"
+              label="关闭对话框"
+              tone="quiet"
+              className="viewer-dialog__close"
+              onClick={onCancel}
+            />
+          )}
         </header>
         <div className="viewer-dialog__body">{children}</div>
         {footer === undefined ? null : <footer className="viewer-dialog__footer">{footer}</footer>}

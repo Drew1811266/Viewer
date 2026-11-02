@@ -7,6 +7,7 @@ import type {
 } from '../../api/reviewWorkspaceTypes'
 import ModalSheet from '../ModalSheet'
 import ViewerButton from '../ui/ViewerButton'
+import ViewerIcon from '../ui/ViewerIcon'
 
 export interface ReviewMigrationDialogProps {
   inspection: ReviewMigrationInspection
@@ -61,22 +62,13 @@ function ReviewMigrationDialogContent({
   return (
     <ModalSheet
       title="迁移旧评审记录"
+      description="新流程会创建 viewer.review/3 索引；旧记录保留原位置与原语义。迁移是显式操作：活动草稿会按规则迁入；已完成记录可选作历史。取消会保持旧字节不变。"
       size="large"
+      showClose={false}
       onCancel={onCancel}
       footer={
-        <>
+        <div className="review-migration-footer">
           <ViewerButton onClick={onCancel}>暂不迁移</ViewerButton>
-          <ViewerButton
-            tone="secondary"
-            onClick={() =>
-              onConfirm({
-                inspectionDigest: inspection.inspectionDigest,
-                choice: { kind: 'keep_history_only' },
-              })
-            }
-          >
-            {hasActiveDraft ? '迁移草稿，已完成记录仅作历史' : '仅保留历史'}
-          </ViewerButton>
           <ViewerButton
             tone="primary"
             disabled={selectedTargets.length === 0}
@@ -93,21 +85,16 @@ function ReviewMigrationDialogContent({
           >
             {hasActiveDraft ? '迁移草稿和选中的历史意见' : '继续选中意见'}
           </ViewerButton>
-        </>
+        </div>
       }
     >
-      <p>
-        新流程会创建 viewer.review/3 索引；旧记录保留原位置与原语义。迁移不表示 Agent
-        已读取或意见已执行。
-      </p>
       {inspection.limitations.includes('usage_unconfirmed') && (
         <p className="review-migration__notice">使用情况未确认</p>
       )}
       {hasActiveDraft && (
-        <>
-          <p>确认迁移时，活动草稿中的全部意见都会迁入。</p>
-          <p>活动草稿会成为当前持续评审意见。</p>
-        </>
+        <p className="review-migration__draft-note">
+          确认迁移时，活动草稿中的全部意见都会迁入。活动草稿会成为当前持续评审意见。
+        </p>
       )}
       <MigrationCandidates
         title="活动草稿"
@@ -125,6 +112,23 @@ function ReviewMigrationDialogContent({
         onToggle={toggle}
         selectable
       />
+      <div className="review-migration-warning">
+        <ViewerIcon name="info" />
+        <span>迁移不表示 Agent 已读取或意见已执行；旧记录不会被改写。</span>
+      </div>
+      <p className="review-migration__backup">迁移前请确认项目已备份；取消不会启用持续评审写入。</p>
+      <ViewerButton
+        className="review-migration-alternative"
+        tone="secondary"
+        onClick={() =>
+          onConfirm({
+            inspectionDigest: inspection.inspectionDigest,
+            choice: { kind: 'keep_history_only' },
+          })
+        }
+      >
+        {hasActiveDraft ? '迁移草稿，已完成记录仅作历史' : '仅保留历史'}
+      </ViewerButton>
     </ModalSheet>
   )
 }
@@ -150,7 +154,13 @@ function MigrationCandidates({
       {candidates.length === 0 ? (
         <p>{empty}</p>
       ) : (
-        <ul className="review-migration__list">
+        <ul
+          className={
+            selectable
+              ? 'review-migration__list review-migration__list--selectable'
+              : 'review-migration__list'
+          }
+        >
           {candidates.map((candidate) => (
             <li key={candidate.key}>
               {selectable ? (

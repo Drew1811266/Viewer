@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import type { BrowserFile, ContentFolderCard, ThumbnailDensity } from '../api/types'
 import {
   findVerticalScrollAncestor,
@@ -8,17 +8,17 @@ import { isPreviewableImage } from '../fileKinds'
 import { THUMBNAIL_HEIGHT, thumbnailRequestSize } from '../settings/thumbnailDensity'
 import FolderFilmstripRow from './FolderFilmstripRow'
 
-const FILMSTRIP_ROW_BORDER_PX = 1
-const FILMSTRIP_ROW_FOOTER_PX = 24
-/** 预取下一行文件夹的前 N 张预览图（性能方案 §3.2：density 决定 ~4-6 张）。 */
+const FILMSTRIP_ROW_EXTRA_PX = 26
+const FILMSTRIP_ROW_GAP_PX = 12
 const PREFETCH_IMAGE_COUNT = 6
 
 interface FolderOverviewProps {
   folders: ContentFolderCard[]
   density: ThumbnailDensity
+  projectName?: string
   onSelect: (entityId: string) => void
   onPreview: (file: BrowserFile, files: BrowserFile[]) => void
-  requestFolderImages: (entityId: string) => Promise<BrowserFile[]>
+  requestFolderImages?: (entityId: string) => Promise<BrowserFile[]>
   requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
   prefetchThumbnails?: (
     files: BrowserFile[],
@@ -32,6 +32,7 @@ interface FolderOverviewProps {
 export default function FolderOverview({
   folders,
   density,
+  projectName = '全部素材',
   onSelect,
   onPreview,
   requestFolderImages,
@@ -41,16 +42,35 @@ export default function FolderOverview({
 }: FolderOverviewProps) {
   const section = useRef<HTMLElement>(null)
   const requests = useRef(new Map<string, Promise<BrowserFile[]>>())
+  const representativeImages = useMemo(
+    () => new Map(folders.map((folder) => [folder.entityId, folder.representativeImages])),
+    [folders],
+  )
+  const totals = useMemo(
+    () =>
+      folders.reduce(
+        (sum, folder) => ({
+          folders: sum.folders + 1,
+          assets: sum.assets + folder.imageCount + folder.videoCount + folder.otherFileCount,
+        }),
+        { folders: 0, assets: 0 },
+      ),
+    [folders],
+  )
+
   const loadImages = useCallback(
     (entityId: string, retry = false) => {
       if (retry) requests.current.delete(entityId)
       const cached = requests.current.get(entityId)
       if (cached !== undefined) return cached
-      const request = requestFolderImages(entityId)
+      const request =
+        requestFolderImages === undefined
+          ? Promise.resolve(representativeImages.get(entityId) ?? [])
+          : requestFolderImages(entityId)
       requests.current.set(entityId, request)
       return request
     },
-    [requestFolderImages],
+    [representativeImages, requestFolderImages],
   )
 
   const prefetchRow = useCallback(
@@ -75,12 +95,18 @@ export default function FolderOverview({
   usePrefetchOnScroll({
     getContainer: () => findVerticalScrollAncestor(section.current),
     rowCount: folders.length,
-    rowHeight: THUMBNAIL_HEIGHT[density] + FILMSTRIP_ROW_FOOTER_PX + FILMSTRIP_ROW_BORDER_PX,
+    rowHeight: THUMBNAIL_HEIGHT[density] + FILMSTRIP_ROW_EXTRA_PX + FILMSTRIP_ROW_GAP_PX,
     onPrefetchRow: prefetchRow,
   })
 
   return (
     <section ref={section} className="folder-overview" aria-label="内容文件夹概览">
+      <header className="folder-overview-header">
+        <h1>{projectName}</h1>
+        <p>
+          {totals.folders} 个文件夹 · {totals.assets} 个素材
+        </p>
+      </header>
       <div className="folder-filmstrip-list">
         {folders.map((folder) => (
           <FolderFilmstripRow
@@ -95,6 +121,7 @@ export default function FolderOverview({
           />
         ))}
       </div>
+      <p className="folder-overview-note">横向滚动查看文件夹内容；纵向滚动浏览全部素材。</p>
     </section>
   )
 }

@@ -42,7 +42,7 @@ describe('VideoCard', () => {
       />,
     )
 
-    expect(screen.getByText('返工 · 3 条')).toBeVisible()
+    expect(screen.getByText('返工 · 3')).toBeVisible()
     rendered.rerender(
       <VideoCard
         video={video()}

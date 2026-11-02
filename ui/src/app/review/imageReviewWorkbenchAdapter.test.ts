@@ -90,6 +90,44 @@ function view(): ReviewWorkspaceView {
   }
 }
 
+const ELLIPSE = {
+  kind: 'image_ellipse' as const,
+  x: 0.5,
+  y: 0.5,
+  width: 0.2,
+  height: 0.2,
+}
+const KEY_2: ReviewTargetVersionKey = {
+  feedbackId: 'feedback-2',
+  textRevisionId: 'text-2',
+  targetId: 'target-2',
+  targetRevisionId: 'target-revision-2',
+}
+
+function duplicateView(): ReviewWorkspaceView {
+  const duplicate = view()
+  const state = duplicate.current?.authoring.state
+  if (state === undefined) throw new Error('Missing current continuous review fixture')
+  state.assets = [asset('image-1', 'asset-1'), asset('image-1', 'asset-2')]
+  state.feedback.push({
+    id: KEY_2.feedbackId,
+    textRevisionId: KEY_2.textRevisionId,
+    text: '颜色太浅',
+    createdAtMs: 20,
+    historyRef: null,
+    targets: [
+      {
+        id: KEY_2.targetId,
+        revisionId: KEY_2.targetRevisionId,
+        assetVersionId: 'asset-2',
+        anchor: ELLIPSE,
+        availability: { kind: 'ready' },
+      },
+    ],
+  })
+  return duplicate
+}
+
 function coordinator(currentView = view(), workbenchSessionKey = 'session-1:1:instance-1') {
   let snapshot: ContinuousReviewSnapshot = {
     state: { kind: 'ready' },
@@ -142,8 +180,85 @@ it('maps one continuous target to a stable workbench item with separate display 
       text: '调整领口',
       createdAtMs: 10,
       anchor: RECT,
+      style: null,
     },
   ])
+})
+
+it('shows targets saved under equivalent versions of the same converged source', async () => {
+  const review = coordinator(duplicateView())
+  const adapter = continuousImageReviewWorkbenchAdapter(review.value)
+  const preparation = await adapter.prepareEntity('image-1')
+
+  expect(adapter.view('image-1', preparation).feedback).toEqual([
+    expect.objectContaining({
+      itemId: 'target-1',
+      assetVersionId: 'asset-1',
+      text: '调整领口',
+      ordinal: 1,
+    }),
+    expect.objectContaining({
+      itemId: 'target-2',
+      assetVersionId: 'asset-2',
+      text: '颜色太浅',
+      ordinal: 2,
+    }),
+  ])
+})
+
+it('binds a reused historical version to the preview entity that requested it', async () => {
+  const review = coordinator(duplicateView())
+  const stale = prepared('image-1', 'asset-1')
+  vi.mocked(review.value.prepareAssets).mockResolvedValueOnce([
+    { ...stale, asset: { ...stale.asset, sourceEntityId: 'image-old-scan' } },
+  ])
+  const adapter = continuousImageReviewWorkbenchAdapter(review.value)
+  const preparation = await adapter.prepareEntity('image-1')
+
+  expect(preparation.prepared?.asset.sourceEntityId).toBe('image-1')
+  expect(adapter.view('image-1', preparation)).toMatchObject({
+    readOnlyReason: null,
+    feedback: [
+      expect.objectContaining({ itemId: 'target-1' }),
+      expect.objectContaining({ itemId: 'target-2' }),
+    ],
+  })
+})
+
+it('edits and withdraws an equivalent version against its own target identity', async () => {
+  const review = coordinator(duplicateView())
+  const adapter = continuousImageReviewWorkbenchAdapter(review.value)
+  const preparation = await adapter.prepareEntity('image-1')
+  const alias = adapter
+    .view('image-1', preparation)
+    .feedback.find((item) => item.assetVersionId === 'asset-2')
+  if (alias === undefined) throw new Error('Missing equivalent asset feedback')
+
+  await adapter.saveFeedback({
+    entityId: 'image-1',
+    item: alias,
+    operation: 'geometry',
+    text: alias.text,
+    anchor: ELLIPSE,
+    preparation,
+  })
+
+  expect(review.value.beginEditor).toHaveBeenLastCalledWith({
+    contextKey: 'target-2',
+    feedbackId: 'feedback-2',
+    text: '颜色太浅',
+    targets: [
+      {
+        kind: 'redraw',
+        key: KEY_2,
+        assetVersionId: 'asset-2',
+        anchor: ELLIPSE,
+        style: null,
+      },
+    ],
+  })
+  await adapter.deleteFeedback({ entityId: 'image-1', item: alias, preparation })
+  expect(review.value.withdrawTargets).toHaveBeenCalledWith([KEY_2])
 })
 
 it('adds a newly opened image with its prepared asset instead of a fixed member scope', async () => {
@@ -166,7 +281,7 @@ it('adds a newly opened image with its prepared asset instead of a fixed member 
     contextKey: 'new:image-2',
     feedbackId: null,
     text: '修正袖口',
-    targets: [{ kind: 'add', assetVersionId: 'asset-2', anchor: RECT }],
+    targets: [{ kind: 'add', assetVersionId: 'asset-2', anchor: RECT, style: null }],
   })
   expect(review.value.saveFeedback).toHaveBeenCalledOnce()
 })
@@ -218,7 +333,7 @@ it('keeps an orphaned retained asset version from blocking the prepared current 
     contextKey: 'new:image-1',
     feedbackId: null,
     text: '新版本可正常编辑',
-    targets: [{ kind: 'add', assetVersionId: 'asset-1', anchor: RECT }],
+    targets: [{ kind: 'add', assetVersionId: 'asset-1', anchor: RECT, style: null }],
   })
   expect(review.value.saveFeedback).toHaveBeenCalledOnce()
 })
@@ -263,6 +378,7 @@ it('edits text by feedback identity and redraws or withdraws only the selected t
         key: KEY,
         assetVersionId: 'asset-1',
         anchor: { ...RECT, x: 0.2 },
+        style: null,
       },
     ],
   })
@@ -345,6 +461,7 @@ it('retries the retained editor input without regenerating its identity or targe
           key: KEY,
           assetVersionId: 'asset-1',
           anchor: RECT,
+          style: null,
         },
       ],
       baseSnapshotId: 'snapshot-1',

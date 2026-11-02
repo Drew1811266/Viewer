@@ -1,6 +1,6 @@
 use super::super::{
     ContinuousReviewProtocol, MAX_REVIEW_INDEX_BYTES, ReviewProtocolError,
-    detect_continuous_review_protocol, lease::ProjectReviewLease, v3, v4,
+    detect_continuous_review_protocol, lease::ProjectReviewLease, v3, v4, v5,
 };
 use super::faults::{NoReviewCommitFaults, ReviewCommitFaultInjector};
 use super::{
@@ -163,6 +163,7 @@ impl ContinuousReviewRepository {
                     let record = match protocol {
                         ContinuousReviewProtocol::V3 => v3::decode_index_v3(bytes),
                         ContinuousReviewProtocol::V4 => v4::decode_index_v4(bytes),
+                        ContinuousReviewProtocol::V5 => v5::decode_index_v5(bytes),
                     }
                     .map_err(protocol_error)?;
                     if let Some(backup) = &record.legacy_index {

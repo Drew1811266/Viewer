@@ -8,3 +8,5 @@
 *.log
 src-tauri/gen/
 /.workbuddy/
+
+/spark-output/

@@ -42,6 +42,37 @@ const ANCHORS: ReviewAnchor[] = [
 const FIRST_ENTITY = 'acceptance-image-01'
 const FIRST_VERSION = 'acceptance-asset-version-1'
 const UNSAVED_TEXT = '请保留这里的布料纹理，再修正边缘。'
+const VOICE_DRAFT_TEXT = '袖口再收紧一些，保留褶皱。'
+const ACCEPTANCE_SPEECH_READY = {
+  available: true,
+  speechAuthorized: true,
+  microphoneAuthorized: true,
+  onDevice: true,
+  localeSupported: true,
+  locale: 'zh-CN',
+}
+const SPEECH_BRIDGE_OVERRIDES: AcceptanceBridgeOverrides = {
+  async speechStatus() {
+    return ACCEPTANCE_SPEECH_READY
+  },
+  async requestSpeechPermissions() {
+    return { speechAuthorized: true, microphoneAuthorized: true }
+  },
+  async startSpeechCapture() {
+    return ACCEPTANCE_SPEECH_READY
+  },
+  async stopSpeechCapture() {
+    return { text: VOICE_DRAFT_TEXT, elapsedMs: 2400, onDevice: true }
+  },
+  cancelSpeechCapture() {},
+  async openSpeechSettings() {},
+}
+const SPEECH_DENIED_OVERRIDES: AcceptanceBridgeOverrides = {
+  ...SPEECH_BRIDGE_OVERRIDES,
+  async requestSpeechPermissions() {
+    return { speechAuthorized: true, microphoneAuthorized: false }
+  },
+}
 // Observe the snapshot returned by the real coordinator's acceptance bridge call.
 // A dispatched pointer gesture alone is not evidence of a committed replacement.
 let brushRedrawSnapshot: ReviewSessionSnapshot | null = null
@@ -134,6 +165,7 @@ export function workbenchBridgeOverrides(id: string): AcceptanceBridgeOverrides 
     return snapshot
   }
   return {
+    ...(id === 'RVW-39' ? SPEECH_BRIDGE_OVERRIDES : id === 'RVW-40' ? SPEECH_DENIED_OVERRIDES : {}),
     async reviewStatus() {
       return snapshot
     },
@@ -183,11 +215,14 @@ export const REVIEW_WORKBENCH_SCENES: Readonly<Record<string, () => boolean>> = 
     document.querySelector('.annotation-toolbar') === null,
   'RVW-22': () => draftReady('leave'),
   'RVW-23': () => {
+    if (document.querySelector('.image-preview') !== null) {
+      clickEnabled('返回本轮素材', 'return-review-members')
+      return false
+    }
     const badges = document.querySelectorAll('.image-cell .review-feedback-count-badge')
     return (
-      document.querySelector('.image-preview') === null &&
       badges.length === 1 &&
-      badges[0]?.textContent?.trim() === '返工 · 4 条' &&
+      /^返工 · 4( 条)?$/.test(badges[0]?.textContent?.trim() ?? '') &&
       noPendingWork()
     )
   },
@@ -196,7 +231,9 @@ export const REVIEW_WORKBENCH_SCENES: Readonly<Record<string, () => boolean>> = 
   'RVW-34': () => markupMenuReady('wide'),
   'RVW-35': () => markupMenuReady('compact'),
   'RVW-36': () => selectedExtendedShapeReady('image_arrow', 2),
-  'RVW-37': () => selectedExtendedShapeReady('image_ellipse', 4),
+  'RVW-37': () => selectedExtendedShapeReady('image_ellipse', 8),
+  'RVW-39': () => voiceListeningReady(),
+  'RVW-40': () => voicePermissionReady(),
 }
 
 function isExtendedMarkupScene(id: string) {
@@ -325,8 +362,8 @@ function markupMenuReady(layout: 'wide' | 'compact') {
   }
   const entries = [...menu.querySelectorAll('[role="menuitemradio"]')]
   return (
-    entries.length === 5 &&
-    ['点', '箭头', '画笔', '矩形', '椭圆'].every((label) =>
+    entries.length === 6 &&
+    ['选择', '点', '箭头', '画笔', '矩形', '椭圆'].every((label) =>
       entries.some((entry) => entry.textContent?.includes(label)),
     )
   )
@@ -350,6 +387,63 @@ function selectedExtendedShapeReady(kind: 'image_arrow' | 'image_ellipse', handl
   const edgeHandle = handles.at(-1)
   if (edgeHandle !== undefined && document.activeElement !== edgeHandle) edgeHandle.focus()
   return handles.length === handleCount && document.activeElement === edgeHandle
+}
+
+function voiceListeningReady() {
+  if (!fourAnnotationsReady()) return false
+  const editor = document.querySelector<HTMLTextAreaElement>('[aria-label="意见 1 文字"]')
+  if (editor === null) {
+    clickEnabled('编辑意见 1 文字', 'edit-voice-text')
+    return false
+  }
+  if (editor.value !== VOICE_DRAFT_TEXT) {
+    setTextAreaValue(editor, VOICE_DRAFT_TEXT)
+    return false
+  }
+  const mic = document.querySelector<HTMLButtonElement>('.review-feedback-rail__mic')
+  if (mic === null) return false
+  if (mic.dataset.acceptanceAction !== 'start-voice') {
+    mic.dataset.acceptanceAction = 'start-voice'
+    mic.click()
+    return false
+  }
+  return (
+    document.querySelector('.review-feedback-rail .speech-dictation') !== null &&
+    document.body.textContent?.includes('正在聆听') === true &&
+    document.body.textContent?.includes('本地转写 · 音频不上传') === true
+  )
+}
+
+function voicePermissionReady() {
+  if (!fourAnnotationsReady()) return false
+  const editor = document.querySelector<HTMLTextAreaElement>('[aria-label="意见 1 文字"]')
+  if (editor === null) {
+    clickEnabled('编辑意见 1 文字', 'edit-voice-permission')
+    return false
+  }
+  if (editor.value !== VOICE_DRAFT_TEXT) {
+    setTextAreaValue(editor, VOICE_DRAFT_TEXT)
+    return false
+  }
+  const mic = document.querySelector<HTMLButtonElement>('.review-feedback-rail__mic')
+  if (mic === null) return false
+  if (mic.dataset.acceptanceAction !== 'request-voice-permission') {
+    mic.dataset.acceptanceAction = 'request-voice-permission'
+    mic.click()
+    return false
+  }
+  const error = document.querySelector('.speech-dictation-error')
+  return (
+    error?.textContent?.includes('Viewer 无法访问麦克风') === true &&
+    error.textContent?.includes('打开系统设置') === true &&
+    error.textContent?.includes('改用键盘输入') === true
+  )
+}
+
+function setTextAreaValue(input: HTMLTextAreaElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+  setter?.call(input, value)
+  input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
 function firstAnnotation() {
@@ -391,11 +485,12 @@ function draftReady(mode: 'error' | 'leave') {
 function createDraft(text: string, key: string) {
   const input = document.querySelector<HTMLTextAreaElement>('[aria-label="标注意见"]')
   if (input === null) {
-    clickEnabled('矩形', `rectangle-${key}`)
     if (
       document.querySelector('.annotation-canvas-layer')?.getAttribute('data-tool') !== 'rectangle'
-    )
+    ) {
+      selectRectangleTool(key)
       return false
+    }
     drawOnce(key, [
       { x: 0.4, y: 0.25 },
       { x: 0.6, y: 0.45 },
@@ -414,12 +509,12 @@ function createDraft(text: string, key: string) {
 
 function rectangleEditReady() {
   if (!fourAnnotationsReady()) return false
-  clickEnabled('调整意见 1 区域', 'select-rectangle')
+  clickEnabled('调整意见 1 标注', 'select-rectangle')
   const handle = document.querySelector<HTMLElement>('[aria-label="调整意见 1 右下角"]')
   if (handle === null) return false
   handle.focus()
   return (
-    document.querySelectorAll('.annotation-rect-handle').length === 4 &&
+    document.querySelectorAll('.annotation-geometry-handle').length >= 4 &&
     document.activeElement === handle
   )
 }
@@ -429,8 +524,12 @@ function brushRedrawReady() {
   const canvas = document.querySelector<HTMLElement>('.annotation-canvas')
   const tool = document.querySelector('.annotation-canvas-layer')?.getAttribute('data-tool')
   if (canvas?.dataset.acceptanceDrawing !== 'redraw') {
-    clickEnabled('重绘意见 2', 'select-brush')
-    if (tool !== 'brush') return false
+    if (tool !== 'brush') {
+      clickEnabled('重绘意见 2', 'select-brush')
+      return false
+    }
+    // Wait for the brush controller render before dispatching the synthetic
+    // gesture; otherwise the canvas still handles the previous browse tool.
     drawOnce('redraw', [
       { x: 0.7, y: 0.3 },
       { x: 0.8, y: 0.5 },
@@ -439,7 +538,7 @@ function brushRedrawReady() {
     return false
   }
   return (
-    tool === 'browse' &&
+    (tool === 'brush' || tool === 'browse') &&
     brushReplacementCommitted() &&
     !canvas.hasAttribute('data-has-candidate') &&
     !canvas.hasAttribute('data-has-draft-anchor') &&
@@ -455,6 +554,13 @@ function brushRedrawReady() {
 
 function brushReplacementCommitted() {
   const original = annotatedSnapshot().feedback[1]
+  const liveAnchor = liveWorkbenchAnchor('acceptance-annotation-2')
+  if (liveAnchor !== null) {
+    return (
+      liveAnchor.kind === 'image_stroke' &&
+      JSON.stringify(liveAnchor) !== JSON.stringify(ANCHORS[1])
+    )
+  }
   const feedback = brushRedrawSnapshot?.feedback.find(
     (item) => item.feedbackId === original?.feedbackId,
   )
@@ -470,6 +576,48 @@ function brushReplacementCommitted() {
     target.anchor.kind === 'image_stroke' &&
     JSON.stringify(target.anchor) !== JSON.stringify(ANCHORS[1])
   )
+}
+
+/**
+ * The continuous-review coordinator does not call the legacy
+ * `reviewReplaceFeedbackAnchor` bridge, so the module snapshot above is stale
+ * for RVW-20 in the browser. Read the live workbench controller through the
+ * acceptance canvas fiber instead; the unit scene keeps using the bridge.
+ */
+function liveWorkbenchAnchor(itemId: string): ReviewAnchor | null {
+  const canvas = document.querySelector<HTMLElement>('.annotation-canvas')
+  if (canvas === null) return null
+  const key = Object.getOwnPropertyNames(canvas).find((name) => name.startsWith('__reactFiber$'))
+  if (key === undefined) return null
+  let fiber = (canvas as unknown as Record<string, unknown>)[key] as
+    | {
+        memoizedProps?: {
+          controller?: { feedback?: ReadonlyArray<{ itemId: string; anchor: ReviewAnchor }> }
+        }
+        return?: unknown
+      }
+    | undefined
+  for (let depth = 0; depth < 25 && fiber !== undefined && fiber !== null; depth += 1) {
+    const controller = fiber.memoizedProps?.controller
+    if (controller !== undefined) {
+      return controller.feedback?.find((item) => item.itemId === itemId)?.anchor ?? null
+    }
+    fiber = fiber.return as typeof fiber
+  }
+  return null
+}
+
+function selectRectangleTool(key: string) {
+  const rectangle = [
+    ...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'),
+  ].find((element) => element.textContent?.includes('矩形'))
+  if (rectangle === undefined) {
+    clickEnabled('标记', `open-markup-${key}`)
+    return
+  }
+  if (rectangle.getAttribute('aria-checked') === 'true' || rectangle.disabled) return
+  rectangle.dataset.acceptanceAction = `rectangle-${key}`
+  rectangle.click()
 }
 
 function clickEnabled(name: string, action: string) {

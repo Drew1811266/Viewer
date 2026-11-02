@@ -1,9 +1,10 @@
-import type { KeyboardEvent, MouseEvent, UIEvent } from 'react'
+import type { KeyboardEvent, MouseEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import type { MatchRange, SearchHit, SearchPage, SearchQueryModel } from '../api/types'
+import type { BrowserFile, MatchRange, SearchHit, SearchPage, SearchQueryModel } from '../api/types'
 import ReviewFeedbackCountBadge from './review/ReviewFeedbackCountBadge'
 import ViewerButton from './ui/ViewerButton'
 import ViewerEmptyState from './ui/ViewerEmptyState'
+import ViewerIcon from './ui/ViewerIcon'
 import ViewerStatusTag, { type ViewerStatusTagTone } from './ui/ViewerStatusTag'
 
 interface SearchResultsProps {
@@ -21,16 +22,14 @@ interface SearchResultsProps {
   selectedEntityIds?: string[]
   onSelectionChange?: (entityIds: string[]) => void
   feedbackCountByEntityId?: ReadonlyMap<string, number>
+  requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
+  onPreview?: (file: BrowserFile) => void
 }
 
-type ResultRow =
-  | { type: 'group'; key: string; path: string; count: number; height: number }
-  | { type: 'hit'; key: string; hit: SearchHit; height: number }
-
-const RESULT_ROW_HEIGHT = 48
-const GROUP_ROW_HEIGHT = 28
-const VIEWPORT_HEIGHT = 520
-const OVERSCAN = 5
+interface SearchGroup {
+  path: string | null
+  hits: SearchHit[]
+}
 
 export default function SearchResults({
   page,
@@ -47,29 +46,12 @@ export default function SearchResults({
   selectedEntityIds = [],
   onSelectionChange,
   feedbackCountByEntityId,
+  requestThumbnail,
+  onPreview,
 }: SearchResultsProps) {
-  const [scrollTop, setScrollTop] = useState(0)
-  const rows = useMemo(() => resultRows(page.hits, query.layout), [page.hits, query.layout])
-  const rowOffsets = useMemo(() => rowOffsetsFor(rows), [rows])
-  const totalRowsHeight = rows.reduce((height, row) => height + row.height, 0)
-  const firstVisible =
-    rows.length === 0
-      ? -1
-      : rowOffsets.findIndex((offset, index) => {
-          const row = rows[index]
-          return row !== undefined && offset + row.height > scrollTop
-        })
-  const firstVisibleIndex = firstVisible === -1 ? Math.max(0, rows.length - 1) : firstVisible
-  const lastVisible = rowOffsets.findIndex((offset) => offset >= scrollTop + VIEWPORT_HEIGHT)
-  const lastVisibleIndex = lastVisible === -1 ? rows.length : lastVisible
-  const start = Math.max(0, firstVisibleIndex - OVERSCAN)
-  const end = Math.min(rows.length, lastVisibleIndex + OVERSCAN)
-  const visibleRows = useMemo(() => rows.slice(start, end), [end, rows, start])
-  const visibleIds = useMemo(
-    () => visibleRows.flatMap((row) => (row.type === 'hit' ? [row.hit.entityId] : [])),
-    [visibleRows],
-  )
+  const groups = useMemo(() => groupHits(page.hits, query.layout), [page.hits, query.layout])
   const selectedIds = useMemo(() => new Set(selectedEntityIds), [selectedEntityIds])
+  const visibleIds = useMemo(() => page.hits.map((hit) => hit.entityId), [page.hits])
   useEffect(() => onVisibleHits(visibleIds), [onVisibleHits, visibleIds])
 
   if (page.total === 0) {
@@ -78,8 +60,12 @@ export default function SearchResults({
       <section className="search-results search-empty-results" aria-label="无搜索结果">
         <header className="search-results-summary">
           <div>
-            <strong>“{query.text}” · 0 个结果</strong>
+            <h1>搜索结果</h1>
+            <p>0 个结果 · {query.layout === 'grouped' ? '按文件夹分组' : '展平结果'}</p>
           </div>
+          <ViewerButton tone="quiet" onClick={onReturnToFolder}>
+            返回文件夹内容
+          </ViewerButton>
         </header>
         <div className="search-empty">
           <ViewerEmptyState
@@ -111,13 +97,16 @@ export default function SearchResults({
     )
   }
 
+  const showsGroups = query.layout === 'grouped'
+
   return (
     <section className="search-results" aria-label="搜索结果区域">
       <header className="search-results-summary">
         <div>
-          <strong>
-            “{query.text}” · {page.total} 个结果
-          </strong>
+          <h1>搜索结果</h1>
+          <p>
+            {page.total} 个结果 · {showsGroups ? '按文件夹分组' : '展平结果'}
+          </p>
         </div>
         <ViewerButton tone="quiet" onClick={onReturnToFolder}>
           返回文件夹内容
@@ -129,47 +118,36 @@ export default function SearchResults({
           {page.progress.textReady}/{page.progress.textTotal}
         </div>
       )}
-      <div
-        role="listbox"
-        aria-label="搜索结果"
-        className="search-result-list search-result-list-flat"
-        style={{ height: VIEWPORT_HEIGHT, overflowY: 'auto', position: 'relative' }}
-        onScroll={(event: UIEvent<HTMLDivElement>) => setScrollTop(event.currentTarget.scrollTop)}
-      >
-        <div style={{ height: totalRowsHeight, position: 'relative' }}>
-          {visibleRows.map((row, visibleIndex) => {
-            const index = start + visibleIndex
-            return (
-              <div
-                key={row.key}
-                className={`search-result-row search-result-${row.type}`}
-                style={{
-                  height: row.height,
-                  left: 0,
-                  position: 'absolute',
-                  right: 0,
-                  top: rowOffsets[index],
-                }}
-              >
-                {row.type === 'group' ? (
-                  <div className="search-result-group" role="group" aria-label={row.path}>
-                    <strong>{row.path}</strong>
-                    <span>{row.count} 项</span>
-                  </div>
-                ) : (
-                  <ResultItem
-                    hit={row.hit}
-                    snippet={snippets[row.hit.entityId]}
-                    selected={selectedIds.has(row.hit.entityId)}
-                    selectedEntityIds={selectedEntityIds}
-                    onSelectionChange={onSelectionChange}
-                    feedbackCount={feedbackCountByEntityId?.get(row.hit.entityId)}
-                  />
-                )}
-              </div>
-            )
-          })}
-        </div>
+      <div className="search-result-groups" role="listbox" aria-label="搜索结果">
+        {groups.map((group, groupIndex) => (
+          <section
+            className="search-result-card-group"
+            key={group.path ?? `result-group-${groupIndex}`}
+            aria-label={group.path ?? '搜索结果'}
+          >
+            {showsGroups && (
+              <h2 className="search-result-group-heading">
+                {group.path ?? '项目根目录'}
+                <span>· {group.hits.length}</span>
+              </h2>
+            )}
+            <div className="search-result-card-grid" role="group" aria-label={group.path ?? '结果'}>
+              {group.hits.map((hit) => (
+                <SearchResultCard
+                  key={hit.entityId}
+                  hit={hit}
+                  snippet={snippets[hit.entityId]}
+                  selected={selectedIds.has(hit.entityId)}
+                  selectedEntityIds={selectedEntityIds}
+                  onSelectionChange={onSelectionChange}
+                  feedbackCount={feedbackCountByEntityId?.get(hit.entityId)}
+                  requestThumbnail={requestThumbnail}
+                  onPreview={onPreview}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
       </div>
       <nav className="search-pagination" aria-label="搜索结果分页">
         <span className="search-pagination-summary">
@@ -197,13 +175,15 @@ export default function SearchResults({
   )
 }
 
-function ResultItem({
+function SearchResultCard({
   hit,
   snippet,
   selected,
   selectedEntityIds,
   onSelectionChange,
   feedbackCount,
+  requestThumbnail,
+  onPreview,
 }: {
   hit: SearchHit
   snippet: string | null | undefined
@@ -211,13 +191,17 @@ function ResultItem({
   selectedEntityIds: string[]
   onSelectionChange?: (entityIds: string[]) => void
   feedbackCount?: number
+  requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
+  onPreview?: (file: BrowserFile) => void
 }) {
   const nameRanges =
     hit.matchedField === 'filename' || hit.matchedField === 'exact_filename' ? hit.matchRanges : []
   const pathRanges = hit.matchedField === 'path' ? hit.matchRanges : []
+  const marker = searchMarker(hit)
+  const file = hitFile(hit)
   return (
     <div
-      className="search-result-item"
+      className="search-result-card"
       role="option"
       tabIndex={onSelectionChange === undefined ? undefined : 0}
       aria-label={`${hit.name} ${hit.relativePath}`}
@@ -225,41 +209,90 @@ function ResultItem({
       onClick={(event) =>
         selectSearchResult(event, hit.entityId, selectedEntityIds, onSelectionChange)
       }
+      onDoubleClick={() => {
+        if (onPreview !== undefined) onPreview(file)
+      }}
       onKeyDown={(event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()
         selectSearchResult(event, hit.entityId, selectedEntityIds, onSelectionChange)
       }}
     >
-      <div className="search-result-type" aria-hidden="true">
-        <ViewerStatusTag tone="neutral">{fileKindLabel(hit.kind)}</ViewerStatusTag>
+      <div className="search-result-card-cover">
+        {isImageKind(hit.kind) && requestThumbnail !== undefined ? (
+          <SearchCover file={file} requestThumbnail={requestThumbnail} />
+        ) : (
+          <span className="search-result-card-placeholder" aria-hidden="true">
+            <ViewerStatusTag tone="neutral">{fileKindLabel(hit.kind)}</ViewerStatusTag>
+          </span>
+        )}
+        {marker.label !== '未标记' && (
+          <ViewerStatusTag tone={marker.tone} className="search-result-card-state">
+            {marker.label}
+          </ViewerStatusTag>
+        )}
+        {selected && (
+          <span className="search-result-card-check" aria-hidden="true">
+            <ViewerIcon name="check" />
+          </span>
+        )}
       </div>
-      <div className="search-result-content">
-        <div className="search-result-title">
+      <div className="search-result-card-meta">
+        <span className="search-result-card-title">
           <strong>
             <HighlightedText value={hit.name} ranges={nameRanges} />
           </strong>
-          <span className="search-result-path">
+          <ReviewFeedbackCountBadge count={feedbackCount} />
+        </span>
+        <span className="search-result-card-submeta">
+          {fileKindLabel(hit.kind)} · {formatBytes(hit.size)}
+        </span>
+        {hit.matchedField === 'path' && (
+          <span className="search-result-card-path">
             <HighlightedText value={hit.relativePath} ranges={pathRanges} />
           </span>
-        </div>
-      </div>
-      <div className="search-result-details">
-        {hit.matchedField === 'body' && snippet !== undefined && snippet !== null ? (
-          <p className="search-result-context" data-testid={`search-snippet-${hit.entityId}`}>
-            {boundedSnippet(snippet)}
-          </p>
-        ) : (
-          <span className="search-result-context">{matchContextLabel(hit)}</span>
         )}
-        <span className="search-result-metadata">{metadataLabel(hit)}</span>
-      </div>
-      <div className="search-result-state">
-        <ReviewFeedbackCountBadge count={feedbackCount} />
-        <ViewerStatusTag tone={markerTone(hit)}>{markerLabel(hit)}</ViewerStatusTag>
+        {snippet !== undefined && snippet !== null && (
+          <span className="visually-hidden" data-testid={`search-snippet-${hit.entityId}`}>
+            {boundedSnippet(snippet)}
+          </span>
+        )}
       </div>
     </div>
   )
+}
+
+function SearchCover({
+  file,
+  requestThumbnail,
+}: {
+  file: BrowserFile
+  requestThumbnail: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
+}) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    setUrl(null)
+    void requestThumbnail(file, 512, 1).then(
+      (next) => {
+        if (active) setUrl(next)
+      },
+      () => {
+        if (active) setUrl(null)
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [file, requestThumbnail])
+  if (url === null) {
+    return (
+      <span className="search-result-card-placeholder" aria-hidden="true">
+        <ViewerStatusTag tone="neutral">{fileKindLabel(file.kind)}</ViewerStatusTag>
+      </span>
+    )
+  }
+  return <img src={url} alt="" draggable={false} />
 }
 
 function selectSearchResult(
@@ -304,31 +337,15 @@ function HighlightedText({ value, ranges }: { value: string; ranges: MatchRange[
   return segments
 }
 
-function resultRows(hits: SearchHit[], layout: SearchQueryModel['layout']): ResultRow[] {
-  const rows: ResultRow[] = []
-  let currentGroup: string | null | undefined
-  for (let index = 0; index < hits.length; index += 1) {
-    const hit = hits[index]
-    if (hit === undefined) continue
-    if (layout === 'grouped' && hit.groupRelativePath !== currentGroup) {
-      currentGroup = hit.groupRelativePath
-      const path = currentGroup ?? '项目根目录'
-      let count = 1
-      while (hits[index + count]?.groupRelativePath === currentGroup) count += 1
-      rows.push({ type: 'group', key: `group:${path}`, path, count, height: GROUP_ROW_HEIGHT })
-    }
-    rows.push({ type: 'hit', key: `hit:${hit.entityId}`, hit, height: RESULT_ROW_HEIGHT })
+function groupHits(hits: SearchHit[], layout: SearchQueryModel['layout']): SearchGroup[] {
+  if (layout === 'flat') return [{ path: null, hits }]
+  const groups = new Map<string | null, SearchHit[]>()
+  for (const hit of hits) {
+    const current = groups.get(hit.groupRelativePath) ?? []
+    current.push(hit)
+    groups.set(hit.groupRelativePath, current)
   }
-  return rows
-}
-
-function rowOffsetsFor(rows: ResultRow[]): number[] {
-  let offset = 0
-  return rows.map((row) => {
-    const current = offset
-    offset += row.height
-    return current
-  })
+  return [...groups].map(([path, group]) => ({ path, hits: group }))
 }
 
 function markerLabel(hit: SearchHit): string {
@@ -350,10 +367,27 @@ function markerTone(hit: SearchHit): ViewerStatusTagTone {
   return 'neutral'
 }
 
-function metadataLabel(hit: SearchHit): string {
-  const dimensions =
-    hit.imageMetadata === null ? null : `${hit.imageMetadata.width} × ${hit.imageMetadata.height}`
-  return [dimensions, formatBytes(hit.size)].filter((value) => value !== null).join(' · ')
+function searchMarker(hit: SearchHit): { label: string; tone: ViewerStatusTagTone } {
+  return { label: markerLabel(hit), tone: markerTone(hit) }
+}
+
+function hitFile(hit: SearchHit): BrowserFile {
+  return {
+    entityId: hit.entityId,
+    relativePath: hit.relativePath,
+    name: hit.name,
+    kind: hit.kind === 'directory' ? 'other' : hit.kind,
+    size: hit.size,
+    modifiedNs: hit.modifiedNs,
+    marker: hit.marker,
+    imageMetadata: hit.imageMetadata,
+    imageUrl: null,
+    videoMetadata: null,
+  }
+}
+
+function isImageKind(kind: SearchHit['kind']): boolean {
+  return kind === 'jpeg' || kind === 'png' || kind === 'image' || kind === 'unsupported_image'
 }
 
 function formatBytes(bytes: number): string {
@@ -369,12 +403,6 @@ function formatUnit(value: number): string {
 
 function boundedSnippet(value: string): string {
   return Array.from(value).slice(0, 160).join('')
-}
-
-function matchContextLabel(hit: SearchHit): string {
-  if (hit.matchedField === 'body') return '文件内容匹配'
-  if (hit.matchedField === 'path') return '路径匹配'
-  return '文件名与路径匹配'
 }
 
 function fileKindLabel(kind: SearchHit['kind']): string {

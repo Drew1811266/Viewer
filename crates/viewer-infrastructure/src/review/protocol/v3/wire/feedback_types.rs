@@ -24,7 +24,142 @@ struct Target {
     #[serde(deserialize_with = "canonical_id")]
     asset_version_id: AssetVersionId,
     anchor: Anchor,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    style: Option<Style>,
     availability: Availability,
+}
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Style {
+    tool: Tool,
+    color: Color,
+    width: Width,
+    opacity_percent: u8,
+    dashed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text_size: Option<TextSize>,
+}
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum Tool {
+    Point,
+    Arrow,
+    Brush,
+    Rectangle,
+    Ellipse,
+    Text,
+    Line,
+    Highlighter,
+    Polygon,
+    Ruler,
+}
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum Color {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Teal,
+    Blue,
+    Purple,
+    Black,
+}
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum Width {
+    Thin,
+    Medium,
+    Thick,
+}
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum TextSize {
+    Small,
+    Medium,
+    Large,
+}
+impl From<AnnotationStyle> for Style {
+    fn from(v: AnnotationStyle) -> Self {
+        Self {
+            tool: match v.tool() {
+                AnnotationTool::Point => Tool::Point,
+                AnnotationTool::Arrow => Tool::Arrow,
+                AnnotationTool::Brush => Tool::Brush,
+                AnnotationTool::Rectangle => Tool::Rectangle,
+                AnnotationTool::Ellipse => Tool::Ellipse,
+                AnnotationTool::Text => Tool::Text,
+                AnnotationTool::Line => Tool::Line,
+                AnnotationTool::Highlighter => Tool::Highlighter,
+                AnnotationTool::Polygon => Tool::Polygon,
+                AnnotationTool::Ruler => Tool::Ruler,
+            },
+            color: match v.color() {
+                AnnotationColor::Red => Color::Red,
+                AnnotationColor::Orange => Color::Orange,
+                AnnotationColor::Yellow => Color::Yellow,
+                AnnotationColor::Green => Color::Green,
+                AnnotationColor::Teal => Color::Teal,
+                AnnotationColor::Blue => Color::Blue,
+                AnnotationColor::Purple => Color::Purple,
+                AnnotationColor::Black => Color::Black,
+            },
+            width: match v.width() {
+                AnnotationWidth::Thin => Width::Thin,
+                AnnotationWidth::Medium => Width::Medium,
+                AnnotationWidth::Thick => Width::Thick,
+            },
+            opacity_percent: v.opacity_percent(),
+            dashed: v.dashed(),
+            text_size: v.text_size().map(|size| match size {
+                AnnotationTextSize::Small => TextSize::Small,
+                AnnotationTextSize::Medium => TextSize::Medium,
+                AnnotationTextSize::Large => TextSize::Large,
+            }),
+        }
+    }
+}
+impl TryFrom<Style> for AnnotationStyle {
+    type Error = ReviewProtocolError;
+    fn try_from(v: Style) -> Result<Self, Self::Error> {
+        AnnotationStyle::new(
+            match v.tool {
+                Tool::Point => AnnotationTool::Point,
+                Tool::Arrow => AnnotationTool::Arrow,
+                Tool::Brush => AnnotationTool::Brush,
+                Tool::Rectangle => AnnotationTool::Rectangle,
+                Tool::Ellipse => AnnotationTool::Ellipse,
+                Tool::Text => AnnotationTool::Text,
+                Tool::Line => AnnotationTool::Line,
+                Tool::Highlighter => AnnotationTool::Highlighter,
+                Tool::Polygon => AnnotationTool::Polygon,
+                Tool::Ruler => AnnotationTool::Ruler,
+            },
+            match v.color {
+                Color::Red => AnnotationColor::Red,
+                Color::Orange => AnnotationColor::Orange,
+                Color::Yellow => AnnotationColor::Yellow,
+                Color::Green => AnnotationColor::Green,
+                Color::Teal => AnnotationColor::Teal,
+                Color::Blue => AnnotationColor::Blue,
+                Color::Purple => AnnotationColor::Purple,
+                Color::Black => AnnotationColor::Black,
+            },
+            match v.width {
+                Width::Thin => AnnotationWidth::Thin,
+                Width::Medium => AnnotationWidth::Medium,
+                Width::Thick => AnnotationWidth::Thick,
+            },
+            v.opacity_percent,
+            v.dashed,
+            v.text_size.map(|size| match size {
+                TextSize::Small => AnnotationTextSize::Small,
+                TextSize::Medium => AnnotationTextSize::Medium,
+                TextSize::Large => AnnotationTextSize::Large,
+            }),
+        )
+        .map_err(|_| ReviewProtocolError::InvalidData)
+    }
 }
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
@@ -105,6 +240,7 @@ impl From<&VersionedTarget> for Target {
             target_revision_id: v.revision_id,
             asset_version_id: v.asset_version_id,
             anchor: (&v.anchor).into(),
+            style: v.style.map(Into::into),
             availability: match &v.availability {
                 ReviewAvailability::Ready => Availability::Ready {},
                 ReviewAvailability::NeedsConfirmation(reasons) => Availability::NeedsConfirmation {
@@ -122,6 +258,7 @@ impl TryFrom<Target> for VersionedTarget {
             revision_id: v.target_revision_id,
             asset_version_id: v.asset_version_id,
             anchor: v.anchor.try_into()?,
+            style: v.style.map(TryInto::try_into).transpose()?,
             availability: match v.availability {
                 Availability::Ready {} => ReviewAvailability::Ready,
                 Availability::NeedsConfirmation { reasons } => {
@@ -167,6 +304,17 @@ pub(super) enum Anchor {
         y: f64,
         width: f64,
         height: f64,
+    },
+    ImageText {
+        x: f64,
+        y: f64,
+    },
+    ImageLine {
+        tail: Point,
+        head: Point,
+    },
+    ImagePolygon {
+        points: Vec<Point>,
     },
     VideoPoint {
         position_us: u64,
@@ -215,6 +363,27 @@ impl From<&FeedbackAnchor> for Anchor {
                 y: r.y(),
                 width: r.width(),
                 height: r.height(),
+            },
+            FeedbackAnchor::ImageText(p) => Self::ImageText { x: p.x(), y: p.y() },
+            FeedbackAnchor::ImageLine(a) => Self::ImageLine {
+                tail: Point {
+                    x: a.tail().x(),
+                    y: a.tail().y(),
+                },
+                head: Point {
+                    x: a.head().x(),
+                    y: a.head().y(),
+                },
+            },
+            FeedbackAnchor::ImagePolygon(p) => Self::ImagePolygon {
+                points: p
+                    .points()
+                    .iter()
+                    .map(|point| Point {
+                        x: point.x(),
+                        y: point.y(),
+                    })
+                    .collect(),
             },
             FeedbackAnchor::VideoPoint { position_us } => Self::VideoPoint {
                 position_us: *position_us,
@@ -270,6 +439,28 @@ impl TryFrom<Anchor> for FeedbackAnchor {
             } => Self::ImageEllipse(
                 NormalizedRect::new(x, y, width, height)
                     .map_err(|_| ReviewProtocolError::InvalidData)?,
+            ),
+            Anchor::ImageText { x, y } => Self::ImageText(
+                NormalizedPoint::new(x, y).map_err(|_| ReviewProtocolError::InvalidData)?,
+            ),
+            Anchor::ImageLine { tail, head } => Self::ImageLine(
+                NormalizedArrow::new(
+                    NormalizedPoint::new(tail.x, tail.y)
+                        .map_err(|_| ReviewProtocolError::InvalidData)?,
+                    NormalizedPoint::new(head.x, head.y)
+                        .map_err(|_| ReviewProtocolError::InvalidData)?,
+                )
+                .map_err(|_| ReviewProtocolError::InvalidData)?,
+            ),
+            Anchor::ImagePolygon { points } => Self::ImagePolygon(
+                ImagePolygon::new(
+                    points
+                        .into_iter()
+                        .map(|p| NormalizedPoint::new(p.x, p.y))
+                        .collect::<Result<_, _>>()
+                        .map_err(|_| ReviewProtocolError::InvalidData)?,
+                )
+                .map_err(|_| ReviewProtocolError::InvalidData)?,
             ),
             Anchor::VideoPoint { position_us } => Self::VideoPoint { position_us },
             Anchor::VideoRange { start_us, end_us } => Self::VideoRange { start_us, end_us },

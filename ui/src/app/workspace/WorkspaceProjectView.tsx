@@ -26,6 +26,7 @@ import TrashConfirmation from '../../components/TrashConfirmation'
 import UnsupportedFilePreview from '../../components/UnsupportedFilePreview'
 import ViewerButton, { ViewerIconButton } from '../../components/ui/ViewerButton'
 import ViewerEmptyState from '../../components/ui/ViewerEmptyState'
+import ViewerIcon from '../../components/ui/ViewerIcon'
 import ViewerStatusTag from '../../components/ui/ViewerStatusTag'
 import {
   ViewerToolbarReviewSlot,
@@ -38,6 +39,7 @@ import WorkspaceViewMenu, { type WorkspaceViewContext } from '../../components/W
 import { isImageFile, isVideoFile } from '../../fileKinds'
 import type { ImageRendererPort } from '../../rendering/imageRendererTypes'
 import type { ViewerSettingsContextValue } from '../../settings/ViewerSettingsProvider'
+import { SpeechServiceProvider } from '../../speech/SpeechServiceContext'
 import type { ViewerController } from '../../state/useViewerController'
 import type { ViewerState } from '../../state/viewerState'
 import type { ImageReviewWorkbenchController } from '../review/useImageReviewWorkbench'
@@ -85,7 +87,7 @@ export interface WorkspaceProjectViewProps {
   project: Project
   projectSessionId: string
   commands: WorkspaceViewCommands
-  ports: Pick<WorkspacePorts, 'settings'>
+  ports: Pick<WorkspacePorts, 'settings' | 'speech'>
   settings: ViewerSettingsContextValue
   shell: WorkspaceShellCoordinator
   viewing: ViewingCoordinator
@@ -134,48 +136,50 @@ export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
 
   return (
     <ViewerToolbarReviewSlotProvider>
-      <main
-        className="viewer-shell"
-        data-video-preview-open={
-          viewing.activePreviewFile !== null && isVideoFile(viewing.activePreviewFile)
-            ? true
-            : undefined
-        }
-        data-organization-drag-active={organization.organizationDragView ? true : undefined}
-        style={
-          {
-            '--viewer-sidebar-width': `${shell.effectiveSidebarCollapsed ? 52 : shell.sidebarWidth}px`,
-          } as CSSProperties
-        }
-      >
-        <WorkspaceHeader
-          {...props}
-          viewContext={viewContext}
-          moreMenuTriggerRef={moreMenuTriggerRef}
-          onCloseProject={requestCloseProject}
-        />
-        {project.access === 'read_only' && (
-          <ReadOnlyBanner
-            busy={state.status === 'closing'}
-            onOpenSettings={() => void commands.openPermissionSettings()}
-            onReselect={props.onReselectProject}
+      <SpeechServiceProvider port={props.ports.speech} preferences={props.settings.speech}>
+        <main
+          className="viewer-shell"
+          data-video-preview-open={
+            viewing.activePreviewFile !== null && isVideoFile(viewing.activePreviewFile)
+              ? true
+              : undefined
+          }
+          data-organization-drag-active={organization.organizationDragView ? true : undefined}
+          style={
+            {
+              '--viewer-sidebar-width': `${shell.effectiveSidebarCollapsed ? 52 : shell.sidebarWidth}px`,
+            } as CSSProperties
+          }
+        >
+          <WorkspaceHeader
+            {...props}
+            viewContext={viewContext}
+            moreMenuTriggerRef={moreMenuTriggerRef}
+            onCloseProject={requestCloseProject}
           />
-        )}
-        {props.reviewLayer}
-        <WorkspaceColumns
-          {...props}
-          displayedFolderId={displayedFolderId}
-          projectionProgressVisible={projectionProgressVisible}
-          pendingRecoveryReport={pendingRecoveryReport}
-          selectFolderTarget={selectFolderTarget}
-        />
-        <WorkspaceFeedbackLayers {...props} />
-        <WorkspaceOverlays
-          {...props}
-          moreMenuTriggerRef={moreMenuTriggerRef}
-          activeImageReviewControllerRef={activeImageReviewControllerRef}
-        />
-      </main>
+          {project.access === 'read_only' && (
+            <ReadOnlyBanner
+              busy={state.status === 'closing'}
+              onOpenSettings={() => void commands.openPermissionSettings()}
+              onReselect={props.onReselectProject}
+            />
+          )}
+          {props.reviewLayer}
+          <WorkspaceColumns
+            {...props}
+            displayedFolderId={displayedFolderId}
+            projectionProgressVisible={projectionProgressVisible}
+            pendingRecoveryReport={pendingRecoveryReport}
+            selectFolderTarget={selectFolderTarget}
+          />
+          <WorkspaceFeedbackLayers {...props} />
+          <WorkspaceOverlays
+            {...props}
+            moreMenuTriggerRef={moreMenuTriggerRef}
+            activeImageReviewControllerRef={activeImageReviewControllerRef}
+          />
+        </main>
+      </SpeechServiceProvider>
     </ViewerToolbarReviewSlotProvider>
   )
 }
@@ -319,7 +323,8 @@ function WorkspaceColumns({
             aria-pressed={displayedFolderId === null}
             onClick={() => selectFolderTarget(null)}
           >
-            {project.displayName}
+            <ViewerIcon name="folder" size={14} />
+            <span>全部素材</span>
           </button>
         )}
         <FolderTree
@@ -449,7 +454,7 @@ function WorkspaceContentBody({
           {viewing.contextRepairMessage}
         </p>
       )}
-      <WorkspaceSearchContent state={state} commands={commands} review={review} />
+      <WorkspaceSearchContent state={state} commands={commands} review={review} viewing={viewing} />
       <WorkspaceBrowseContent
         state={state}
         project={project}
@@ -470,7 +475,8 @@ function WorkspaceSearchContent({
   state,
   commands,
   review,
-}: Pick<WorkspaceProjectViewProps, 'state' | 'commands' | 'review'>) {
+  viewing,
+}: Pick<WorkspaceProjectViewProps, 'state' | 'commands' | 'review' | 'viewing'>) {
   if (!state.search.showResults) return null
   if (state.search.page === null) {
     if (state.search.status === 'searching') return <p role="status">正在搜索…</p>
@@ -493,6 +499,8 @@ function WorkspaceSearchContent({
       onSelectionChange={commands.setSelectedEntityIds}
       searching={state.search.status === 'searching' || !state.search.page.progress.complete}
       feedbackCountByEntityId={review.feedbackCountByEntityId}
+      requestThumbnail={viewing.requestThumbnail}
+      onPreview={viewing.openPreview}
     />
   )
 }
@@ -525,12 +533,13 @@ function WorkspaceBrowseContent(
         key={viewing.folderOverviewIdentity}
         folders={state.workspace.folders}
         density={thumbnailDensity}
+        projectName={props.project.displayName}
         requestFolderImages={viewing.requestFolderImages}
         requestThumbnail={viewing.requestThumbnail}
         prefetchThumbnails={viewing.prefetchThumbnails}
+        feedbackCountByEntityId={props.review.feedbackCountByEntityId}
         onPreview={viewing.openFilmstripPreview}
         onSelect={selectFolderTarget}
-        feedbackCountByEntityId={props.review.feedbackCountByEntityId}
       />
     )
   }
@@ -697,6 +706,10 @@ function WorkspaceOverlays({
           onMagnifierShapeChange={settings.setMagnifierShape}
           onMagnifierMagnificationChange={settings.setMagnifierMagnification}
           onMagnifierAreaChange={settings.setMagnifierArea}
+          speech={settings.speech}
+          onSpeechInputModeChange={settings.setSpeechInputMode}
+          onSpeechLocaleChange={settings.setSpeechLocale}
+          onSpeechAutoPunctuationChange={settings.setSpeechAutoPunctuation}
           onClose={shell.closeSettings}
           returnFocusRef={moreMenuTriggerRef}
         />

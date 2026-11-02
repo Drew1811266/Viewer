@@ -312,6 +312,12 @@ pub fn run() {
             commands::image_render::image_render_command,
             commands::settings::get_viewer_settings,
             commands::settings::update_viewer_settings,
+            commands::speech::speech_status,
+            commands::speech::request_speech_permissions,
+            commands::speech::start_speech_capture,
+            commands::speech::stop_speech_capture,
+            commands::speech::cancel_speech_capture,
+            commands::speech::open_speech_settings,
             commands::video::video_open,
             commands::video::video_cancel_open,
             commands::video::video_request_cover,
@@ -468,6 +474,9 @@ pub fn run() {
             app.manage(image_render_runtime);
             app.manage(video_runtime);
             app.manage(settings_service);
+            app.manage(std::sync::Arc::new(
+                viewer_platform_macos::speech::MacSpeechService::default(),
+            ));
             app.manage(ExitGate::default());
 
             if let Some(window) = app.get_webview_window("main") {

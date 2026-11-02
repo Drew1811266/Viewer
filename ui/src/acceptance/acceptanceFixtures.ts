@@ -690,7 +690,33 @@ export function acceptanceContinuousMigration(): ReviewMigrationInspection {
         blake3: '33'.repeat(32),
       },
     ],
-    activeDraft: null,
+    activeDraft: {
+      protocolVersion: 'viewer.review/1',
+      draft: {
+        projectId: ACCEPTANCE_PROJECT_SNAPSHOT.projectId,
+        reviewStreamId: 'acceptance-continuous-stream',
+        reviewRoundId: 'acceptance-legacy-draft',
+        production: null,
+        previousCompletedRoundId: 'acceptance-legacy-round',
+        createdAtMs: 1_767_500_002_000,
+        assets: [continuousAsset],
+        feedback: [
+          {
+            id: 'acceptance-legacy-draft-feedback-1',
+            text: '领口弧度过大，保留原材质；调整到与样衣一致。',
+            createdAtMs: 1_767_500_002_000,
+            targets: [{ assetVersionId: continuousAsset.id, anchor: { kind: 'asset' as const } }],
+          },
+          {
+            id: 'acceptance-legacy-draft-feedback-2',
+            text: '右袖外侧有锯齿，重画这一段。',
+            createdAtMs: 1_767_500_003_000,
+            targets: [{ assetVersionId: continuousAsset.id, anchor: { kind: 'asset' as const } }],
+          },
+        ],
+        unreviewable: [],
+      },
+    },
     completedCandidates: [completed],
     limitations: ['background_only', 'legacy_evidence_absent', 'usage_unconfirmed'],
   }

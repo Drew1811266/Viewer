@@ -58,6 +58,7 @@ async fn review_workspace_cancelled_queued_retry_still_reports_the_committed_rec
                 feedback_id: None,
                 text: "保留原文".into(),
                 targets: vec![TargetEdit::Add {
+                    style: None,
                     asset_version_id: asset,
                     anchor: FeedbackAnchor::Asset,
                 }],
@@ -225,6 +226,7 @@ async fn review_workspace_project_close_revokes_previews_and_waits_for_renderer_
                 feedback_id: None,
                 text: "keep this unpublished input".into(),
                 targets: vec![TargetEdit::Add {
+                    style: None,
                     asset_version_id: previews[0].asset.0.id,
                     anchor: FeedbackAnchor::Asset,
                 }],

@@ -1,18 +1,29 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   arrowFromDrag,
   type BoxHandle,
   ellipseFromDrag,
   type ImageAnchor,
+  lineFromDrag,
   moveAnchor,
+  movePolygonVertex,
   type NormalizedPoint,
+  type PolygonVertexHandle,
   pointAnchor,
+  polygonFromPoints,
   rectFromDrag,
   resizeBoxAnchor,
   simplifyNormalizedStroke,
+  textAnchor,
 } from '../../app/review/annotationGeometry'
 import { type AnnotationHandle, hitTestAnnotation } from '../../app/review/annotationHitTest'
+import {
+  ANNOTATION_BADGE_RADIUS,
+  annotationColorHex,
+  defaultAnnotationStyle,
+  styleForAnchor,
+} from '../../app/review/annotationStyle'
 import type {
   ImageReviewWorkbenchController,
   ReviewAnchor,
@@ -42,7 +53,19 @@ type DrawingGesture =
       startClient: NormalizedPoint
     }
   | {
+      kind: 'text'
+      pointerId: number
+      point: NormalizedPoint
+      startClient: NormalizedPoint
+    }
+  | {
       kind: 'arrow'
+      pointerId: number
+      start: NormalizedPoint
+      startClient: NormalizedPoint
+    }
+  | {
+      kind: 'line'
       pointerId: number
       start: NormalizedPoint
       startClient: NormalizedPoint
@@ -51,6 +74,13 @@ type DrawingGesture =
       kind: 'brush'
       pointerId: number
       points: NormalizedPoint[]
+      startClient: NormalizedPoint
+    }
+  | {
+      kind: 'polygon'
+      pointerId: number
+      points: NormalizedPoint[]
+      preview: NormalizedPoint
       startClient: NormalizedPoint
     }
   | {
@@ -70,6 +100,7 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
   const canvas = useRef<HTMLCanvasElement>(null)
   const gesture = useRef<DrawingGesture | null>(null)
   const pointerCleanup = useRef<(() => void) | null>(null)
+  const [polygonPointCount, setPolygonPointCount] = useState(0)
   const editorPhase = controller.editor.phase
   const candidate =
     editorPhase.status === 'drawing' ||
@@ -81,12 +112,28 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
       ? null
       : editorPhase.draftAnchor
   const transientAnchor = candidate ?? draftAnchor
+  const transientStyle =
+    editorPhase.status === 'idle' ? null : (editorPhase.style ?? defaultAnnotationStyle('brush'))
+  const transientText =
+    editorPhase.status !== 'idle' && editorPhase.status !== 'drawing' ? editorPhase.text : null
+  const editingItemId =
+    editorPhase.status === 'idle' || editorPhase.status === 'drawing'
+      ? null
+      : editorPhase.sourceItemId
+  const editingOperation =
+    editorPhase.status === 'idle' || editorPhase.status === 'drawing'
+      ? null
+      : (editorPhase.operation ?? null)
   const renderedScene =
     scene ??
     buildAnnotationScene({
       feedback: controller.feedback,
       selectedItemId: controller.selectedItemId,
       transientAnchor,
+      transientStyle,
+      transientText,
+      editingItemId,
+      editingOperation,
     })
   const drawingEnabled =
     controller.readOnlyReason === null &&
@@ -135,12 +182,17 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
       color: annotationColor(element),
       lineWidth: 2,
       drawOrdinals: false,
-      ordinalRadius: 14,
+      ordinalRadius: ANNOTATION_BADGE_RADIUS,
+      selectionColor: annotationSelectionColor(element),
     })
   }, [projection, renderedScene])
 
   function beginCanvasPointer(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (drawingEnabled) {
+      if (controller.tool === 'polygon') {
+        beginPolygon(event)
+        return
+      }
       beginCreation(event)
       return
     }
@@ -164,7 +216,12 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
         ]
       }),
     })
-    if (hit === null) return
+    if (hit === null) {
+      // Clicking empty canvas clears the selection so the style bar and
+      // resize handles do not stay pinned to an old annotation.
+      controller.selectFeedback(null)
+      return
+    }
     event.preventDefault()
     event.stopPropagation()
     controller.selectFeedback(hit.itemId)
@@ -190,7 +247,9 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
     const current = creationGesture(controller.tool, event.pointerId, point, event)
     if (current === null) return
     const initial = initialAnchor(current)
+    if (initial === null) return
     if (!controller.beginDrawing(initial, controller.redrawItemId ?? undefined)) return
+    controller.selectFeedback(null)
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget.setPointerCapture?.(event.pointerId)
@@ -215,6 +274,137 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
     })
   }
 
+  function beginPolygon(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const point = projection.stageToNormalized({ x: event.clientX, y: event.clientY })
+    if (point === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    const current = gesture.current
+    if (current === null || current.kind !== 'polygon') {
+      const initial = polygonPreview([point])
+      if (!controller.beginDrawing(initial, controller.redrawItemId ?? undefined)) return
+      controller.selectFeedback(null)
+      gesture.current = {
+        kind: 'polygon',
+        pointerId: event.pointerId,
+        points: [point],
+        preview: point,
+        startClient: { x: event.clientX, y: event.clientY },
+      }
+      setPolygonPointCount(1)
+      return
+    }
+    const first = projection.normalizedToStage(current.points[0] as NormalizedPoint)
+    const nearFirst =
+      first !== null &&
+      Math.hypot(event.clientX - first.x, event.clientY - first.y) <= MINIMUM_DRAG_CSS_PX * 1.8
+    const doubleClick = event.detail >= 2
+    if ((nearFirst || doubleClick) && current.points.length >= 3) {
+      finishPolygon(current)
+      return
+    }
+    if (current.points.length >= 64) return
+    current.points.push(point)
+    current.preview = point
+    setPolygonPointCount(current.points.length)
+    controller.updateDraftAnchor(polygonPreview(current.points))
+  }
+
+  function finishPolygon(current: Extract<DrawingGesture, { kind: 'polygon' }>) {
+    gesture.current = null
+    pointerCleanup.current?.()
+    pointerCleanup.current = null
+    setPolygonPointCount(0)
+    void controller.finishDrawing(polygonFromPoints(current.points))
+  }
+
+  function removeLastPolygonPoint() {
+    const current = gesture.current
+    if (current === null || current.kind !== 'polygon') return
+    if (current.points.length <= 1) {
+      gesture.current = null
+      setPolygonPointCount(0)
+      controller.cancelDraft()
+      return
+    }
+    current.points.pop()
+    current.preview = current.points[current.points.length - 1] as NormalizedPoint
+    setPolygonPointCount(current.points.length)
+    controller.updateDraftAnchor(polygonPreview(current.points))
+  }
+
+  function handleCanvasDoubleClick(event: React.MouseEvent<HTMLCanvasElement>) {
+    if (controller.tool === 'polygon') {
+      const current = gesture.current
+      if (current === null || current.kind !== 'polygon' || current.points.length < 3) return
+      event.preventDefault()
+      event.stopPropagation()
+      // The second pointerdown of a double click may already have appended the
+      // same vertex; remove that duplicate before closing.
+      const last = current.points[current.points.length - 1]
+      const previous = current.points[current.points.length - 2]
+      if (
+        last !== undefined &&
+        previous !== undefined &&
+        Math.hypot(last.x - previous.x, last.y - previous.y) < 1e-6
+      ) {
+        current.points.pop()
+      }
+      finishPolygon(current)
+      return
+    }
+    if (
+      controller.tool === 'browse' &&
+      controller.selectedItemId !== null &&
+      controller.readOnlyReason === null
+    ) {
+      event.preventDefault()
+      controller.beginFeedbackTextEdit(controller.selectedItemId)
+    }
+  }
+
+  useEffect(() => {
+    if (editorPhase.status !== 'drawing' || controller.tool !== 'polygon') return
+    function move(pointer: PointerEvent) {
+      const current = gesture.current
+      if (current === null || current.kind !== 'polygon' || pointer.pointerId !== current.pointerId)
+        return
+      const point = projection.stageToNormalized(
+        { x: pointer.clientX, y: pointer.clientY },
+        { allowOutsideImage: true },
+      )
+      if (point === null) return
+      current.preview = point
+      controller.updateDraftAnchor(polygonPreview([...current.points, point]))
+    }
+    window.addEventListener('pointermove', move)
+    return () => window.removeEventListener('pointermove', move)
+  }, [controller, editorPhase.status, projection])
+
+  useEffect(() => {
+    if (editorPhase.status !== 'drawing' || controller.tool !== 'polygon') {
+      setPolygonPointCount(0)
+      return
+    }
+    function keyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.isComposing) return
+      if (event.key === 'Enter') {
+        const current = gesture.current
+        if (current === null || current.kind !== 'polygon' || current.points.length < 3) return
+        event.preventDefault()
+        finishPolygon(current)
+        return
+      }
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        if (gesture.current?.kind !== 'polygon') return
+        event.preventDefault()
+        removeLastPolygonPoint()
+      }
+    }
+    window.addEventListener('keydown', keyDown)
+    return () => window.removeEventListener('keydown', keyDown)
+  }, [controller, editorPhase.status, controller.tool])
+
   return (
     <div
       className="annotation-canvas-layer"
@@ -230,7 +420,49 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
         data-has-candidate={candidate !== null || undefined}
         data-has-draft-anchor={(draftAnchor !== null && draftAnchor.kind !== 'asset') || undefined}
         onPointerDown={beginCanvasPointer}
+        onDoubleClick={handleCanvasDoubleClick}
       />
+      {editorPhase.status === 'drawing' && controller.tool === 'polygon' && (
+        <div className="annotation-polygon-hint" role="status" data-native-input-exclusion="true">
+          <span>
+            {polygonPointCount < 3
+              ? `已放置 ${polygonPointCount} 个点 · 至少 3 个点`
+              : `已放置 ${polygonPointCount} 个点`}
+          </span>
+          <span className="annotation-polygon-hint__keys">
+            Enter / 双击 / 点起点完成 · 退格 退一点 · Esc 取消
+          </span>
+          <button
+            type="button"
+            className="annotation-polygon-hint__finish"
+            disabled={polygonPointCount < 3}
+            onClick={() => {
+              const current = gesture.current
+              if (current?.kind === 'polygon') finishPolygon(current)
+            }}
+          >
+            完成
+          </button>
+          <button
+            type="button"
+            className="annotation-polygon-hint__secondary"
+            onClick={removeLastPolygonPoint}
+          >
+            退一点
+          </button>
+          <button
+            type="button"
+            className="annotation-polygon-hint__secondary"
+            onClick={() => {
+              gesture.current = null
+              setPolygonPointCount(0)
+              controller.cancelDraft()
+            }}
+          >
+            取消
+          </button>
+        </div>
+      )}
       <div className="annotation-markers">
         {controller.feedback.map((feedback) => (
           <AnnotationMarker
@@ -286,7 +518,7 @@ function AnnotationMarker({
   const anchor = feedback.anchor
   const local = annotationOrdinalPoint(anchor, stageAnnotationProjection(projection), {
     lineWidth: 2,
-    ordinalRadius: 14,
+    ordinalRadius: ANNOTATION_BADGE_RADIUS,
   })
   if (local === null) return null
   const ordinal = feedback.ordinal
@@ -337,7 +569,15 @@ function AnnotationMarker({
         data-anchor-kind={anchor.kind}
         data-selected={selected || undefined}
         aria-label={`意见 ${ordinal}：${feedback.text}`}
-        style={{ left: local.x, top: local.y }}
+        style={
+          {
+            left: local.x,
+            top: local.y,
+            '--annotation-color': annotationColorHex(
+              styleForAnchor(anchor, feedback.style)?.color ?? 'red',
+            ),
+          } as React.CSSProperties
+        }
         onClick={onSelect}
         onKeyDown={keyDown}
         onPointerDown={(event) => {
@@ -351,7 +591,18 @@ function AnnotationMarker({
       </button>
       {selected &&
         isBoxAnchor(anchor) &&
-        (['north_west', 'north_east', 'south_east', 'south_west'] as const).map((handle) => (
+        (
+          [
+            'north_west',
+            'north',
+            'north_east',
+            'east',
+            'south_east',
+            'south',
+            'south_west',
+            'west',
+          ] as const
+        ).map((handle) => (
           <GeometryHandleButton
             key={handle}
             handle={handle}
@@ -366,13 +617,29 @@ function AnnotationMarker({
           />
         ))}
       {selected &&
-        anchor.kind === 'image_arrow' &&
+        (anchor.kind === 'image_arrow' || anchor.kind === 'image_line') &&
         (['tail', 'head'] as const).map((handle) => (
           <GeometryHandleButton
             key={handle}
             handle={handle}
             ordinal={ordinal}
-            anchor={anchor as Extract<ImageAnchor, { kind: 'image_arrow' }>}
+            anchor={anchor as Extract<ImageAnchor, { kind: 'image_arrow' | 'image_line' }>}
+            projection={projection}
+            readOnly={readOnly}
+            drawing={drawing}
+            onCandidate={onCandidate}
+            onReplace={onReplace}
+            onCancel={onCancel}
+          />
+        ))}
+      {selected &&
+        anchor.kind === 'image_polygon' &&
+        anchor.points.map((point, index) => (
+          <GeometryHandleButton
+            key={`vertex_${point.x}-${point.y}`}
+            handle={`vertex_${index}`}
+            ordinal={ordinal}
+            anchor={anchor}
             projection={projection}
             readOnly={readOnly}
             drawing={drawing}
@@ -432,9 +699,12 @@ function GeometryHandleButton({
   onReplace,
   onCancel,
 }: {
-  handle: BoxHandle | 'tail' | 'head'
+  handle: BoxHandle | 'tail' | 'head' | PolygonVertexHandle
   ordinal: number
-  anchor: Extract<ImageAnchor, { kind: 'image_rect' | 'image_ellipse' | 'image_arrow' }>
+  anchor: Extract<
+    ImageAnchor,
+    { kind: 'image_rect' | 'image_ellipse' | 'image_arrow' | 'image_line' | 'image_polygon' }
+  >
   projection: ImagePreviewProjection
   readOnly: boolean
   drawing: boolean
@@ -448,14 +718,14 @@ function GeometryHandleButton({
   }, [drawing])
   useEffect(() => () => pointerCleanup.current?.(), [])
   const point = handlePoint(anchor, handle)
-  const projected = projection.normalizedToStage(point)
-  if (projected === null) return null
+  const projected = point === null ? null : projection.normalizedToStage(point)
+  if (point === null || projected === null) return null
   return (
     <button
       type="button"
       className="annotation-geometry-handle"
       data-handle={handle}
-      aria-label={`调整意见 ${ordinal} ${handleLabel(handle)}`}
+      aria-label={`调整意见 ${ordinal} ${handleLabel(handle, anchor.kind)}`}
       disabled={readOnly}
       style={localPoint(projected, projection)}
       onPointerDown={(event) => {
@@ -558,12 +828,19 @@ function creationGesture(
   const startClient = { x: event.clientX, y: event.clientY }
   switch (tool) {
     case 'browse':
+    case 'polygon':
       return null
     case 'point':
       return { kind: 'point', pointerId, point, startClient }
+    case 'text':
+      return { kind: 'text', pointerId, point, startClient }
     case 'arrow':
       return { kind: 'arrow', pointerId, start: point, startClient }
+    case 'line':
+    case 'ruler':
+      return { kind: 'line', pointerId, start: point, startClient }
     case 'brush':
+    case 'highlighter':
       return { kind: 'brush', pointerId, points: [point], startClient }
     case 'rectangle':
     case 'ellipse':
@@ -571,14 +848,20 @@ function creationGesture(
   }
 }
 
-function initialAnchor(gesture: DrawingGesture): ReviewAnchor {
+function initialAnchor(gesture: DrawingGesture): ReviewAnchor | null {
   switch (gesture.kind) {
     case 'point':
       return pointAnchor(gesture.point) as NonNullable<ReturnType<typeof pointAnchor>>
+    case 'text':
+      return textAnchor(gesture.point)
     case 'arrow':
       return { kind: 'image_arrow', tail: gesture.start, head: gesture.start }
+    case 'line':
+      return { kind: 'image_line', tail: gesture.start, head: gesture.start }
     case 'brush':
       return { kind: 'image_stroke', points: [gesture.points[0] as NormalizedPoint] }
+    case 'polygon':
+      return polygonPreview(gesture.points)
     case 'box':
       return {
         kind: gesture.shape === 'rectangle' ? 'image_rect' : 'image_ellipse',
@@ -587,6 +870,16 @@ function initialAnchor(gesture: DrawingGesture): ReviewAnchor {
         width: 0,
         height: 0,
       }
+  }
+}
+
+function polygonPreview(points: ReadonlyArray<NormalizedPoint>): ReviewAnchor {
+  return {
+    kind: 'image_polygon',
+    points:
+      points.length === 1
+        ? [points[0] as NormalizedPoint, points[0] as NormalizedPoint, points[0] as NormalizedPoint]
+        : points,
   }
 }
 
@@ -603,13 +896,25 @@ function drawingAnchor(
   switch (gesture.kind) {
     case 'point':
       return pointAnchor(clampedPoint(point))
+    case 'text':
+      return textAnchor(clampedPoint(point))
     case 'arrow':
-      return arrowFromDrag(gesture.start, point)
+      return arrowFromDrag(
+        gesture.start,
+        pointer.shiftKey ? constrainLine(gesture.start, point) : point,
+      )
+    case 'line':
+      return lineFromDrag(
+        gesture.start,
+        pointer.shiftKey ? constrainLine(gesture.start, point) : point,
+      )
     case 'brush': {
       gesture.points.push(point)
       const points = simplifyNormalizedStroke(gesture.points, strokeOptions(projection))
       return points === null ? null : { kind: 'image_stroke', points }
     }
+    case 'polygon':
+      return polygonPreview([...gesture.points, point])
     case 'box':
       return boxAnchor(gesture, point, pointer.shiftKey, projection)
   }
@@ -622,6 +927,8 @@ function completedDrawingAnchor(
 ): ReviewAnchor | null {
   if (
     gesture.kind !== 'point' &&
+    gesture.kind !== 'text' &&
+    gesture.kind !== 'polygon' &&
     clientDistance(gesture.startClient, pointer) < MINIMUM_DRAG_CSS_PX
   ) {
     return null
@@ -669,10 +976,13 @@ function geometryEditForHit(anchor: ImageAnchor, handle?: AnnotationHandle): Geo
 function markerEdit(anchor: ImageAnchor): GeometryEdit | null {
   switch (anchor.kind) {
     case 'image_point':
+    case 'image_text':
       return 'point'
     case 'image_arrow':
     case 'image_rect':
     case 'image_ellipse':
+    case 'image_line':
+    case 'image_polygon':
       return 'move'
     case 'image_stroke':
       return null
@@ -696,11 +1006,18 @@ function anchorForHandle(
   handle: Exclude<AnnotationHandle, 'point'>,
   point: NormalizedPoint,
 ): ImageAnchor | null {
-  if (anchor.kind === 'image_arrow' && handle === 'tail') {
-    return arrowFromDrag(point, anchor.head)
+  if ((anchor.kind === 'image_arrow' || anchor.kind === 'image_line') && handle === 'tail') {
+    return anchor.kind === 'image_arrow'
+      ? arrowFromDrag(point, anchor.head)
+      : lineFromDrag(point, anchor.head)
   }
-  if (anchor.kind === 'image_arrow' && handle === 'head') {
-    return arrowFromDrag(anchor.tail, point)
+  if ((anchor.kind === 'image_arrow' || anchor.kind === 'image_line') && handle === 'head') {
+    return anchor.kind === 'image_arrow'
+      ? arrowFromDrag(anchor.tail, point)
+      : lineFromDrag(anchor.tail, point)
+  }
+  if (anchor.kind === 'image_polygon' && isPolygonVertexHandle(handle)) {
+    return movePolygonVertex(anchor, Number(handle.slice('vertex_'.length)), point)
   }
   if (isBoxAnchor(anchor) && isBoxHandle(handle)) {
     return resizeBoxAnchor(anchor, handle, point)
@@ -747,13 +1064,44 @@ function bindWindowPointerSession(
 }
 
 function handlePoint(
-  anchor: Extract<ImageAnchor, { kind: 'image_rect' | 'image_ellipse' | 'image_arrow' }>,
-  handle: BoxHandle | 'tail' | 'head',
-): NormalizedPoint {
-  if (anchor.kind === 'image_arrow') return handle === 'tail' ? anchor.tail : anchor.head
-  return {
-    x: handle === 'north_west' || handle === 'south_west' ? anchor.x : anchor.x + anchor.width,
-    y: handle === 'north_west' || handle === 'north_east' ? anchor.y : anchor.y + anchor.height,
+  anchor: Extract<
+    ImageAnchor,
+    { kind: 'image_rect' | 'image_ellipse' | 'image_arrow' | 'image_line' | 'image_polygon' }
+  >,
+  handle: BoxHandle | 'tail' | 'head' | PolygonVertexHandle,
+): NormalizedPoint | null {
+  if (anchor.kind === 'image_arrow' || anchor.kind === 'image_line')
+    return handle === 'tail' ? anchor.tail : handle === 'head' ? anchor.head : null
+  if (anchor.kind === 'image_polygon') {
+    if (!isPolygonVertexHandle(handle)) return null
+    return anchor.points[Number(handle.slice('vertex_'.length))] ?? null
+  }
+  if (handle === 'tail' || handle === 'head' || isPolygonVertexHandle(handle)) return null
+  const left = anchor.x
+  const top = anchor.y
+  const right = anchor.x + anchor.width
+  const bottom = anchor.y + anchor.height
+  const middleX = left + anchor.width / 2
+  const middleY = top + anchor.height / 2
+  switch (handle) {
+    case 'north_west':
+      return { x: left, y: top }
+    case 'north':
+      return { x: middleX, y: top }
+    case 'north_east':
+      return { x: right, y: top }
+    case 'east':
+      return { x: right, y: middleY }
+    case 'south_east':
+      return { x: right, y: bottom }
+    case 'south':
+      return { x: middleX, y: bottom }
+    case 'south_west':
+      return { x: left, y: bottom }
+    case 'west':
+      return { x: left, y: middleY }
+    default:
+      return { x: middleX, y: middleY }
   }
 }
 
@@ -770,19 +1118,46 @@ function isBoxAnchor(
 function isBoxHandle(handle: AnnotationHandle): handle is BoxHandle {
   return (
     handle === 'north_west' ||
+    handle === 'north' ||
     handle === 'north_east' ||
+    handle === 'east' ||
     handle === 'south_east' ||
-    handle === 'south_west'
+    handle === 'south' ||
+    handle === 'south_west' ||
+    handle === 'west'
   )
 }
 
-function handleLabel(handle: BoxHandle | 'tail' | 'head') {
-  if (handle === 'tail') return '箭尾'
-  if (handle === 'head') return '箭头'
+function isPolygonVertexHandle(handle: AnnotationHandle): handle is PolygonVertexHandle {
+  return handle.startsWith('vertex_')
+}
+
+function handleLabel(
+  handle: BoxHandle | 'tail' | 'head' | PolygonVertexHandle,
+  anchorKind: 'image_rect' | 'image_ellipse' | 'image_arrow' | 'image_line' | 'image_polygon',
+) {
+  if (handle === 'tail') return anchorKind === 'image_arrow' ? '箭尾' : '起点'
+  if (handle === 'head') return anchorKind === 'image_arrow' ? '箭头' : '终点'
+  if (isPolygonVertexHandle(handle)) return `顶点 ${Number(handle.slice('vertex_'.length)) + 1}`
   if (handle === 'north_west') return '左上角'
+  if (handle === 'north') return '上边'
   if (handle === 'north_east') return '右上角'
+  if (handle === 'east') return '右边'
   if (handle === 'south_east') return '右下角'
-  return '左下角'
+  if (handle === 'south') return '下边'
+  if (handle === 'south_west') return '左下角'
+  return '左边'
+}
+
+function annotationSelectionColor(element: HTMLCanvasElement): string {
+  try {
+    return (
+      getComputedStyle(element).getPropertyValue('--viewer-secondary-container').trim() ||
+      'Highlight'
+    )
+  } catch {
+    return 'Highlight'
+  }
 }
 
 function arrowDirection(key: string) {
@@ -840,6 +1215,12 @@ function clientDistance(
 
 function clampedPoint(point: NormalizedPoint): NormalizedPoint {
   return { x: clamp(point.x, 0, 1), y: clamp(point.y, 0, 1) }
+}
+
+function constrainLine(start: NormalizedPoint, end: NormalizedPoint): NormalizedPoint {
+  return Math.abs(end.x - start.x) >= Math.abs(end.y - start.y)
+    ? { x: end.x, y: start.y }
+    : { x: start.x, y: end.y }
 }
 
 function annotationColor(element: HTMLElement) {

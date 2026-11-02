@@ -508,8 +508,8 @@ describe('NativeImageViewport', () => {
     expect(magnifierCommands(harness.commands)[0]).toEqual({
       type: 'set_magnifier',
       magnifier: {
-        widthPx: 200,
-        heightPx: 200,
+        widthPx: 180,
+        heightPx: 180,
         magnification: 2,
         shape: 'circle',
       },

@@ -65,7 +65,7 @@ describe('FolderTree', () => {
     const selected = screen.getByRole('treeitem', { name: 'catalog/shoes/id-001' })
     expect(selected).toHaveAttribute('aria-selected', 'true')
     expect(selected).not.toHaveAttribute('tabindex')
-    expect(selected.parentElement).toHaveStyle({ height: '24px', top: '48px' })
+    expect(selected.parentElement).toHaveStyle({ height: '22px', top: '44px' })
   })
 
   it('collapses descendants and calls selection without losing the selected id', () => {
@@ -126,7 +126,7 @@ describe('FolderTree', () => {
     expect(viewport).toHaveStyle({ height: '100%' })
     expect(resize).toBeDefined()
     act(() => resize?.(700))
-    expect(screen.getAllByRole('treeitem')).toHaveLength(36)
+    expect(screen.getAllByRole('treeitem')).toHaveLength(38)
   })
 
   it('marks the scrolling viewport and visible rows with opaque organization ids', () => {

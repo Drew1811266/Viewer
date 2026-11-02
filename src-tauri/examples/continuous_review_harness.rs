@@ -504,6 +504,7 @@ async fn run_partial_shared(
             targets: assets
                 .iter()
                 .map(|asset| TargetEdit::Add {
+                    style: None,
                     asset_version_id: asset.id,
                     anchor: FeedbackAnchor::Asset,
                 })
@@ -597,6 +598,7 @@ async fn run_source_replaced(
             feedback_id: None,
             text: "保留已保存的原始意见".into(),
             targets: vec![TargetEdit::Add {
+                style: None,
                 asset_version_id: asset.id,
                 anchor: FeedbackAnchor::Asset,
             }],
@@ -706,6 +708,7 @@ async fn run_restore_conflict(
             targets: assets
                 .iter()
                 .map(|asset| TargetEdit::Add {
+                    style: None,
                     asset_version_id: asset.id,
                     anchor: FeedbackAnchor::Asset,
                 })
@@ -905,6 +908,7 @@ async fn run_lost_receipt(
                 feedback_id: None,
                 text: "首次提交，回执丢失".into(),
                 targets: vec![TargetEdit::Add {
+                    style: None,
                     asset_version_id: asset.id,
                     anchor: FeedbackAnchor::Asset,
                 }],
@@ -1101,6 +1105,7 @@ async fn save_one(
             feedback_id: None,
             text: text.into(),
             targets: vec![TargetEdit::Add {
+                style: None,
                 asset_version_id: asset.id,
                 anchor: FeedbackAnchor::Asset,
             }],
@@ -1130,6 +1135,7 @@ async fn save_new(
             feedback_id: None,
             text: text.into(),
             targets: vec![TargetEdit::Add {
+                style: None,
                 asset_version_id: asset.id,
                 anchor: FeedbackAnchor::Asset,
             }],

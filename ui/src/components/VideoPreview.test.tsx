@@ -38,7 +38,7 @@ describe('VideoPreview', () => {
     expect(alert).toHaveTextContent(message)
     expect(alert).not.toHaveTextContent('/Users/private/Videos/a.mp4')
     expect(screen.getByRole('button', { name: '重试' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: '完成' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '返回网格' })).toBeEnabled()
     expect(screen.getByRole('navigation', { name: '视频导航' })).toBeVisible()
 
     fireEvent.keyDown(window, { key: 'Escape' })
@@ -83,11 +83,11 @@ describe('VideoPreview', () => {
     const toolbar = screen.getByRole('toolbar', { name: '视频预览工具' })
     const navigation = screen.getByRole('navigation', { name: '视频导航' })
 
-    expect(stage).toContainElement(toolbar)
-    expect(stage).toContainElement(navigation)
+    expect(stage).not.toContainElement(toolbar)
+    expect(stage).not.toContainElement(navigation)
     expect(toolbar).toHaveClass('video-preview-topbar')
     expect(within(toolbar).getByText('a.mp4')).toBeVisible()
-    expect(within(toolbar).getByText('00:12')).toBeVisible()
+    expect(within(toolbar).getByText('MP4 · 00:12')).toBeVisible()
 
     const bottomChrome = rendered.container.querySelector('.video-preview-bottom-chrome')
     const controls = screen.getByRole('group', { name: '视频播放控制' })
@@ -156,7 +156,7 @@ describe('VideoPreview', () => {
     act(() => vi.advanceTimersByTime(2_500))
     expect(dialog).toHaveAttribute('data-chrome-visible', 'false')
 
-    fireEvent.focus(screen.getByRole('button', { name: '完成' }))
+    fireEvent.focus(screen.getByRole('button', { name: '返回网格' }))
     expect(dialog).toHaveAttribute('data-chrome-visible', 'true')
     act(() => vi.advanceTimersByTime(5_000))
     expect(dialog).toHaveAttribute('data-chrome-visible', 'true')
@@ -211,7 +211,7 @@ describe('VideoPreview', () => {
     expect(harness.close).toHaveBeenCalledWith({ generation: 3 })
     expect(screen.getByRole('status', { name: '正在加载视频' })).toBeVisible()
 
-    fireEvent.click(screen.getByRole('button', { name: '完成' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
     expect(onClose).toHaveBeenCalledOnce()
   })
 
@@ -277,7 +277,7 @@ describe('VideoPreview', () => {
     fireEvent.click(await screen.findByRole('button', { name: '重试' }))
     await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
     const attemptId = harness.open.mock.calls[0]?.[0].attemptId
-    fireEvent.click(screen.getByRole('button', { name: '完成' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
     preview.unmount()
 
     expect(onClose).toHaveBeenCalledOnce()

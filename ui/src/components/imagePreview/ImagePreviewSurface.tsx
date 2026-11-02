@@ -21,6 +21,7 @@ export type { ImagePreviewProjection } from './imagePreviewProjection'
 export interface ImagePreviewSurfaceSlots {
   toolbarLeading?: ReactNode
   toolbarActions?: ReactNode
+  banner?: ReactNode
   stageOverlay?: (projection: ImagePreviewProjection) => ReactNode
   nativeStageOverlay?: (projection: ImagePreviewProjection) => ReactNode
   sidePanel?: ReactNode
@@ -44,6 +45,8 @@ export interface ImagePreviewSurfaceProps {
   ariaLabel?: string
   toolbarLabel?: string
   onEscape?: () => void
+  fileInfoOpen?: boolean
+  onFileInfoToggle?: () => void
   slots?: ImagePreviewSurfaceSlots
   renderer?: ImageRendererPort
   nativeBinding?: ImageRendererViewportBinding

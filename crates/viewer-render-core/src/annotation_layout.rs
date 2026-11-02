@@ -1,10 +1,10 @@
 //! Screen-space controls shared by native drawing and hit testing.
 use crate::{AnnotationGeometry, LogicalPoint, LogicalSize, NormalizedPoint, TransformSnapshot};
 
-pub const ORDINAL_RADIUS_PX: f64 = 14.0;
+pub const ORDINAL_RADIUS_PX: f64 = 10.0;
 pub const HANDLE_RADIUS_PX: f64 = 12.0;
 pub const ORDINAL_CLEARANCE_PX: f64 = ORDINAL_RADIUS_PX + 2.0 + 4.0;
-pub const BOX_ORDINAL_CLEARANCE_PX: f64 = 24.0;
+pub const BOX_ORDINAL_CLEARANCE_PX: f64 = 20.0;
 
 /// The old review canvas' ordered, bounded candidates. A badge is omitted if no
 /// candidate clears its geometry; it never covers an endpoint or corner handle.
@@ -58,7 +58,9 @@ fn ordinal_position(
     let mut path = Vec::new();
     let mut bounds = None;
     let reference = match geometry {
-        AnnotationGeometry::Point { position } => project(*position),
+        // A point annotation is represented by its badge alone: center the
+        // badge on the point instead of offsetting it away from the target.
+        AnnotationGeometry::Point { position } => return Some(project(*position)),
         AnnotationGeometry::Arrow { tail, head } => {
             path = vec![project(*tail), project(*head)];
             path[0]

@@ -71,7 +71,7 @@ function parseTableIds(markdown) {
 }
 
 describe('recipe registry', () => {
-  it('is exactly set-equal to both authoritative 92-state documents', async () => {
+  it('is the authoritative 92-state native subset of both product documents', async () => {
     const audit = await readFile(
       path.join(
         actualRepoRoot,
@@ -90,12 +90,13 @@ describe('recipe registry', () => {
     const ledgerIds = parseTableIds(ledger)
     const recipeIds = [...STATE_RECIPES.keys()]
 
-    for (const ids of [auditIds, ledgerIds, AUDIT_IDS, recipeIds]) {
-      assert.equal(ids.length, 92)
-      assert.equal(new Set(ids).size, 92)
+    for (const ids of [auditIds, ledgerIds]) {
+      assert.equal(new Set(ids).size, ids.length)
+      for (const id of AUDIT_IDS) assert.ok(ids.includes(id), `${id} missing from product document`)
     }
-    assert.deepEqual(new Set(AUDIT_IDS), new Set(auditIds))
-    assert.deepEqual(new Set(AUDIT_IDS), new Set(ledgerIds))
+    assert.equal(AUDIT_IDS.length, 92)
+    assert.equal(new Set(AUDIT_IDS).size, 92)
+    assert.equal(recipeIds.length, 92)
     assert.deepEqual(new Set(AUDIT_IDS), new Set(recipeIds))
   })
 

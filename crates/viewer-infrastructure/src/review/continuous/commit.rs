@@ -1,7 +1,7 @@
 use super::super::{
     MAX_REVIEW_DOCUMENT_BYTES,
     atomic::{AtomicCreateOnceError, atomic_create_once_at, atomic_replace_at_with_barrier},
-    v3, v4,
+    v3, v4, v5,
 };
 use super::faults::ReviewCommitFaultPoint;
 use super::{
@@ -120,6 +120,7 @@ pub(super) fn install(
             let bytes = match prepared.protocol {
                 ReviewPublicationProtocol::V3 => v3::encode_archive_v3(&record),
                 ReviewPublicationProtocol::V4 => v4::encode_archive_v4(&record),
+                ReviewPublicationProtocol::V5 => v5::encode_archive_v5(&record),
             }
             .map_err(protocol_error)?;
             create_record(

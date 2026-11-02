@@ -771,7 +771,10 @@ impl StoredAnchorV2 {
             },
             FeedbackAnchor::ImagePoint(_)
             | FeedbackAnchor::ImageArrow(_)
-            | FeedbackAnchor::ImageEllipse(_) => return Err(ReviewProtocolError::InvalidData),
+            | FeedbackAnchor::ImageEllipse(_)
+            | FeedbackAnchor::ImageText(_)
+            | FeedbackAnchor::ImageLine(_)
+            | FeedbackAnchor::ImagePolygon(_) => return Err(ReviewProtocolError::InvalidData),
         })
     }
 

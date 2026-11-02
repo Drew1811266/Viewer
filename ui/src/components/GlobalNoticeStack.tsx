@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
-import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
+import ViewerIcon from './ui/ViewerIcon'
 
 export type GlobalNoticeTone = 'info' | 'warning' | 'danger'
 
@@ -47,28 +47,36 @@ export default function GlobalNoticeStack({
       aria-label="全局通知"
     >
       {visible.map((notice) => (
-        <ViewerLocalFeedback
+        <section
           key={notice.id}
-          tone={notice.tone}
-          title={notice.title}
-          action={
-            <div className="global-notice-actions">
-              {notice.action && (
-                <ViewerButton tone="secondary" onClick={notice.action.onAction}>
-                  {notice.action.label}
-                </ViewerButton>
-              )}
-              <ViewerIconButton
-                icon="x"
-                label={`关闭 ${notice.title}`}
-                tone="quiet"
-                onClick={() => setDismissed((current) => new Set([...current, notice.id]))}
-              />
-            </div>
-          }
+          className="viewer-local-feedback global-notice"
+          role={notice.tone === 'danger' ? 'alert' : 'status'}
+          data-tone={notice.tone}
         >
-          {notice.message}
-        </ViewerLocalFeedback>
+          <ViewerIcon
+            name={notice.tone === 'info' ? 'info' : 'alert-triangle'}
+            className="global-notice__icon"
+          />
+          <div className="global-notice__content">
+            <strong>{notice.title}</strong>
+            <p>{notice.message}</p>
+            {notice.action && (
+              <ViewerButton
+                className="global-notice__link"
+                tone="quiet"
+                onClick={notice.action.onAction}
+              >
+                {notice.action.label}
+              </ViewerButton>
+            )}
+          </div>
+          <ViewerIconButton
+            icon="x"
+            label={`关闭 ${notice.title}`}
+            tone="quiet"
+            onClick={() => setDismissed((current) => new Set([...current, notice.id]))}
+          />
+        </section>
       ))}
     </section>
   )

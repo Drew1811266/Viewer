@@ -6,6 +6,7 @@ import {
   initialAnnotationEditorState,
   isValidAnnotationAnchor,
 } from './annotationModel'
+import { defaultAnnotationStyle } from './annotationStyle'
 
 const RECT: ReviewAnchor = { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.3, height: 0.4 }
 const ELLIPSE: ReviewAnchor = {
@@ -44,6 +45,25 @@ describe('annotation editor model', () => {
     ).toBe(true)
   })
 
+  it('remembers the last style for each tool', () => {
+    let state = annotationEditorReducer(initialAnnotationEditorState(), {
+      type: 'set_tool',
+      tool: 'rectangle',
+    })
+    state = annotationEditorReducer(state, {
+      type: 'set_style',
+      style: { ...defaultAnnotationStyle('rectangle'), color: 'blue' },
+    })
+    state = annotationEditorReducer(state, { type: 'set_tool', tool: 'ellipse' })
+    state = annotationEditorReducer(state, {
+      type: 'set_style',
+      style: { ...defaultAnnotationStyle('ellipse'), color: 'green' },
+    })
+    state = annotationEditorReducer(state, { type: 'set_tool', tool: 'rectangle' })
+    expect(state.style?.color).toBe('blue')
+    state = annotationEditorReducer(state, { type: 'set_tool', tool: 'ellipse' })
+    expect(state.style?.color).toBe('green')
+  })
   it('switches tools and treats Space as temporary pan without losing the selected tool', () => {
     let state = annotationEditorReducer(initialAnnotationEditorState(), {
       type: 'set_tool',

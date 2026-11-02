@@ -9,6 +9,7 @@ mod review;
 pub mod review_workspace;
 mod search;
 mod settings;
+mod speech;
 mod video;
 
 pub use browse::*;
@@ -23,6 +24,7 @@ pub use project::*;
 pub use review::*;
 pub use search::*;
 pub use settings::*;
+pub use speech::*;
 pub use video::*;
 
 #[cfg(test)]

@@ -220,6 +220,7 @@ function ContinuousDialogs({
         <ReviewArchiveDialog
           preview={archive.dialog.preview}
           selection={archive.dialog.selection}
+          state={coordinator.view?.current?.authoring.state ?? null}
           busy={archive.busy}
           error={archive.error}
           onSelectionChange={(selection) => void archive.changeSelection(selection)}

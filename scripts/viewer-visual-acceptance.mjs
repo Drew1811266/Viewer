@@ -456,6 +456,8 @@ const VIEWER_BUTTON_DEPENDENTS = new Set([
 
 const BOUNDED_COMPONENT_IDS = new Map([
   ['ImagePreview', numberedAcceptanceIds('PRE', 8)],
+  ['AnnotationToolMenu', ['RVW-34', 'RVW-35', 'RVW-38']],
+  ['AnnotationStyleBar', ['RVW-38']],
   [
     'RadialFileMenu',
     [...numberedAcceptanceIds('RAD', 7), 'A11Y-01', 'A11Y-02'],

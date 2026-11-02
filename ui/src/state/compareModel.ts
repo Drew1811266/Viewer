@@ -53,6 +53,7 @@ export type CompareAction =
   | { type: 'fit'; entityId: string }
   | { type: 'actual_size'; entityId: string }
   | { type: 'zoom'; entityId: string; factor: number }
+  | { type: 'zoom_at'; entityId: string; factor: number; anchorX: number; anchorY: number }
   | { type: 'pan'; entityId: string; deltaX: number; deltaY: number }
   | { type: 'rotate_clockwise'; entityId: string }
 
@@ -169,6 +170,31 @@ export function reduceCompare(state: CompareState, action: CompareAction): Compa
         scale: clamp(current.scale * action.factor, MIN_COMPARE_SCALE, MAX_COMPARE_SCALE),
       }
       break
+    case 'zoom_at': {
+      if (!Number.isFinite(action.factor) || action.factor <= 0) return state
+      const scale = clamp(current.scale * action.factor, MIN_COMPARE_SCALE, MAX_COMPARE_SCALE)
+      const factor = scale / current.scale
+      const anchorX = clamp(action.anchorX, 0, 1)
+      const anchorY = clamp(action.anchorY, 0, 1)
+      const span = paneViewportSpan(
+        state.metrics[action.entityId],
+        transformFor(state, action.entityId).rotation,
+        current.scale,
+      )
+      next = {
+        ...current,
+        scale,
+        centerX:
+          span === null
+            ? current.centerX
+            : current.centerX + ((anchorX - 0.5) / span.x) * (1 - 1 / factor),
+        centerY:
+          span === null
+            ? current.centerY
+            : current.centerY + ((anchorY - 0.5) / span.y) * (1 - 1 / factor),
+      }
+      break
+    }
     case 'pan':
       if (!Number.isFinite(action.deltaX) || !Number.isFinite(action.deltaY)) return state
       next = {
@@ -301,6 +327,21 @@ function clampPane(transform: PaneTransform, metrics: PaneMetrics | undefined): 
     scale,
     centerX: clamp(transform.centerX, halfVisibleX, 1 - halfVisibleX),
     centerY: clamp(transform.centerY, halfVisibleY, 1 - halfVisibleY),
+  }
+}
+
+function paneViewportSpan(
+  metrics: PaneMetrics | undefined,
+  rotation: QuarterRotation,
+  scale: number,
+): { x: number; y: number } | null {
+  if (metrics === undefined || !validMetrics(metrics)) return null
+  const [width, height] = rotatedDimensions(metrics, rotation)
+  const fitScale = Math.min(1, metrics.viewportWidth / width, metrics.viewportHeight / height)
+  if (!Number.isFinite(fitScale) || fitScale <= 0) return null
+  return {
+    x: (width * fitScale * scale) / metrics.viewportWidth,
+    y: (height * fitScale * scale) / metrics.viewportHeight,
   }
 }
 

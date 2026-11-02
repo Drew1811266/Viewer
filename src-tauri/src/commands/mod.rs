@@ -11,6 +11,8 @@ pub(crate) mod review;
 pub(crate) mod review_workspace;
 pub(crate) mod search;
 pub(crate) mod settings;
+#[cfg(target_os = "macos")]
+pub(crate) mod speech;
 pub mod video;
 
 use crate::{APP_NAME, HealthResponse};

@@ -1,16 +1,23 @@
 use std::{collections::BTreeMap, error::Error, f64::consts::TAU, fmt, ops::Range};
 
 use viewer_render_core::{
-    AnnotationGeometry, AnnotationHandle, AnnotationNode, AnnotationStyle, HANDLE_RADIUS_PX,
-    NormalizedPoint, NormalizedRect, ORDINAL_RADIUS_PX, SceneRevision, SceneSnapshot,
-    TransformSnapshot, annotation_handles, annotation_ordinal_position,
+    AnnotationGeometry, AnnotationHandle, AnnotationNode, AnnotationStyle, NormalizedPoint,
+    NormalizedRect, ORDINAL_RADIUS_PX, SceneRevision, SceneSnapshot, TransformSnapshot,
+    annotation_handles, annotation_ordinal_position,
 };
 
 const ELLIPSE_SEGMENTS: usize = 48;
 const CIRCLE_SEGMENTS: usize = 16;
 const BADGE_RADIUS_PX: f32 = ORDINAL_RADIUS_PX as f32;
-const BADGE_RING_WIDTH_PX: f32 = 2.5;
-const POINT_RADIUS_PX: f32 = 7.0;
+const BADGE_RING_WIDTH_PX: f32 = 1.5;
+const BADGE_SELECTED_RING_RADIUS_PX: f32 = 14.0;
+const HALO_PER_SIDE_PX: f32 = 1.5;
+const HALO_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 0.9];
+const HANDLE_VISUAL_RADIUS_PX: f32 = 4.0;
+const HANDLE_BORDER_RADIUS_PX: f32 = 5.5;
+/// #C5BAFF in linear space; selection controls stay lavender instead of
+/// inheriting the annotation color.
+const SELECTION_LAVENDER_LINEAR: [f32; 4] = [0.5585, 0.491, 1.0, 1.0];
 /// Logical-pixel outset added around every solid shape so the fragment shader
 /// has room for its analytic antialiasing ramp. Must match `AA_FEATHER` in
 /// `shaders/annotation.wgsl`. 0.5 logical px equals 1 physical px at 2x
@@ -68,11 +75,18 @@ pub struct AnnotationMesh {
     ordinal_labels: Vec<OrdinalLabel>,
     selection_handle_count: usize,
     geometry_index_ranges: Vec<Range<u32>>,
+    multiply_geometry_index_ranges: Vec<Range<u32>>,
 }
 
 impl AnnotationMesh {
     pub fn geometry_index_ranges(&self) -> &[Range<u32>] {
         &self.geometry_index_ranges
+    }
+
+    /// Geometry ranges that must be drawn with the multiply blend pipeline.
+    /// These are subsets of `geometry_index_ranges` and never overlap.
+    pub fn multiply_geometry_index_ranges(&self) -> &[Range<u32>] {
+        &self.multiply_geometry_index_ranges
     }
     pub const fn revision(&self) -> SceneRevision {
         self.revision
@@ -135,6 +149,7 @@ impl AnnotationMeshBuilder {
             ordinal_labels: Vec::new(),
             selection_handle_count: 0,
             geometry_index_ranges: Vec::new(),
+            multiply_geometry_index_ranges: Vec::new(),
         };
         // Selected controls visually precede overlapping unselected geometry,
         // matching the selected-handle priority in native hit testing.
@@ -160,30 +175,22 @@ impl AnnotationMeshBuilder {
     ) -> Result<AnnotationMeshFragment, MeshError> {
         let mut fragment = AnnotationMeshFragment::default();
         match geometry {
-            AnnotationGeometry::Point { position } => {
-                push_screen_circle(
-                    &mut fragment,
-                    *position,
-                    POINT_RADIUS_PX,
-                    style.color,
-                    self.circle_segments,
-                )?;
+            AnnotationGeometry::Point { .. } => {
+                // The numbered badge is the visible point; no extra dot.
             }
             AnnotationGeometry::Arrow { tail, head } => {
                 // The shaft's head cap stays flush with the arrowhead apex.
                 push_segment_with_caps(&mut fragment, *tail, *head, style, true, false)?;
-                push_arrow_head(&mut fragment, *tail, *head, style.color)?;
+                push_arrow_head(
+                    &mut fragment,
+                    *tail,
+                    *head,
+                    style.color,
+                    style.line_width_px,
+                )?;
             }
             AnnotationGeometry::Rectangle { rect } => {
-                let corners = rect_corners(*rect);
-                for index in 0..4 {
-                    push_segment(
-                        &mut fragment,
-                        corners[index],
-                        corners[(index + 1) % 4],
-                        style,
-                    )?;
-                }
+                push_rounded_rect(&mut fragment, *rect, style, style.corner_radius)?;
             }
             AnnotationGeometry::Ellipse { rect } => {
                 if self.ellipse_segments < 3 {
@@ -228,17 +235,92 @@ impl AnnotationMeshBuilder {
         Ok(fragment)
     }
 
+    /// White outline drawn under the colored geometry. It is a slightly wider
+    /// version of the same shape, so the badge, fill and DOM note all sit on a
+    /// readable edge over dark or busy imagery.
+    fn tessellate_halo(
+        &self,
+        geometry: &AnnotationGeometry,
+        style: AnnotationStyle,
+    ) -> Result<AnnotationMeshFragment, MeshError> {
+        let mut fragment = AnnotationMeshFragment::default();
+        let halo = AnnotationStyle {
+            color: HALO_COLOR,
+            line_width_px: style.line_width_px + HALO_PER_SIDE_PX * 2.0,
+            dashed: false,
+            halo: false,
+            corner_radius: style.corner_radius,
+            multiply: false,
+        };
+        match geometry {
+            AnnotationGeometry::Point { .. } => {}
+            AnnotationGeometry::Arrow { tail, head } => {
+                push_segment_with_caps(&mut fragment, *tail, *head, halo, true, false)?;
+                push_arrow_head(&mut fragment, *tail, *head, HALO_COLOR, halo.line_width_px)?;
+            }
+            AnnotationGeometry::Rectangle { rect } => {
+                push_rounded_rect(&mut fragment, *rect, halo, halo.corner_radius)?;
+            }
+            AnnotationGeometry::Ellipse { rect } => {
+                let center_x = rect.x + rect.width / 2.0;
+                let center_y = rect.y + rect.height / 2.0;
+                let radius_x = rect.width / 2.0;
+                let radius_y = rect.height / 2.0;
+                let points = (0..self.ellipse_segments)
+                    .map(|index| {
+                        let angle = TAU * index as f64 / self.ellipse_segments as f64;
+                        NormalizedPoint {
+                            x: center_x + radius_x * angle.cos(),
+                            y: center_y + radius_y * angle.sin(),
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                for index in 0..points.len() {
+                    push_segment(
+                        &mut fragment,
+                        points[index],
+                        points[(index + 1) % points.len()],
+                        halo,
+                    )?;
+                }
+            }
+            AnnotationGeometry::Stroke { points } => {
+                for pair in points.windows(2) {
+                    if pair[0] != pair[1] {
+                        push_segment(&mut fragment, pair[0], pair[1], halo)?;
+                    }
+                }
+            }
+        }
+        Ok(fragment)
+    }
+
     fn append_node(
         &self,
         mesh: &mut AnnotationMesh,
         node: &AnnotationNode,
         include_badge: bool,
     ) -> Result<(), MeshError> {
-        let fragment = self.tessellate_geometry(&node.geometry, node.style)?;
         let geometry_start = mesh.indices.len() as u32;
+        if node.style.halo {
+            let halo = self.tessellate_halo(&node.geometry, node.style)?;
+            append_fragment(mesh, halo)?;
+        }
+        let color_start = mesh.indices.len() as u32;
+        let fragment = self.tessellate_geometry(&node.geometry, node.style)?;
         append_fragment(mesh, fragment)?;
-        mesh.geometry_index_ranges
-            .push(geometry_start..mesh.indices.len() as u32);
+        let color_end = mesh.indices.len() as u32;
+        if node.style.multiply {
+            // Halo (if any) stays in the normal pass; only the colored body
+            // is multiplied so white underlays cannot double-darken the image.
+            if color_start > geometry_start {
+                mesh.geometry_index_ranges.push(geometry_start..color_start);
+            }
+            mesh.multiply_geometry_index_ranges
+                .push(color_start..color_end);
+        } else {
+            mesh.geometry_index_ranges.push(geometry_start..color_end);
+        }
 
         if node.selected {
             for (_, handle) in annotation_handles(&node.geometry)
@@ -250,14 +332,14 @@ impl AnnotationMeshBuilder {
                     push_screen_circle(
                         &mut fragment,
                         handle,
-                        HANDLE_RADIUS_PX as f32,
-                        node.style.color,
+                        HANDLE_BORDER_RADIUS_PX,
+                        SELECTION_LAVENDER_LINEAR,
                         self.circle_segments,
                     )?;
                     push_screen_circle(
                         &mut fragment,
                         handle,
-                        (HANDLE_RADIUS_PX - 2.0) as f32,
+                        HANDLE_VISUAL_RADIUS_PX,
                         [1.0; 4],
                         self.circle_segments,
                     )?;
@@ -265,15 +347,10 @@ impl AnnotationMeshBuilder {
                     push_screen_square(
                         &mut fragment,
                         handle,
-                        HANDLE_RADIUS_PX as f32,
-                        node.style.color,
+                        HANDLE_BORDER_RADIUS_PX,
+                        SELECTION_LAVENDER_LINEAR,
                     )?;
-                    push_screen_square(
-                        &mut fragment,
-                        handle,
-                        (HANDLE_RADIUS_PX - 2.0) as f32,
-                        [1.0; 4],
-                    )?;
+                    push_screen_square(&mut fragment, handle, HANDLE_VISUAL_RADIUS_PX, [1.0; 4])?;
                 }
                 append_fragment(mesh, fragment)?;
                 mesh.selection_handle_count += 1;
@@ -289,20 +366,39 @@ impl AnnotationMeshBuilder {
             // in the node color, overpainted by a smaller white disc. Both
             // edges get the shader's analytic AA ramp, so the ring stays crisp
             // on any backdrop.
-            push_screen_circle(
-                &mut badge,
-                anchor,
-                BADGE_RADIUS_PX,
-                node.style.color,
-                self.circle_segments,
-            )?;
-            push_screen_circle(
-                &mut badge,
-                anchor,
-                BADGE_RADIUS_PX - BADGE_RING_WIDTH_PX,
-                [1.0; 4],
-                self.circle_segments,
-            )?;
+            let label_color = if node.selected {
+                push_screen_circle(
+                    &mut badge,
+                    anchor,
+                    BADGE_SELECTED_RING_RADIUS_PX,
+                    SELECTION_LAVENDER_LINEAR,
+                    self.circle_segments,
+                )?;
+                push_screen_circle(
+                    &mut badge,
+                    anchor,
+                    BADGE_RADIUS_PX,
+                    node.style.color,
+                    self.circle_segments,
+                )?;
+                [1.0; 4]
+            } else {
+                push_screen_circle(
+                    &mut badge,
+                    anchor,
+                    BADGE_RADIUS_PX,
+                    node.style.color,
+                    self.circle_segments,
+                )?;
+                push_screen_circle(
+                    &mut badge,
+                    anchor,
+                    BADGE_RADIUS_PX - BADGE_RING_WIDTH_PX,
+                    [1.0; 4],
+                    self.circle_segments,
+                )?;
+                node.style.color
+            };
             append_fragment(mesh, badge)?;
             mesh.ordinal_labels.push(OrdinalLabel {
                 anchor,
@@ -310,7 +406,7 @@ impl AnnotationMeshBuilder {
                 geometry: node.geometry.clone(),
                 badge_vertices: badge_start..mesh.vertices.len(),
                 badge_indices: badge_index_start..mesh.indices.len(),
-                color: node.style.color,
+                color: label_color,
             });
         }
         Ok(())
@@ -462,15 +558,19 @@ fn push_arrow_head(
     tail: NormalizedPoint,
     head: NormalizedPoint,
     color: [f32; 4],
+    line_width_px: f32,
 ) -> Result<(), MeshError> {
     if tail == head {
         return Err(MeshError::DegenerateSegment);
     }
+    let scale = (line_width_px / 2.0).max(1.0);
+    let length = 11.0 * scale;
+    let half = 5.2 * scale;
     let base = u32::try_from(fragment.vertices.len()).map_err(|_| MeshError::MeshTooLarge)?;
     fragment.vertices.extend([
         arrow_head_vertex(tail, head, [0.0, 0.0], color),
-        arrow_head_vertex(tail, head, [7.0, -14.0], color),
-        arrow_head_vertex(tail, head, [-7.0, -14.0], color),
+        arrow_head_vertex(tail, head, [half, -length], color),
+        arrow_head_vertex(tail, head, [-half, -length], color),
     ]);
     fragment.indices.extend([base, base + 1, base + 2]);
     Ok(())
@@ -595,6 +695,67 @@ fn geometry_anchor(geometry: &AnnotationGeometry) -> NormalizedPoint {
         }
         AnnotationGeometry::Stroke { points } => points[points.len() - 1],
     }
+}
+
+const CORNER_ARC_SEGMENTS: usize = 4;
+
+fn push_rounded_rect(
+    fragment: &mut AnnotationMeshFragment,
+    rect: NormalizedRect,
+    style: AnnotationStyle,
+    radius: [f32; 2],
+) -> Result<(), MeshError> {
+    let points = rounded_rect_points(rect, radius);
+    for index in 0..points.len() {
+        let start = points[index];
+        let end = points[(index + 1) % points.len()];
+        if start != end {
+            push_segment(fragment, start, end, style)?;
+        }
+    }
+    Ok(())
+}
+
+fn rounded_rect_points(rect: NormalizedRect, radius: [f32; 2]) -> Vec<NormalizedPoint> {
+    let rx = f64::from(radius[0].max(0.0)).min(rect.width / 2.0);
+    let ry = f64::from(radius[1].max(0.0)).min(rect.height / 2.0);
+    if rx <= f64::EPSILON || ry <= f64::EPSILON {
+        return rect_corners(rect).to_vec();
+    }
+    let left = rect.x;
+    let right = rect.x + rect.width;
+    let top = rect.y;
+    let bottom = rect.y + rect.height;
+    let mut points = Vec::with_capacity(CORNER_ARC_SEGMENTS * 4 + 4);
+    let mut push_corner = |center_x: f64, center_y: f64, start: f64, end: f64| {
+        for step in 0..=CORNER_ARC_SEGMENTS {
+            let angle = start + (end - start) * step as f64 / CORNER_ARC_SEGMENTS as f64;
+            points.push(NormalizedPoint {
+                x: center_x + rx * angle.cos(),
+                y: center_y + ry * angle.sin(),
+            });
+        }
+    };
+    push_corner(
+        left + rx,
+        top + ry,
+        std::f64::consts::PI,
+        1.5 * std::f64::consts::PI,
+    );
+    push_corner(
+        right - rx,
+        top + ry,
+        1.5 * std::f64::consts::PI,
+        2.0 * std::f64::consts::PI,
+    );
+    push_corner(right - rx, bottom - ry, 0.0, 0.5 * std::f64::consts::PI);
+    push_corner(
+        left + rx,
+        bottom - ry,
+        0.5 * std::f64::consts::PI,
+        std::f64::consts::PI,
+    );
+    points
 }
 
 fn rect_corners(rect: NormalizedRect) -> [NormalizedPoint; 4] {

@@ -20,7 +20,7 @@ fn envelope() -> Value {
             "canonicalDigest": "cd".repeat(32), "sourceDigest": "ef".repeat(32), "source": "producer/usage.json"
         }}],
         "command": {"kind": "save_feedback", "feedbackId": null, "text": "袖口收紧，保留材质", "targets": [
-            {"kind": "add", "assetVersionId": id(11), "anchor": {"kind": "image_rect", "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}}
+            {"kind": "add", "assetVersionId": id(11), "anchor": {"kind": "image_rect", "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}, "style": null}
         ]}
     })
 }

@@ -1,4 +1,5 @@
 import type { OperationProgressEvent, OperationResultPage } from '../api/types'
+import { operationResultMessage } from './operationResultCopy'
 import { ViewerIconButton } from './ui/ViewerButton'
 import ViewerInspector from './ui/ViewerInspector'
 import ViewerStatusTag, { type ViewerStatusTagTone } from './ui/ViewerStatusTag'
@@ -67,15 +68,20 @@ export default function OperationResults({
       onClose={onClose}
     >
       <ul className="operation-results-list" data-batch-id={batchId}>
-        {page.items.map((item) => (
-          <li key={item.entityId} data-status={item.status}>
-            <span>{item.relativePath}</span>
-            <ViewerStatusTag tone={statusTone(item.status)}>
-              {statusLabel(item.status)}
-            </ViewerStatusTag>
-            <code>{item.code}</code>
-          </li>
-        ))}
+        {page.items.map((item) => {
+          const message = operationResultMessage(item.code)
+          return (
+            <li key={item.entityId} data-status={item.status}>
+              <span className="operation-results-path">
+                <span>{item.relativePath}</span>
+                {message !== null && <span className="operation-results-detail">{message}</span>}
+              </span>
+              <ViewerStatusTag tone={statusTone(item.status)}>
+                {statusLabel(item.status)}
+              </ViewerStatusTag>
+            </li>
+          )
+        })}
       </ul>
     </ViewerInspector>
   )

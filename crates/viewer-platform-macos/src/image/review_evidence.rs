@@ -235,6 +235,7 @@ impl MacReviewEvidenceRenderer {
                     ordinal: a.ordinal,
                     feedback_id: a.key.feedback_id,
                     anchor: a.anchor.clone(),
+                    style: a.style,
                 })
                 .collect::<Vec<_>>();
             let rendered = draw_annotations(&image, base_ref.width, base_ref.height, &annotations)?;

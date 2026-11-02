@@ -400,7 +400,7 @@ fn theater_color() -> Retained<NSColor> {
 }
 
 fn theater_color_components() -> [f64; 4] {
-    [245.0 / 255.0, 245.0 / 255.0, 243.0 / 255.0, 1.0]
+    [251.0 / 255.0, 251.0 / 255.0, 251.0 / 255.0, 1.0]
 }
 
 fn configure_transparent_webview(webview: &NSView) -> Result<(), SurfaceError> {
@@ -584,7 +584,7 @@ mod tests {
     fn native_theater_uses_the_viewer_light_neutral_surface() {
         assert_eq!(
             theater_color_components(),
-            [245.0 / 255.0, 245.0 / 255.0, 243.0 / 255.0, 1.0]
+            [251.0 / 255.0, 251.0 / 255.0, 251.0 / 255.0, 1.0]
         );
     }
 

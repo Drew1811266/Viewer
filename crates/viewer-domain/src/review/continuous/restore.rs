@@ -255,6 +255,7 @@ pub fn plan_restore(
                     anchor: confirmed_anchor
                         .clone()
                         .unwrap_or_else(|| old_target.anchor.clone()),
+                    style: old_target.style,
                     availability: if confirmed_anchor.is_some() {
                         ReviewAvailability::Ready
                     } else {

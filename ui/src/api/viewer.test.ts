@@ -423,12 +423,14 @@ describe('tauriViewerBridge', () => {
     await tauriViewerBridge.updateViewerSettings({
       thumbnailDensity: 'large',
       magnifier: { shape: 'rounded_rectangle', magnification: 2, area: 'medium' },
+      speech: { inputMode: 'hold', locale: 'english', autoPunctuation: false },
     })
 
     expect(invoke).toHaveBeenCalledWith('update_viewer_settings', {
       settings: {
         thumbnailDensity: 'large',
         magnifier: { shape: 'rounded_rectangle', magnification: 2, area: 'medium' },
+        speech: { inputMode: 'hold', locale: 'english', autoPunctuation: false },
       },
     })
   })

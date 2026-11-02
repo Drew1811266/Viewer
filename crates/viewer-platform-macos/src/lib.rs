@@ -6,6 +6,8 @@ pub mod image;
 pub mod image_render;
 pub mod settings;
 #[cfg(target_os = "macos")]
+pub mod speech;
+#[cfg(target_os = "macos")]
 pub mod video;
 #[cfg(target_os = "macos")]
 pub mod watcher;
@@ -69,6 +71,10 @@ impl ProjectProbePort for MacProjectProbe {
 
         Ok(ProjectAccess::ReadWrite)
     }
+}
+
+pub fn open_privacy_security_settings() -> std::io::Result<()> {
+    open_external_url("x-apple.systempreferences:com.apple.preference.security")
 }
 
 pub fn open_external_url(url: &str) -> std::io::Result<()> {

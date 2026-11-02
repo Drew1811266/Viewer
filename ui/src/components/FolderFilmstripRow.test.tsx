@@ -222,8 +222,8 @@ describe('FolderFilmstripRow', () => {
     const { container } = renderRow({ density: 'large' })
     const row = container.querySelector<HTMLElement>('.folder-filmstrip-row')
     if (row === null) throw new Error('row is not rendered')
-    expect(row.style.minHeight).toBe('192px')
-    expect(row.style.containIntrinsicSize).toBe('auto 192px')
+    expect(row.style.minHeight).toBe('190px')
+    expect(row.style.containIntrinsicSize).toBe('auto 190px')
   })
 
   // Regression: the dev entry renders under <StrictMode>, which runs every
@@ -268,7 +268,7 @@ describe('FolderFilmstripRow', () => {
     })
 
     await filmstrip.findByRole('button', { name: '预览 image-1.jpg' })
-    expect(screen.getByText('返工 · 4 条')).toBeVisible()
+    expect(screen.getByText('返工 · 4')).toBeVisible()
     expect(screen.getAllByText(/返工/)).toHaveLength(1)
   })
 
@@ -350,10 +350,10 @@ describe('FolderFilmstripRow', () => {
     expect(intersectionOptions).toEqual({ rootMargin: '600px 0px' })
     expect(observedTargets).toEqual(new Set([filmstrip.closest('article')]))
     expect(filmstrip).toHaveAttribute('data-state', 'idle')
-    expect(screen.getByText('张图片')).toBeVisible()
-    expect(screen.getByText('· 1 个其它文件')).toBeVisible()
-    expect(screen.getByText('未标记')).toBeVisible()
-    expect(screen.getByText('1 / 4')).toBeVisible()
+    const identity = screen.getByRole('button', { name: '打开 B01' })
+    expect(identity).toHaveTextContent('3 张图片 · 1 个其它文件')
+    expect(identity).toHaveTextContent('未标记')
+    expect(identity).toHaveTextContent('已审阅 1 / 4')
 
     act(revealRow)
 
@@ -398,7 +398,8 @@ describe('FolderFilmstripRow', () => {
     expect(rowError).toHaveClass('viewer-local-feedback')
     fireEvent.click(screen.getByRole('button', { name: '重试 B01' }))
 
-    await waitFor(() => expect(screen.getByText('无图片')).toBeVisible())
+    await waitFor(() => expect(screen.getByText('暂无图片')).toBeVisible())
+    expect(screen.getByText('把图片放进这个文件夹后会显示在这里')).toBeVisible()
     expect(loadImages).toHaveBeenNthCalledWith(1, 'folder-b01', false)
     expect(loadImages).toHaveBeenNthCalledWith(2, 'folder-b01', true)
   })
@@ -440,7 +441,7 @@ describe('FolderFilmstripRow', () => {
     filmstrip.scrollLeft = 608
     fireEvent.scroll(filmstrip)
 
-    await waitFor(() => expect(thumb).toHaveStyle({ transform: 'translateX(78px)' }))
+    await waitFor(() => expect(thumb).toHaveStyle({ transform: 'translateX(70px)' }))
   })
 
   it('renders unsupported representatives without requesting their thumbnails', async () => {
@@ -524,11 +525,11 @@ describe('FolderFilmstripRow', () => {
 
     rendered.rerender(<FolderFilmstripRow {...props} density="large" />)
 
-    await waitFor(() => expect(filmstrip.scrollLeft).toBe(340))
+    await waitFor(() => expect(filmstrip.scrollLeft).toBeCloseTo(333.33, 1))
     const landscape = within(filmstrip)
       .getByRole('button', { name: '预览 image-3.jpg' })
       .closest<HTMLElement>('[role="listitem"]')
-    expect(landscape).toHaveStyle({ left: '308px', width: '252px', height: '168px' })
+    expect(landscape).toHaveStyle({ left: '301.3333333333333px', width: '246px', height: '164px' })
   })
 
   it('keeps the near-edge anchor when large-to-compact reflow clamps horizontal scroll', async () => {

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ModalSheet from './ModalSheet'
 import ViewerButton from './ui/ViewerButton'
-import ViewerChoiceChip from './ui/ViewerChoiceChip'
 import ViewerField from './ui/ViewerField'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
@@ -61,25 +60,21 @@ export default function RenameDialog({
           onConfirm(editExtension ? name : stemOf(name), editExtension)
         }}
       >
-        <ViewerField label="新文件名">
+        <ViewerField label="新文件名" error={validation ?? undefined}>
           <input
             ref={inputRef}
             value={name}
-            aria-invalid={validation !== null}
-            aria-describedby={validation ? 'rename-error' : undefined}
             onChange={(event) => setName(event.currentTarget.value)}
           />
         </ViewerField>
-        {validation && (
-          <div id="rename-error">
-            <ViewerLocalFeedback tone="danger" title="无法使用这个文件名">
-              {validation}
-            </ViewerLocalFeedback>
-          </div>
-        )}
-        <ViewerChoiceChip checked={editExtension} onCheckedChange={setEditExtension}>
-          允许修改扩展名
-        </ViewerChoiceChip>
+        <label className="rename-extension-choice">
+          <input
+            type="checkbox"
+            checked={editExtension}
+            onChange={(event) => setEditExtension(event.currentTarget.checked)}
+          />
+          <span>允许修改扩展名</span>
+        </label>
         {busy && (
           <ViewerLocalFeedback tone="info" title="正在提交重命名">
             请等待当前文件操作完成。

@@ -99,9 +99,9 @@ describe('TextPreview', () => {
     const toolbar = within(dialog).getByRole('toolbar', { name: '文本预览工具' })
     expect(toolbar).toHaveClass('viewer-toolbar')
     expect(toolbar.querySelector('.viewer-toolbar__actions')).toBeVisible()
-    const complete = within(dialog).getByRole('button', { name: '关闭预览' })
+    const complete = within(dialog).getByRole('button', { name: '返回网格' })
     expect(complete).toHaveClass('viewer-button', 'preview-complete-action')
-    expect(complete).toHaveTextContent('完成')
+    expect(complete).toHaveTextContent('返回网格')
     expect(within(dialog).getAllByRole('region')).toHaveLength(2)
     expect(within(dialog).queryByText(/差异|合并/)).not.toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'plain.txt 文本编码' })).toBeVisible()
@@ -224,9 +224,9 @@ describe('TextPreview', () => {
     fireEvent.click(launcher)
 
     const dialog = screen.getByRole('dialog')
-    const first = screen.getByRole('button', { name: '关闭预览' })
+    const first = screen.getByRole('button', { name: '返回' })
     const last = screen.getByRole('combobox', { name: 'notes.md 文本编码' })
-    await waitFor(() => expect(first).toHaveFocus())
+    await waitFor(() => expect(dialog).toHaveFocus())
 
     last.focus()
     fireEvent.keyDown(dialog, { key: 'Tab' })

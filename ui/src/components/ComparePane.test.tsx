@@ -105,7 +105,7 @@ describe('ComparePane', () => {
     const requestImage = vi.fn((_file: BrowserFile, request: ImageRepresentationRequest) =>
       request.kind === 'original100_percent' ? original.promise : proxy.promise,
     )
-    renderPane({ requestImage })
+    const rendered = renderPane({ requestImage })
     act(() => resize(800, 600))
 
     await waitFor(() =>
@@ -121,9 +121,22 @@ describe('ComparePane', () => {
     expect(proxyImage).toHaveStyle({ width: '800px', height: '600px' })
 
     await act(async () => original.resolve(representation('original-a', 4_000, 3_000)))
-    const originalImage = await screen.findByRole('img', { name: 'front.jpg' })
-    expect(originalImage).toHaveAttribute('src', 'viewer-image://localhost/original-a')
-    expect(originalImage).toHaveStyle({ width: '800px', height: '600px' })
+    expect(await screen.findByRole('img', { name: 'front.jpg' })).toHaveAttribute(
+      'src',
+      'viewer-image://localhost/proxy-a',
+    )
+
+    rendered.rerender(pane({ requestImage, transform: { ...transform, scale: 2 } }))
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'front.jpg' })).toHaveAttribute(
+        'src',
+        'viewer-image://localhost/original-a',
+      ),
+    )
+    expect(screen.getByRole('img', { name: 'front.jpg' })).toHaveStyle({
+      width: '800px',
+      height: '600px',
+    })
   })
 
   it('does not decode the same pane again when only its marker changes', async () => {
@@ -178,6 +191,82 @@ describe('ComparePane', () => {
     expect(pan).toHaveBeenCalledWith('a', -0.1, -0.1)
   })
 
+  it('zooms at the trackpad pinch anchor and pans with two-finger scroll', async () => {
+    const resize = installResizeObserver()
+    const zoomAt = vi.fn()
+    const pan = vi.fn()
+    renderPane({
+      requestImage: vi.fn().mockResolvedValue(representation('proxy-a', 800, 600)),
+      onZoomAt: zoomAt,
+      onPan: pan,
+      panWheelEnabled: true,
+    })
+    act(() => resize(800, 600))
+    await screen.findByRole('img', { name: 'front.jpg' })
+    const stage = defined(
+      document.querySelector('.compare-pane-stage'),
+      'Expected compare pane stage',
+    )
+
+    const pinch = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      clientX: 200,
+      clientY: 300,
+      deltaY: -100,
+      deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+    })
+    stage.dispatchEvent(pinch)
+    expect(pinch.defaultPrevented).toBe(true)
+    await waitFor(() =>
+      expect(zoomAt).toHaveBeenCalledWith('a', expect.closeTo(1.4918, 3), 0.25, 0.5),
+    )
+
+    const scroll = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 400,
+      clientY: 300,
+      deltaX: 80,
+      deltaY: 0,
+      deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+    })
+    stage.dispatchEvent(scroll)
+    expect(scroll.defaultPrevented).toBe(true)
+    await waitFor(() => expect(pan).toHaveBeenCalledWith('a', expect.closeTo(0.1, 5), 0))
+  })
+
+  it('coalesces a burst of pinch events into one zoom update per frame', async () => {
+    const resize = installResizeObserver()
+    const zoomAt = vi.fn()
+    renderPane({
+      requestImage: vi.fn().mockResolvedValue(representation('proxy-a', 800, 600)),
+      onZoomAt: zoomAt,
+    })
+    act(() => resize(800, 600))
+    await screen.findByRole('img', { name: 'front.jpg' })
+    const stage = defined(
+      document.querySelector('.compare-pane-stage'),
+      'Expected compare pane stage',
+    )
+    for (const deltaY of [-20, -20, -20]) {
+      stage.dispatchEvent(
+        new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+          clientX: 200,
+          clientY: 300,
+          deltaY,
+          deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        }),
+      )
+    }
+
+    await waitFor(() => expect(zoomAt).toHaveBeenCalledOnce())
+    expect(zoomAt).toHaveBeenCalledWith('a', expect.closeTo(Math.exp(0.24), 3), 0.25, 0.5)
+  })
   it('swaps viewport constraints for quarter-turn proxies without upscaling them', async () => {
     const resize = installResizeObserver()
     const vertical = {
@@ -244,7 +333,7 @@ describe('ComparePane', () => {
     act(() => resize(640, 480))
     expect(await screen.findByRole('img', { name: 'front.jpg' })).toHaveAttribute(
       'src',
-      'viewer-image://localhost/old-original',
+      'viewer-image://localhost/old-proxy',
     )
 
     rendered.rerender(
@@ -263,7 +352,20 @@ describe('ComparePane', () => {
     await act(async () => replacementOriginal.resolve(representation('new-original', 4_000, 3_000)))
     expect(await screen.findByRole('img', { name: 'front.jpg' })).toHaveAttribute(
       'src',
-      'viewer-image://localhost/new-original',
+      'viewer-image://localhost/new-proxy',
+    )
+    rendered.rerender(
+      pane({
+        requestImage,
+        file: { ...file, modifiedNs: '2', size: 101 },
+        transform: { ...transform, scale: 2 },
+      }),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'front.jpg' })).toHaveAttribute(
+        'src',
+        'viewer-image://localhost/new-original',
+      ),
     )
   })
 
@@ -302,7 +404,20 @@ describe('ComparePane', () => {
     await act(async () => replacementOriginal.resolve(representation('original-b', 4_000, 3_000)))
     expect(await screen.findByRole('img', { name: 'back.jpg' })).toHaveAttribute(
       'src',
-      'viewer-image://localhost/original-b',
+      'viewer-image://localhost/proxy-b',
+    )
+    rendered.rerender(
+      pane({
+        requestImage,
+        file: image('b', 'back.jpg', null, false),
+        transform: { ...transform, scale: 2 },
+      }),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'back.jpg' })).toHaveAttribute(
+        'src',
+        'viewer-image://localhost/original-b',
+      ),
     )
   })
 
@@ -409,6 +524,8 @@ function pane(overrides: Partial<React.ComponentProps<typeof ComparePane>>) {
       onActivate={vi.fn()}
       onMetrics={vi.fn()}
       onPan={vi.fn()}
+      onZoomAt={vi.fn()}
+      panWheelEnabled
       onRemove={vi.fn()}
       onSetReview={vi.fn()}
       onToggleFavorite={vi.fn()}

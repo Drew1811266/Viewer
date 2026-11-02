@@ -419,6 +419,19 @@ describe('real image workbench editing ownership', () => {
     },
   )
 
+  it('layers Escape so a selected region is not dropped straight to the grid', async () => {
+    const work = await mount()
+    fireEvent.click(screen.getByRole('button', { name: '选择意见 1：原意见' }))
+    expect(work.current().selectedItemId).not.toBeNull()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(work.current().selectedItemId).toBeNull()
+    expect(work.leave).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(work.leave).toHaveBeenCalledWith({ kind: 'return_grid' }))
+  })
+
   it('creates two independent brush opinions and only explicit redraw replaces identity', async () => {
     const work = await mount(reviewCoordinator(null))
     for (const text of ['第一条', '第二条']) {
@@ -593,11 +606,14 @@ function reviewCanvasContext(): CanvasRenderingContext2D {
     beginPath: vi.fn(),
     moveTo: vi.fn(),
     lineTo: vi.fn(),
+    closePath: vi.fn(),
+    arcTo: vi.fn(),
+    fill: vi.fn(),
+    ellipse: vi.fn(),
     stroke: vi.fn(),
     strokeRect: vi.fn(),
+    fillRect: vi.fn(),
     arc: vi.fn(),
-    ellipse: vi.fn(),
-    fill: vi.fn(),
     fillText: vi.fn(),
     lineCap: 'butt',
     lineJoin: 'miter',

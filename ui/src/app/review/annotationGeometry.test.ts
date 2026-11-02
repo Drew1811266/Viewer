@@ -77,7 +77,7 @@ describe('annotation geometry', () => {
     expect((ellipse?.width ?? 0) * 1_200).toBeCloseTo((ellipse?.height ?? 0) * 800)
   })
 
-  it('moves whole shapes without changing size and resizes only the active box corner', () => {
+  it('moves whole shapes without changing size and resizes only the active box edge', () => {
     expect(
       moveAnchor(
         { kind: 'image_ellipse', x: 0.7, y: 0.7, width: 0.2, height: 0.2 },
@@ -92,5 +92,17 @@ describe('annotation geometry', () => {
         { x: 0.8, y: 0.9 },
       ),
     ).toEqual({ kind: 'image_rect', x: 0.2, y: 0.2, width: 0.6, height: 0.7 })
+    expect(
+      resizeBoxAnchor({ kind: 'image_rect', x: 0.2, y: 0.2, width: 0.4, height: 0.4 }, 'north', {
+        x: 0.9,
+        y: 0.1,
+      }),
+    ).toEqual({ kind: 'image_rect', x: 0.2, y: 0.1, width: 0.4, height: 0.5 })
+    expect(
+      resizeBoxAnchor({ kind: 'image_rect', x: 0.2, y: 0.2, width: 0.4, height: 0.4 }, 'east', {
+        x: 0.5,
+        y: 0.9,
+      }),
+    ).toEqual({ kind: 'image_rect', x: 0.2, y: 0.2, width: 0.3, height: 0.4 })
   })
 })

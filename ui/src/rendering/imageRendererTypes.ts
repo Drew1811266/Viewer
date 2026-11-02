@@ -57,7 +57,14 @@ export interface ImageRendererAnnotation {
   id: string
   ordinal: number
   geometry: ImageRendererAnnotationGeometry
-  style: { color: [number, number, number, number]; lineWidthPx: number; dashed: boolean }
+  style: {
+    color: [number, number, number, number]
+    lineWidthPx: number
+    dashed: boolean
+    halo?: boolean
+    cornerRadius?: [number, number]
+    multiply?: boolean
+  }
   selected: boolean
   draft: boolean
   visible: boolean

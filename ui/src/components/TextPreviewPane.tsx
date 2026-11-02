@@ -85,6 +85,30 @@ export default function TextPreviewPane({
     [],
   )
 
+  const encodingControl = (
+    <ViewerField label="文本编码" inline className="text-encoding-field">
+      <select
+        aria-label={`${file.name} 文本编码`}
+        value={selectedEncoding || preview?.encoding || ''}
+        disabled={unavailable}
+        onChange={(event) => {
+          const encoding = event.currentTarget.value as TextEncoding
+          setSelectedEncoding(encoding)
+          void load(encoding)
+        }}
+      >
+        <option value="" disabled>
+          自动识别
+        </option>
+        <option value="utf8">UTF-8</option>
+        <option value="utf16_le">UTF-16 LE</option>
+        <option value="utf16_be">UTF-16 BE</option>
+        <option value="gb18030">GB18030</option>
+      </select>
+    </ViewerField>
+  )
+  const markdownReady = preview?.format === 'markdown' && !unavailable && error === null
+
   return (
     <section
       className="text-preview-pane"
@@ -92,29 +116,12 @@ export default function TextPreviewPane({
       tabIndex={0}
       data-testid={`text-pane-${file.entityId}`}
     >
-      <header className="text-preview-pane-toolbar">
-        <h2 id={headingId}>{file.name}</h2>
-        <ViewerField label="文本编码" inline className="text-encoding-field">
-          <select
-            aria-label={`${file.name} 文本编码`}
-            value={selectedEncoding || preview?.encoding || ''}
-            disabled={unavailable}
-            onChange={(event) => {
-              const encoding = event.currentTarget.value as TextEncoding
-              setSelectedEncoding(encoding)
-              void load(encoding)
-            }}
-          >
-            <option value="" disabled>
-              自动识别
-            </option>
-            <option value="utf8">UTF-8</option>
-            <option value="utf16_le">UTF-16 LE</option>
-            <option value="utf16_be">UTF-16 BE</option>
-            <option value="gb18030">GB18030</option>
-          </select>
-        </ViewerField>
-      </header>
+      {!markdownReady && (
+        <header className="text-preview-pane-toolbar">
+          <h2 id={headingId}>{file.name}</h2>
+          {encodingControl}
+        </header>
+      )}
       {unavailable && (
         <ViewerLocalFeedback tone="danger" title="文件已不可用">
           {file.name} 已移动、删除或暂时无法访问。
@@ -141,6 +148,8 @@ export default function TextPreviewPane({
         <MarkdownDocumentEditor
           file={file}
           preview={preview}
+          headingId={headingId}
+          encodingControl={encodingControl}
           readOnly={projectReadOnly}
           saveText={saveText}
           renderMarkdown={renderMarkdown}

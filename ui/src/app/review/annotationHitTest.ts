@@ -1,6 +1,11 @@
-import type { BoxHandle, ImageAnchor, NormalizedPoint } from './annotationGeometry'
+import type {
+  BoxHandle,
+  ImageAnchor,
+  NormalizedPoint,
+  PolygonVertexHandle,
+} from './annotationGeometry'
 
-export type AnnotationHandle = BoxHandle | 'point' | 'tail' | 'head'
+export type AnnotationHandle = BoxHandle | 'point' | 'tail' | 'head' | PolygonVertexHandle
 export type AnnotationHitPart = 'handle' | 'ordinal' | 'outline' | 'interior'
 
 export interface AnnotationHitTestItem {
@@ -120,8 +125,10 @@ function candidate(
 function handles(anchor: ImageAnchor): ReadonlyArray<readonly [AnnotationHandle, NormalizedPoint]> {
   switch (anchor.kind) {
     case 'image_point':
+    case 'image_text':
       return [['point', { x: anchor.x, y: anchor.y }]]
     case 'image_arrow':
+    case 'image_line':
       return [
         ['tail', anchor.tail],
         ['head', anchor.head],
@@ -136,6 +143,8 @@ function handles(anchor: ImageAnchor): ReadonlyArray<readonly [AnnotationHandle,
       ]
     case 'image_stroke':
       return []
+    case 'image_polygon':
+      return anchor.points.map((point, index) => [`vertex_${index}` as const, point])
   }
 }
 
@@ -146,11 +155,13 @@ function geometryHit(
   tolerance: number,
 ): Pick<AnnotationHit, 'part' | 'distanceCssPx'> | null {
   switch (anchor.kind) {
-    case 'image_point': {
+    case 'image_point':
+    case 'image_text': {
       const distance = distanceCss(point, { x: anchor.x, y: anchor.y }, size)
       return distance <= tolerance ? { part: 'outline', distanceCssPx: distance } : null
     }
-    case 'image_arrow': {
+    case 'image_arrow':
+    case 'image_line': {
       const distance = segmentDistanceCss(point, anchor.tail, anchor.head, size)
       return distance <= tolerance ? { part: 'outline', distanceCssPx: distance } : null
     }
@@ -158,11 +169,34 @@ function geometryHit(
       const distance = minimumPathDistanceCss(point, anchor.points, size)
       return distance <= tolerance ? { part: 'outline', distanceCssPx: distance } : null
     }
+    case 'image_polygon': {
+      const closed = [...anchor.points, anchor.points[0] as NormalizedPoint]
+      const distance = minimumPathDistanceCss(point, closed, size)
+      if (distance <= tolerance) return { part: 'outline', distanceCssPx: distance }
+      return pointInPolygon(point, anchor.points)
+        ? { part: 'interior', distanceCssPx: distance }
+        : null
+    }
     case 'image_rect':
       return rectangleHit(point, anchor, size, tolerance)
     case 'image_ellipse':
       return ellipseHit(point, anchor, size, tolerance)
   }
+}
+
+function pointInPolygon(point: NormalizedPoint, polygon: ReadonlyArray<NormalizedPoint>): boolean {
+  let inside = false
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    const left = polygon[index] as NormalizedPoint
+    const right = polygon[previous] as NormalizedPoint
+    if (
+      left.y > point.y !== right.y > point.y &&
+      point.x < ((right.x - left.x) * (point.y - left.y)) / (right.y - left.y) + left.x
+    ) {
+      inside = !inside
+    }
+  }
+  return inside
 }
 
 function rectangleHit(

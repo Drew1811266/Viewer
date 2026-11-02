@@ -2,7 +2,7 @@ use super::{remote_wire, wire};
 use serde::{Deserialize, Serialize};
 use viewer_application::review_workspace::*;
 use viewer_domain::{
-    review::{FeedbackAnchor, ProductionScope, continuous::*},
+    review::{AnnotationStyle, FeedbackAnchor, ProductionScope, continuous::*},
     *,
 };
 
@@ -131,6 +131,8 @@ enum Edit {
         asset_version_id: AssetVersionId,
         #[serde(with = "wire")]
         anchor: FeedbackAnchor,
+        #[serde(with = "wire")]
+        style: Option<AnnotationStyle>,
     },
     Redraw {
         #[serde(with = "wire")]
@@ -139,6 +141,8 @@ enum Edit {
         asset_version_id: AssetVersionId,
         #[serde(with = "wire")]
         anchor: FeedbackAnchor,
+        #[serde(with = "wire")]
+        style: Option<AnnotationStyle>,
     },
 }
 remote_wire!(TargetEdit, Edit, 10_000);
@@ -198,3 +202,88 @@ enum Command {
     },
 }
 remote_wire!(ReviewWorkspaceCommand, Command);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use viewer_domain::review::{
+        AnnotationColor, AnnotationTextSize, AnnotationTool, AnnotationWidth, NormalizedPoint,
+    };
+
+    fn envelope(targets: Vec<TargetEdit>) -> ReviewCommandEnvelope {
+        ReviewCommandEnvelope {
+            usage_selections: vec![],
+            context: ReviewWorkspaceContext {
+                project_id: ProjectId::from_u128(1),
+                stream_id: ReviewStreamId::from_u128(2),
+                production: None,
+            },
+            command_id: ReviewCommandId::from_u128(3),
+            expected_snapshot_id: None,
+            payload_digest: [0; 32],
+            generated: GeneratedReviewIds {
+                snapshot_id: ReviewSnapshotId::from_u128(4),
+                feedback_id: FeedbackId::from_u128(5),
+                text_revision_id: ReviewTextRevisionId::from_u128(6),
+                archive_id: ReviewArchiveId::from_u128(7),
+                targets: vec![(
+                    ReviewTargetId::from_u128(8),
+                    ReviewTargetRevisionId::from_u128(9),
+                )],
+                migration: vec![],
+                created_at_ms: 10,
+            },
+            command: ReviewWorkspaceCommand::SaveFeedback {
+                feedback_id: None,
+                text: "补充说明".into(),
+                targets,
+            },
+        }
+    }
+
+    #[test]
+    fn styled_targets_round_trip_through_the_ipc_wire() {
+        let style = AnnotationStyle::new(
+            AnnotationTool::Text,
+            AnnotationColor::Yellow,
+            AnnotationWidth::Medium,
+            100,
+            false,
+            Some(AnnotationTextSize::Medium),
+        )
+        .unwrap();
+        let envelope = envelope(vec![TargetEdit::Add {
+            asset_version_id: AssetVersionId::from_u128(11),
+            anchor: FeedbackAnchor::ImageText(NormalizedPoint::new(0.2, 0.3).unwrap()),
+            style: Some(style),
+        }]);
+        let value = serde_json::to_value(wire::ReviewWire(envelope.clone())).unwrap();
+        let target = &value["command"]["targets"][0];
+        assert_eq!(target["anchor"]["kind"], "image_text");
+        assert_eq!(target["style"]["tool"], "text");
+        assert_eq!(target["style"]["color"], "yellow");
+        assert_eq!(target["style"]["opacityPercent"], 100);
+        assert_eq!(target["style"]["textSize"], "medium");
+        assert_eq!(
+            serde_json::from_value::<wire::ReviewWire<ReviewCommandEnvelope>>(value)
+                .unwrap()
+                .0,
+            envelope
+        );
+    }
+
+    #[test]
+    fn ipc_rejects_targets_without_the_style_key() {
+        let mut value = serde_json::to_value(wire::ReviewWire(envelope(vec![TargetEdit::Add {
+            asset_version_id: AssetVersionId::from_u128(11),
+            anchor: FeedbackAnchor::Asset,
+            style: None,
+        }])))
+        .unwrap();
+        value["command"]["targets"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("style");
+        assert!(serde_json::from_value::<wire::ReviewWire<ReviewCommandEnvelope>>(value).is_err());
+    }
+}

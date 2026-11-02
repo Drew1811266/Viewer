@@ -2,8 +2,10 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { ReviewAnchor, ReviewSessionSnapshot } from '../../api/types'
 import {
+  type ImageReviewDeleteRequest,
   type ImageReviewSaveRequest,
   type ImageReviewWorkbenchAdapter,
+  type ImageReviewWorkbenchView,
   legacyImageReviewWorkbenchAdapter,
 } from './imageReviewWorkbenchAdapter'
 import { useImageReviewWorkbench } from './useImageReviewWorkbench'
@@ -510,6 +512,129 @@ describe('useImageReviewWorkbench', () => {
       text: '只属于会话 A',
       message: '这条未保存意见属于上一素材版本或评审会话，请返回原上下文或放弃后重画。',
     })
+  })
+
+  it('undoes a newly added annotation by withdrawing it and redoes it as a fresh item', async () => {
+    let currentView: ImageReviewWorkbenchView = {
+      feedback: [],
+      readOnlyReason: null,
+      restorableItemId: null,
+      statusMessage: null,
+    }
+    let sequence = 0
+    const saveFeedback = vi.fn(async (request: ImageReviewSaveRequest) => {
+      sequence += 1
+      const itemId = request.item?.itemId ?? `target-new-${sequence}`
+      const feedback = {
+        itemId,
+        feedbackId: request.item?.feedbackId ?? `feedback-new-${sequence}`,
+        targetKey: {
+          feedbackId: request.item?.feedbackId ?? `feedback-new-${sequence}`,
+          textRevisionId: `text-new-${sequence}`,
+          targetId: itemId,
+          targetRevisionId: `target-revision-new-${sequence}`,
+        },
+        assetVersionId: 'asset-1',
+        text: request.text,
+        createdAtMs: 20,
+        ordinal: 2,
+        anchor: request.anchor,
+        style: request.style ?? null,
+      }
+      currentView = {
+        ...currentView,
+        feedback:
+          request.item === null
+            ? [...currentView.feedback, feedback]
+            : currentView.feedback.map((item) => (item.itemId === itemId ? feedback : item)),
+      }
+      return currentView
+    })
+    const deleteFeedback = vi.fn(async (request: ImageReviewDeleteRequest) => {
+      currentView = {
+        ...currentView,
+        feedback: currentView.feedback.filter((item) => item.itemId !== request.item.itemId),
+      }
+      return currentView
+    })
+    const adapter: ImageReviewWorkbenchAdapter = {
+      protocol: 'continuous',
+      preparationKey: (entityId) => `test:${entityId}`,
+      viewKey: () => 'view:1',
+      prepareEntity: vi.fn(async (entityId) => ({ key: `test:${entityId}`, prepared: null })),
+      view: () => currentView,
+      saveFeedback,
+      deleteFeedback,
+      restoreDeletedFeedback: vi.fn(async () => currentView),
+      discardPendingInput: vi.fn(() => true),
+    }
+    const hook = renderHook(() => useImageReviewWorkbench({ adapter, entityId: 'image-1' }))
+    await waitFor(() => expect(hook.result.current.readOnlyReason).toBeNull())
+    act(() => {
+      hook.result.current.beginAnnotation(RECT)
+      hook.result.current.updateDraftText('可撤销意见')
+    })
+    await act(() => hook.result.current.saveDraft())
+    expect(currentView.feedback).toHaveLength(1)
+    await waitFor(() => expect(hook.result.current.canUndo).toBe(true))
+
+    act(() => hook.result.current.undo())
+    await waitFor(() => expect(currentView.feedback).toHaveLength(0))
+    expect(deleteFeedback).toHaveBeenCalledOnce()
+    await waitFor(() => expect(hook.result.current.canRedo).toBe(true))
+
+    act(() => hook.result.current.redo())
+    await waitFor(() => expect(currentView.feedback).toHaveLength(1))
+    expect(currentView.feedback[0]?.text).toBe('可撤销意见')
+    expect(currentView.feedback[0]?.anchor).toEqual(RECT)
+    await waitFor(() => expect(hook.result.current.canUndo).toBe(true))
+  })
+
+  it('undoes and redoes an anchor redraw with the previous geometry', async () => {
+    let currentView: ImageReviewWorkbenchView = workbenchView('target-revision-1')
+    const saveFeedback = vi.fn(async (request: ImageReviewSaveRequest) => {
+      currentView = {
+        ...currentView,
+        feedback: currentView.feedback.map((item) =>
+          item.itemId === request.item?.itemId
+            ? {
+                ...item,
+                text: request.text,
+                anchor: request.anchor,
+                style: request.style ?? null,
+                targetKey:
+                  item.targetKey === null
+                    ? null
+                    : { ...item.targetKey, targetRevisionId: 'target-revision-next' },
+              }
+            : item,
+        ),
+      }
+      return currentView
+    })
+    const adapter: ImageReviewWorkbenchAdapter = {
+      protocol: 'continuous',
+      preparationKey: (entityId) => `test:${entityId}`,
+      viewKey: () => 'view:1',
+      prepareEntity: vi.fn(async (entityId) => ({ key: `test:${entityId}`, prepared: null })),
+      view: () => currentView,
+      saveFeedback,
+      deleteFeedback: vi.fn(async () => currentView),
+      restoreDeletedFeedback: vi.fn(async () => currentView),
+      discardPendingInput: vi.fn(() => true),
+    }
+    const hook = renderHook(() => useImageReviewWorkbench({ adapter, entityId: 'image-1' }))
+    await waitFor(() => expect(hook.result.current.feedback).toHaveLength(1))
+    await act(() => hook.result.current.replaceFeedbackAnchor('target-1', ELLIPSE))
+    expect(hook.result.current.feedback[0]?.anchor).toEqual(ELLIPSE)
+    expect(hook.result.current.canUndo).toBe(true)
+
+    act(() => hook.result.current.undo())
+    await waitFor(() => expect(hook.result.current.feedback[0]?.anchor).toEqual(RECT))
+    expect(hook.result.current.canRedo).toBe(true)
+
+    act(() => hook.result.current.redo())
+    await waitFor(() => expect(hook.result.current.feedback[0]?.anchor).toEqual(ELLIPSE))
   })
 })
 

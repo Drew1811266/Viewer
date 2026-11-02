@@ -6,6 +6,7 @@ import type {
 import type { ImageRendererPoint } from '../../rendering/imageRendererTypes'
 import type { ImagePreviewProjection } from '../imagePreview/ImagePreviewSurface'
 import ViewerButton from '../ui/ViewerButton'
+import FeedbackTextInput from './FeedbackTextInput'
 
 interface InlineFeedbackEditorProps {
   controller: ImageReviewWorkbenchController
@@ -13,6 +14,8 @@ interface InlineFeedbackEditorProps {
   projection?: ImagePreviewProjection
   nativePosition?: ImageRendererPoint | null
   embedded?: boolean
+  /** Keep the composer clear of overlays pinned to the top of the stage. */
+  topInset?: number
 }
 
 export default function InlineFeedbackEditor({
@@ -21,6 +24,7 @@ export default function InlineFeedbackEditor({
   projection,
   nativePosition,
   embedded = false,
+  topInset = 8,
 }: InlineFeedbackEditorProps) {
   const input = useRef<HTMLTextAreaElement>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
@@ -29,7 +33,6 @@ export default function InlineFeedbackEditor({
   const text = phase.status === 'idle' || phase.status === 'drawing' ? '' : phase.text
   const saving = phase.status === 'saving'
   const error = phase.status === 'save_error' ? phase.message : null
-
   useEffect(() => {
     previousFocus.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -56,25 +59,23 @@ export default function InlineFeedbackEditor({
         embedded
           ? undefined
           : nativePosition === undefined || nativePosition === null
-            ? editorPosition(anchor, projection)
-            : nativeEditorPosition(nativePosition, projection)
+            ? editorPosition(anchor, projection, topInset)
+            : nativeEditorPosition(nativePosition, projection, topInset)
       }
     >
-      <label>
+      <label htmlFor="inline-feedback-text">
         <span>返工意见</span>
-        <textarea
-          ref={input}
-          aria-label="标注意见"
+        <FeedbackTextInput
+          id="inline-feedback-text"
           value={text}
+          onChange={controller.updateDraftText}
+          onSave={() => void controller.saveDraft()}
+          ariaLabel="标注意见"
           disabled={saving}
-          onChange={(event) => controller.updateDraftText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault()
-              void controller.saveDraft()
-            }
-          }}
+          rows={3}
+          inputRef={input}
+          className="inline-feedback-editor__input"
+          micClassName="inline-feedback-editor__mic"
         />
       </label>
       {error !== null && (
@@ -99,16 +100,24 @@ export default function InlineFeedbackEditor({
   )
 }
 
-function nativeEditorPosition(position: ImageRendererPoint, projection?: ImagePreviewProjection) {
+function nativeEditorPosition(
+  position: ImageRendererPoint,
+  projection: ImagePreviewProjection | undefined,
+  topInset: number,
+) {
   const maximumLeft = Math.max(8, (projection?.stageRect.width ?? position.x + 304) - 288)
-  const maximumTop = Math.max(8, (projection?.stageRect.height ?? position.y + 192) - 176)
+  const maximumTop = Math.max(topInset, (projection?.stageRect.height ?? position.y + 192) - 176)
   return {
     left: clamp(position.x + 16, 8, maximumLeft),
-    top: clamp(position.y + 16, 8, maximumTop),
+    top: clamp(position.y + 16, topInset, maximumTop),
   }
 }
 
-function editorPosition(anchor: ReviewAnchor, projection?: ImagePreviewProjection) {
+function editorPosition(
+  anchor: ReviewAnchor,
+  projection: ImagePreviewProjection | undefined,
+  topInset: number,
+) {
   if (projection === undefined) return undefined
   const point = anchorPoint(anchor)
   if (point === null) return undefined
@@ -121,8 +130,8 @@ function editorPosition(anchor: ReviewAnchor, projection?: ImagePreviewProjectio
   )
   const top = clamp(
     projected.y - projection.stageRect.top + 16,
-    8,
-    Math.max(8, projection.stageRect.height - 176),
+    topInset,
+    Math.max(topInset, projection.stageRect.height - 176),
   )
   return { left, top }
 }
@@ -130,14 +139,18 @@ function editorPosition(anchor: ReviewAnchor, projection?: ImagePreviewProjectio
 function anchorPoint(anchor: ReviewAnchor) {
   switch (anchor.kind) {
     case 'image_point':
+    case 'image_text':
       return { x: anchor.x, y: anchor.y }
     case 'image_arrow':
+    case 'image_line':
       return anchor.head
     case 'image_rect':
     case 'image_ellipse':
       return { x: anchor.x + anchor.width / 2, y: anchor.y + anchor.height / 2 }
     case 'image_stroke':
       return anchor.points.at(-1) ?? null
+    case 'image_polygon':
+      return anchor.points[0] ?? null
     case 'asset':
     case 'video_point':
     case 'video_range':

@@ -1,0 +1,14 @@
+{
+  "date": "2026-11-02",
+  "kind": "development visual acceptance capture",
+  "catalogStates": 147,
+  "viewports": ["1024x720", "1440x900"],
+  "productCaptures": 294,
+  "expectedProductCaptures": 294,
+  "missingProductCaptures": 0,
+  "sceneStatus": "ready",
+  "failureRecords": 294,
+  "failureCause": "reference.png missing under target/atlas-product-migration-reference; no scene readiness or geometry failures",
+  "pixelDiff": false,
+  "packagedApp": false
+}

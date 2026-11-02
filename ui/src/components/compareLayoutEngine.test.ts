@@ -49,6 +49,35 @@ describe('solveCompareLayout', () => {
     expect(plan.rects[3]?.left).toBe(1_276.5)
   })
 
+  it('forces three compared images into one three-column row', () => {
+    const plan = solveCompareLayout(
+      input(items(3, 0.75), {
+        previous: {
+          key: 'fit-grid:2x2',
+          kind: 'fit-grid',
+          score: 99,
+          eligible: true,
+        },
+      }),
+    )
+
+    expect(plan.kind).toBe('fit-row')
+    expect(plan.columns).toBe(3)
+    expect(plan.rows).toBe(1)
+    expect(plan.rects).toHaveLength(3)
+    expect(plan.rects[0]?.left).toBe(6)
+    expect(plan.rects[1]?.left).toBeGreaterThan(plan.rects[0]?.left ?? 0)
+    expect(plan.rects[2]?.left).toBeGreaterThan(plan.rects[1]?.left ?? 0)
+  })
+
+  it('keeps the forced three-up row at narrow widths', () => {
+    const plan = solveCompareLayout(input(items(3, 1.5), { width: 1_000, height: 650 }))
+
+    expect(plan.kind).toBe('fit-row')
+    expect(plan.columns).toBe(3)
+    expect(plan.rows).toBe(1)
+    expect(plan.rects).toHaveLength(3)
+  })
   it('uses a readable grid for four landscapes', () => {
     const plan = solveCompareLayout(input(items(4, 1.5)))
 

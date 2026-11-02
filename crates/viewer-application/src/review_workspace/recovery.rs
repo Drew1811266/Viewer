@@ -32,24 +32,27 @@ pub(super) fn draft(
         input.text = text.clone();
         input.feedback_id = Some(feedback_id.unwrap_or(envelope.generated.feedback_id));
         for (edit, &(new_id, revision_id)) in targets.iter().zip(&envelope.generated.targets) {
-            let (id, asset_version_id, anchor) = match edit {
+            let (id, asset_version_id, anchor, style) = match edit {
                 TargetEdit::Add {
                     asset_version_id,
                     anchor,
-                } => (new_id, *asset_version_id, anchor),
+                    style,
+                } => (new_id, *asset_version_id, anchor, *style),
                 TargetEdit::Redraw {
                     key,
                     asset_version_id,
                     anchor,
-                } => (key.target_id, *asset_version_id, anchor),
+                    style,
+                } => (key.target_id, *asset_version_id, anchor, *style),
             };
-            input.targets.push(VersionedTarget {
+            input.targets.push(VersionedTarget::new(
                 id,
                 revision_id,
                 asset_version_id,
-                anchor: anchor.clone(),
-                availability: ReviewAvailability::Ready,
-            });
+                anchor.clone(),
+                style,
+                ReviewAvailability::Ready,
+            )?);
         }
     }
     super::recovery_selection::preserve(envelope, &mut input)?;

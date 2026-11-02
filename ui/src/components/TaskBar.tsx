@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { operationResultMessage } from './operationResultCopy'
 import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
 import ViewerStatusTag from './ui/ViewerStatusTag'
 import ViewerTaskSurface from './ui/ViewerTaskSurface'
@@ -146,6 +147,9 @@ export default function TaskBar({
             current={aggregateFinished}
             total={aggregateRequested}
             indeterminate={aggregateRequested === 0 && primaryTask.status === 'running'}
+            statusLabel={
+              visibleTasks.length === 1 && primaryTask.status === 'complete' ? '已完成' : undefined
+            }
           >
             {summaryLabel}
           </ViewerTaskSurface>
@@ -171,6 +175,7 @@ export default function TaskBar({
                     current={finishedCount(currentTask)}
                     total={currentTask.requested}
                     indeterminate={currentTask.requested === 0 && currentTask.status === 'running'}
+                    statusLabel={currentTask.status === 'complete' ? '已完成' : undefined}
                   >
                     {currentTask.label}
                   </ViewerTaskSurface>
@@ -201,7 +206,10 @@ function TaskDetails({ task }: { task: TaskFeedback }) {
         <ul>
           {task.failures.map((failure) => (
             <li key={`${failure.item}:${failure.code}`}>
-              <span>{failure.item}</span> <span>{failure.code}</span>
+              <span>{failure.item}</span>
+              <span className="task-details__reason">
+                {operationResultMessage(failure.code) ?? '操作未完成'}
+              </span>
             </li>
           ))}
         </ul>
@@ -229,13 +237,17 @@ function TaskActions({
         </ViewerButton>
       )}
       {task.status !== 'running' && !isCleanSuccess(task) && onDismiss && (
-        <ViewerButton tone="quiet" onClick={() => onDismiss(task.id)}>
-          关闭任务
-        </ViewerButton>
+        <ViewerIconButton
+          icon="x"
+          className="task-dismiss-action"
+          label="关闭任务"
+          tone="quiet"
+          onClick={() => onDismiss(task.id)}
+        />
       )}
       {task.hasResults && onShowResults && (
         <ViewerButton
-          tone="secondary"
+          tone="quiet"
           aria-label={`查看${task.label}结果`}
           onClick={() => onShowResults(task.id)}
         >

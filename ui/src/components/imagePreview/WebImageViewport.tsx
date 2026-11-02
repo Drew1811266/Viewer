@@ -33,6 +33,8 @@ export default function WebImageViewport({
   ariaLabel,
   toolbarLabel = '图片预览工具',
   onEscape,
+  fileInfoOpen = false,
+  onFileInfoToggle,
   slots,
 }: ImagePreviewSurfaceProps) {
   const fitCache = useRef(new Map<string, ImageRepresentation>())
@@ -253,9 +255,11 @@ export default function WebImageViewport({
       toggleMagnifier()
       return
     }
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' && onEscape !== undefined) {
+      // A host without its own escape handling (for example the review
+      // workbench) owns Escape at the window level; do not swallow it here.
       event.preventDefault()
-      onEscape?.()
+      onEscape()
     }
     if (event.key === 'ArrowLeft') {
       event.preventDefault()
@@ -293,42 +297,45 @@ export default function WebImageViewport({
   }
 
   const displayControls: ReactNode = (
-    <ViewerSegmentedControl label="图片显示控制">
-      <ViewerButton
-        active={viewport.state.mode === 'fit'}
-        disabled={transformsDisabled}
-        onClick={() => {
-          setError(null)
-          viewport.setFit()
-        }}
-      >
-        适应窗口
-      </ViewerButton>
-      <ViewerIconButton
-        icon="minus"
-        label="缩小"
-        disabled={transformsDisabled}
-        onClick={() => zoomFromToolbar(0.8)}
-      />
-      <span className="preview-scale-label">{scalePercent}%</span>
-      <span className="visually-hidden" data-testid="preview-scale-announcement" aria-live="polite">
-        缩放比例 {announcedScalePercent}%
-      </span>
-      <ViewerIconButton
-        icon="plus"
-        label="放大"
-        disabled={transformsDisabled}
-        onClick={() => zoomFromToolbar(1.25)}
-      />
-    </ViewerSegmentedControl>
-  )
-  const previewActions: ReactNode = (
     <>
+      <ViewerSegmentedControl label="图片显示控制">
+        <ViewerButton
+          active={viewport.state.mode === 'fit'}
+          disabled={transformsDisabled}
+          onClick={() => {
+            setError(null)
+            viewport.setFit()
+          }}
+        >
+          适应窗口
+        </ViewerButton>
+        <ViewerIconButton
+          icon="minus"
+          label="缩小"
+          disabled={transformsDisabled}
+          onClick={() => zoomFromToolbar(0.8)}
+        />
+        <span className="preview-scale-label">{scalePercent}%</span>
+        <span
+          className="visually-hidden"
+          data-testid="preview-scale-announcement"
+          aria-live="polite"
+        >
+          缩放比例 {announcedScalePercent}%
+        </span>
+        <ViewerIconButton
+          icon="plus"
+          label="放大"
+          disabled={transformsDisabled}
+          onClick={() => zoomFromToolbar(1.25)}
+        />
+      </ViewerSegmentedControl>
       <ViewerIconButton
         icon="zoom-in"
         label="放大镜"
         title="放大镜（Q）"
         tone="quiet"
+        className="preview-tool-action"
         active={magnifierEnabled}
         aria-keyshortcuts="Q"
         disabled={transformsDisabled}
@@ -338,9 +345,23 @@ export default function WebImageViewport({
         icon="rotate-cw"
         label="顺时针旋转"
         tone="quiet"
+        className="preview-tool-action"
         disabled={transformsDisabled}
         onClick={viewport.rotateClockwise}
       />
+    </>
+  )
+  const previewActions: ReactNode = (
+    <>
+      {onFileInfoToggle !== undefined && (
+        <ViewerButton
+          active={fileInfoOpen}
+          className="preview-file-info-action"
+          onClick={onFileInfoToggle}
+        >
+          文件信息
+        </ViewerButton>
+      )}
       {slots?.toolbarActions}
     </>
   )
@@ -461,6 +482,7 @@ export default function WebImageViewport({
       toolbarLeading={slots?.toolbarLeading}
       toolbarCenter={displayControls}
       toolbarActions={previewActions}
+      banner={slots?.banner}
       stage={previewStage}
       sidePanel={slots?.sidePanel}
       navigation={previewNavigation}

@@ -45,20 +45,23 @@ pub(super) fn save(
             TargetEdit::Add {
                 asset_version_id,
                 anchor,
+                style,
             } => {
                 add_asset(&mut next, *asset_version_id, assets)?;
-                feedback.targets.push(VersionedTarget {
+                feedback.targets.push(VersionedTarget::new(
                     id,
-                    revision_id: revision,
-                    asset_version_id: *asset_version_id,
-                    anchor: anchor.clone(),
-                    availability: ReviewAvailability::Ready,
-                });
+                    revision,
+                    *asset_version_id,
+                    anchor.clone(),
+                    *style,
+                    ReviewAvailability::Ready,
+                )?);
             }
             TargetEdit::Redraw {
                 key,
                 asset_version_id,
                 anchor,
+                style,
             } => {
                 if !seen.insert(key.target_id)
                     || Some(key.feedback_id) != *feedback_id
@@ -74,7 +77,13 @@ pub(super) fn save(
                 {
                     return Err(ContinuousReviewError::InvalidData.into());
                 }
-                feedback = replace_target(&feedback, key.target_id, revision, anchor.clone())?;
+                feedback = replace_target_with_style(
+                    &feedback,
+                    key.target_id,
+                    revision,
+                    anchor.clone(),
+                    *style,
+                )?;
             }
         }
     }

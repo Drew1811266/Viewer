@@ -1,5 +1,5 @@
 //! Validates a complete transaction before publishing any immutable object.
-use super::super::{v3, v4};
+use super::super::{v3, v4, v5};
 use super::{
     history, mapping, references,
     repository::{View, protocol_error},
@@ -36,6 +36,7 @@ pub(super) fn prepare(
     let bytes = match protocol {
         ReviewPublicationProtocol::V3 => v3::encode_state_v3(&record),
         ReviewPublicationProtocol::V4 => v4::encode_state_v4(&record),
+        ReviewPublicationProtocol::V5 => v5::encode_state_v5(&record),
     }
     .map_err(protocol_error)?;
     let previous = validate_chain(view, protocol, &record)?;
@@ -76,12 +77,16 @@ pub(super) fn prepare(
     } else {
         view.index.streams.push(stream);
     }
-    if protocol == ReviewPublicationProtocol::V4 {
-        view.index.protocol = ReviewPublicationProtocol::V4;
+    if matches!(
+        protocol,
+        ReviewPublicationProtocol::V4 | ReviewPublicationProtocol::V5
+    ) {
+        view.index.protocol = protocol;
     }
     let index_bytes = match view.index.protocol {
         ReviewPublicationProtocol::V3 => v3::encode_index_v3(&view.index.record),
         ReviewPublicationProtocol::V4 => v4::encode_index_v4(&view.index.record),
+        ReviewPublicationProtocol::V5 => v5::encode_index_v5(&view.index.record),
     }
     .map_err(protocol_error)?;
     Ok(PreparedCommit {
@@ -141,7 +146,10 @@ fn validate_chain(
         let before =
             history::read_state_for_materialization(view, record.state.stream_id, &expected)?;
         if protocol == ReviewPublicationProtocol::V3
-            && before.protocol == ReviewPublicationProtocol::V4
+            && matches!(
+                before.protocol,
+                ReviewPublicationProtocol::V4 | ReviewPublicationProtocol::V5
+            )
         {
             return Err(ReviewCommitError::Integrity);
         }
@@ -200,6 +208,7 @@ fn add_archive_refs(
         let encoded = match protocol {
             ReviewPublicationProtocol::V3 => v3::encode_archive_v3(&record),
             ReviewPublicationProtocol::V4 => v4::encode_archive_v4(&record),
+            ReviewPublicationProtocol::V5 => v5::encode_archive_v5(&record),
         }
         .map_err(protocol_error)?;
         stream.archive_refs.push(v3::ArchiveRecordRef {

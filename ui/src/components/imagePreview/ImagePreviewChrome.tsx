@@ -8,6 +8,7 @@ interface ImagePreviewChromeProps {
   toolbarLeading?: ReactNode
   toolbarCenter: ReactNode
   toolbarActions: ReactNode
+  banner?: ReactNode
   stage: ReactNode
   sidePanel?: ReactNode
   navigation: ReactNode
@@ -21,6 +22,7 @@ export default function ImagePreviewChrome({
   toolbarLeading,
   toolbarCenter,
   toolbarActions,
+  banner,
   stage,
   sidePanel,
   navigation,
@@ -52,6 +54,7 @@ export default function ImagePreviewChrome({
         center={toolbarCenter}
         actions={toolbarActions}
       />
+      {banner}
       <div className="image-preview-surface__content">
         {stage}
         {sidePanel}

@@ -19,7 +19,7 @@ export default function ReviewFeedbackCountBadge({
           : `review-feedback-count-badge ${className}`
       }
     >
-      返工 · {count} 条
+      返工 · {count}
     </ViewerStatusTag>
   )
 }

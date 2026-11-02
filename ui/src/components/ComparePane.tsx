@@ -26,6 +26,8 @@ interface ComparePaneProps {
   onActivate: () => void
   onMetrics: (entityId: string, metrics: PaneMetrics) => void
   onPan: (entityId: string, deltaX: number, deltaY: number) => void
+  onZoomAt: (entityId: string, factor: number, anchorX: number, anchorY: number) => void
+  panWheelEnabled: boolean
   onRemove: (entityId: string) => void
   onSetReview: (entityId: string, review: ReviewState | null) => void
   onToggleFavorite: (entityId: string) => void
@@ -63,6 +65,8 @@ export default function ComparePane({
   onActivate,
   onMetrics,
   onPan,
+  onZoomAt,
+  panWheelEnabled,
   onRemove,
   onSetReview,
   onToggleFavorite,
@@ -72,10 +76,22 @@ export default function ComparePane({
   const proxyRevision = useRef(0)
   const originalRevision = useRef(0)
   const dragStart = useRef<{ x: number; y: number } | null>(null)
+  const geometryRef = useRef<DisplayGeometry | null>(null)
+  const viewportRef = useRef<Viewport | null>(null)
+  const wheelFrame = useRef<number | null>(null)
+  const pendingWheel = useRef<
+    | { kind: 'pinch'; deltaY: number; anchorX: number; anchorY: number }
+    | { kind: 'pan'; deltaX: number; deltaY: number }
+    | null
+  >(null)
+  const panRef = useRef(onPan)
+  const zoomAtRef = useRef(onZoomAt)
   const fileRef = useRef(file)
   const metricsCallbackRef = useRef(onMetrics)
   const originalUnavailableRef = useRef(onOriginalUnavailable)
   fileRef.current = file
+  panRef.current = onPan
+  zoomAtRef.current = onZoomAt
   metricsCallbackRef.current = onMetrics
   originalUnavailableRef.current = onOriginalUnavailable
   const [viewport, setViewport] = useState<Viewport | null>(null)
@@ -83,6 +99,8 @@ export default function ComparePane({
   const [original, setOriginal] = useState<LoadedRepresentation | null>(null)
   const [proxyError, setProxyError] = useState<string | null>(null)
   const [originalError, setOriginalError] = useState<string | null>(null)
+  const [showOriginal, setShowOriginal] = useState(false)
+  viewportRef.current = viewport
   const previewable = isPreviewableImage(file)
 
   useEffect(() => {
@@ -189,6 +207,15 @@ export default function ComparePane({
   }, [file.entityId, file.kind, file.modifiedNs, file.size, previewable, requestImage])
 
   useEffect(() => {
+    setShowOriginal(false)
+    if (original === null || transform.scale <= 1.05) return
+    // Keep the fitted proxy on screen while the gesture is changing scale.
+    // The full-resolution image is swapped in only after the gesture settles.
+    const timer = window.setTimeout(() => setShowOriginal(true), 180)
+    return () => window.clearTimeout(timer)
+  }, [original, transform.scale])
+
+  useEffect(() => {
     if (!previewable) return
     const representation = visibleRepresentation(
       proxy,
@@ -196,6 +223,7 @@ export default function ComparePane({
       file.entityId,
       fileSourceRevision(file),
       proxyQuarterTurn,
+      showOriginal,
     )
     if (representation === null || viewport === null) return
     metricsCallbackRef.current(file.entityId, {
@@ -212,6 +240,7 @@ export default function ComparePane({
     proxy,
     previewable,
     proxyQuarterTurn,
+    showOriginal,
     viewport,
   ])
 
@@ -245,9 +274,11 @@ export default function ComparePane({
         file.entityId,
         fileSourceRevision(file),
         proxyQuarterTurn,
+        showOriginal,
       )
     : null
   const geometry = previewable ? displayGeometry(file, representation, viewport, transform) : null
+  geometryRef.current = geometry
   const imageStyle: CSSProperties =
     geometry === null
       ? {}
@@ -259,6 +290,82 @@ export default function ComparePane({
           transform: `translate(${cssNumber((0.5 - transform.centerX) * geometry.displayedWidth)}px, ${cssNumber((0.5 - transform.centerY) * geometry.displayedHeight)}px) rotate(${transform.rotation}deg) scale(${transform.scale})`,
         }
   const error = previewable ? (originalError ?? proxyError) : null
+
+  useEffect(() => {
+    const stage = stageRef.current
+    if (stage === null) return
+    const flush = () => {
+      wheelFrame.current = null
+      const action = pendingWheel.current
+      pendingWheel.current = null
+      const currentGeometry = geometryRef.current
+      if (action === null || currentGeometry === null) return
+      if (action.kind === 'pinch') {
+        zoomAtRef.current(
+          fileRef.current.entityId,
+          Math.exp(-action.deltaY * 0.004),
+          action.anchorX,
+          action.anchorY,
+        )
+      } else {
+        panRef.current(
+          fileRef.current.entityId,
+          action.deltaX / currentGeometry.displayedWidth,
+          action.deltaY / currentGeometry.displayedHeight,
+        )
+      }
+    }
+    const schedule = () => {
+      if (wheelFrame.current !== null) return
+      wheelFrame.current = requestAnimationFrame(flush)
+    }
+    const onWheel = (event: WheelEvent) => {
+      if (!event.cancelable) return
+      const currentGeometry = geometryRef.current
+      if (currentGeometry === null) return
+      const bounds = stage.getBoundingClientRect()
+      const measured = viewportRef.current
+      const width = bounds.width > 0 ? bounds.width : (measured?.width ?? 0)
+      const height = bounds.height > 0 ? bounds.height : (measured?.height ?? 0)
+      if (width <= 0 || height <= 0) return
+      const modeScale =
+        event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? height
+            : 1
+      const deltaX = event.deltaX * modeScale
+      const deltaY = event.deltaY * modeScale
+      if (!event.ctrlKey && !panWheelEnabled) return
+      event.preventDefault()
+      if (event.ctrlKey) {
+        const anchorX = clamp((event.clientX - bounds.left) / width, 0, 1)
+        const anchorY = clamp((event.clientY - bounds.top) / height, 0, 1)
+        const previous = pendingWheel.current
+        pendingWheel.current = {
+          kind: 'pinch',
+          deltaY: (previous?.kind === 'pinch' ? previous.deltaY : 0) + deltaY,
+          anchorX,
+          anchorY,
+        }
+      } else {
+        const previous = pendingWheel.current
+        pendingWheel.current = {
+          kind: 'pan',
+          deltaX: (previous?.kind === 'pan' ? previous.deltaX : 0) + deltaX,
+          deltaY: (previous?.kind === 'pan' ? previous.deltaY : 0) + deltaY,
+        }
+      }
+      schedule()
+    }
+    stage.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      stage.removeEventListener('wheel', onWheel)
+      if (wheelFrame.current !== null) cancelAnimationFrame(wheelFrame.current)
+      wheelFrame.current = null
+      pendingWheel.current = null
+    }
+  }, [panWheelEnabled])
 
   return (
     <article
@@ -349,15 +456,16 @@ function visibleRepresentation(
   entityId: string,
   sourceRevision: string,
   quarterTurn: boolean,
+  showOriginal: boolean,
 ): ImageRepresentation | null {
-  if (original?.entityId === entityId && original.sourceRevision === sourceRevision) {
-    return original.image
-  }
-  return proxy?.entityId === entityId &&
+  const originalReady =
+    original?.entityId === entityId && original.sourceRevision === sourceRevision
+  const proxyReady =
+    proxy?.entityId === entityId &&
     proxy.sourceRevision === sourceRevision &&
     proxy.quarterTurn === quarterTurn
-    ? proxy.image
-    : null
+  if (proxyReady && (!showOriginal || !originalReady)) return proxy.image
+  return originalReady ? original.image : null
 }
 
 function fileSourceRevision(file: BrowserFile): string {
@@ -389,4 +497,8 @@ function displayGeometry(
 
 function cssNumber(value: number): number {
   return Math.round(value * 1_000) / 1_000
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value))
 }

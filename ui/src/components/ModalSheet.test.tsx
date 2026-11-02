@@ -62,6 +62,7 @@ describe('ModalSheet', () => {
         <button type="button">第一个</button>
       </ModalSheet>,
     )
+    const close = screen.getByRole('button', { name: '关闭对话框' })
     const first = screen.getByRole('button', { name: '第一个' })
     const last = screen.getByRole('button', { name: '最后一个' })
     const dialog = screen.getByRole('dialog', { name: '安全操作' })
@@ -72,8 +73,8 @@ describe('ModalSheet', () => {
 
     last.focus()
     fireEvent.keyDown(last, { key: 'Tab' })
-    expect(first).toHaveFocus()
-    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true })
+    expect(close).toHaveFocus()
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true })
     expect(last).toHaveFocus()
     fireEvent.keyDown(last, { key: 'Escape' })
     expect(cancel).toHaveBeenCalledOnce()

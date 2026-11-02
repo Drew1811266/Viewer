@@ -24,6 +24,8 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `notify-debouncer-full` | 0.7.0 | MIT OR Apache-2.0 | Coalesce filesystem hints before scoped rescans | [notify-rs/notify](https://github.com/notify-rs/notify) | Yes |
 | `objc2` | 0.6.4 | MIT | Objective-C runtime bindings | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-app-kit` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Native Finder drag sessions and macOS application lifecycle integration | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
+| `objc2-av-foundation` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Microphone permission prompts and capture device access for local speech input | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
+| `objc2-avf-audio` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Local speech capture recording via AVAudioRecorder | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-core-foundation` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Core Foundation types for image APIs | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-core-graphics` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Core Graphics image representation | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-core-video` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Drive native image frames from the active macOS display refresh signal | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
@@ -31,6 +33,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `objc2-image-io` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | JPG/PNG metadata, fallback thumbnails and full previews | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-metal-kit` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Host the native Metal image viewport on macOS | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-quick-look-thumbnailing` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Primary macOS thumbnail generation | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
+| `objc2-speech` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | On-device speech recognition through SFSpeechRecognizer | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `pulldown-cmark` | 0.13.4 | MIT | Parse Markdown into a filtered event stream before HTML sanitization | [raphlinus/pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) | Yes |
 | `raw-window-metal` | 1.1.0 | MIT OR Apache-2.0 | Bind the native macOS image viewport to its retained CAMetalLayer surface | [rust-windowing/raw-window-metal](https://github.com/rust-windowing/raw-window-metal) | Yes |
 | `resvg` | 0.48.1 | Apache-2.0 OR MIT | Rasterize SVG sources (usvg parsing + tiny-skia rendering) into the PNG artifact pipeline | [linebender/resvg](https://github.com/linebender/resvg) | Yes |

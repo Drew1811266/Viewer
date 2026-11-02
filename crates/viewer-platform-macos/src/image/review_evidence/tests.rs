@@ -64,6 +64,7 @@ fn annotations() -> Vec<NumberedTargetAnnotation> {
         .into_iter()
         .enumerate()
         .map(|(i, anchor)| NumberedTargetAnnotation {
+            style: None,
             ordinal: i as u32 + 1,
             key: TargetVersionKey {
                 feedback_id: FeedbackId::from_u128(3),
@@ -149,6 +150,7 @@ async fn review_evidence_renders_extended_anchors_and_preserves_mapping() {
         .into_iter()
         .enumerate()
         .map(|(index, anchor)| NumberedTargetAnnotation {
+            style: None,
             ordinal: index as u32 + 1,
             key: TargetVersionKey {
                 feedback_id: FeedbackId::from_u128(30),
@@ -285,7 +287,7 @@ async fn review_evidence_exif_orientation_and_four_marker_colors_survive_redraw(
     assert!(pixel(580, 10)[0] > 240 && pixel(580, 10)[2] < 15);
     assert!(pixel(580, 780)[2] > 240 && pixel(580, 780)[0] < 15);
     for (outline_x, marker_x) in [(90, 60), (210, 180), (300, 300), (450, 450)] {
-        for (channel, expected) in pixel(outline_x, 240).iter().zip([113_i16, 77, 0]) {
+        for (channel, expected) in pixel(outline_x, 240).iter().zip([198_i16, 40, 40]) {
             assert!((i16::from(*channel) - expected).abs() < 8);
         }
         let mut whites = 0;

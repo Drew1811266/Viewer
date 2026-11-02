@@ -41,7 +41,7 @@ const currentProductDocuments = [
 
 test('current product documentation is complete, versioned, locally linked, and archived', async () => {
   const tauri = JSON.parse(await read('src-tauri/tauri.conf.json'))
-  assert.equal(tauri.version, '0.2.5')
+  assert.equal(tauri.version, '0.3.0')
   assert.equal(JSON.parse(await read('ui/package.json')).version, tauri.version)
 
   const documents = await Promise.all(
@@ -185,6 +185,8 @@ const directDependencies = [
   'notify-debouncer-full',
   'objc2',
   'objc2-app-kit',
+  'objc2-av-foundation',
+  'objc2-avf-audio',
   'objc2-core-foundation',
   'objc2-core-graphics',
   'objc2-core-video',
@@ -192,6 +194,7 @@ const directDependencies = [
   'objc2-image-io',
   'objc2-metal-kit',
   'objc2-quick-look-thumbnailing',
+  'objc2-speech',
   'playwright',
   'pulldown-cmark',
   'raw-window-metal',

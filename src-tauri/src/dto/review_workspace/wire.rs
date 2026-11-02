@@ -6,7 +6,9 @@ use serde::{
 use std::{fmt, marker::PhantomData, str::FromStr};
 use viewer_domain::{
     review::{
-        FeedbackAnchor, ImageStroke, NormalizedArrow, NormalizedPoint, NormalizedRect, ProductionId,
+        AnnotationColor, AnnotationStyle, AnnotationTextSize, AnnotationTool, AnnotationWidth,
+        FeedbackAnchor, ImagePolygon, ImageStroke, NormalizedArrow, NormalizedPoint,
+        NormalizedRect, ProductionId,
     },
     *,
 };
@@ -255,6 +257,18 @@ enum Anchor {
         width: f64,
         height: f64,
     },
+    ImageText {
+        x: f64,
+        y: f64,
+    },
+    ImageLine {
+        tail: Point,
+        head: Point,
+    },
+    ImagePolygon {
+        #[serde(with = "self")]
+        points: Vec<Point>,
+    },
     VideoPoint {
         #[serde(with = "self")]
         position_us: u64,
@@ -337,11 +351,164 @@ impl WireValue for FeedbackAnchor {
             } => NormalizedRect::new(x, y, width, height)
                 .map(Self::ImageEllipse)
                 .map_err(invalid),
+            Anchor::ImageText { x, y } => NormalizedPoint::new(x, y)
+                .map(Self::ImageText)
+                .map_err(invalid),
+            Anchor::ImageLine { tail, head } => {
+                let tail = NormalizedPoint::new(tail.x, tail.y).map_err(invalid)?;
+                let head = NormalizedPoint::new(head.x, head.y).map_err(invalid)?;
+                NormalizedArrow::new(tail, head)
+                    .map(Self::ImageLine)
+                    .map_err(invalid)
+            }
+            Anchor::ImagePolygon { points } => {
+                let points = points
+                    .into_iter()
+                    .map(|p| NormalizedPoint::new(p.x, p.y))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(invalid)?;
+                ImagePolygon::new(points)
+                    .map(Self::ImagePolygon)
+                    .map_err(invalid)
+            }
             Anchor::VideoPoint { position_us } => Ok(Self::VideoPoint { position_us }),
             Anchor::VideoRange { start_us, end_us } if start_us < end_us => {
                 Ok(Self::VideoRange { start_us, end_us })
             }
             _ => Err(de::Error::custom("invalid review anchor")),
         }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Style {
+    tool: Tool,
+    color: Color,
+    width: Width,
+    opacity_percent: u8,
+    dashed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text_size: Option<TextSize>,
+}
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum Tool {
+    Point,
+    Arrow,
+    Brush,
+    Rectangle,
+    Ellipse,
+    Text,
+    Line,
+    Highlighter,
+    Polygon,
+    Ruler,
+}
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum Color {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Teal,
+    Blue,
+    Purple,
+    Black,
+}
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum Width {
+    Thin,
+    Medium,
+    Thick,
+}
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum TextSize {
+    Small,
+    Medium,
+    Large,
+}
+impl WireValue for AnnotationStyle {
+    fn encode<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        Style {
+            tool: match self.tool() {
+                AnnotationTool::Point => Tool::Point,
+                AnnotationTool::Arrow => Tool::Arrow,
+                AnnotationTool::Brush => Tool::Brush,
+                AnnotationTool::Rectangle => Tool::Rectangle,
+                AnnotationTool::Ellipse => Tool::Ellipse,
+                AnnotationTool::Text => Tool::Text,
+                AnnotationTool::Line => Tool::Line,
+                AnnotationTool::Highlighter => Tool::Highlighter,
+                AnnotationTool::Polygon => Tool::Polygon,
+                AnnotationTool::Ruler => Tool::Ruler,
+            },
+            color: match self.color() {
+                AnnotationColor::Red => Color::Red,
+                AnnotationColor::Orange => Color::Orange,
+                AnnotationColor::Yellow => Color::Yellow,
+                AnnotationColor::Green => Color::Green,
+                AnnotationColor::Teal => Color::Teal,
+                AnnotationColor::Blue => Color::Blue,
+                AnnotationColor::Purple => Color::Purple,
+                AnnotationColor::Black => Color::Black,
+            },
+            width: match self.width() {
+                AnnotationWidth::Thin => Width::Thin,
+                AnnotationWidth::Medium => Width::Medium,
+                AnnotationWidth::Thick => Width::Thick,
+            },
+            opacity_percent: self.opacity_percent(),
+            dashed: self.dashed(),
+            text_size: self.text_size().map(|size| match size {
+                AnnotationTextSize::Small => TextSize::Small,
+                AnnotationTextSize::Medium => TextSize::Medium,
+                AnnotationTextSize::Large => TextSize::Large,
+            }),
+        }
+        .serialize(serializer)
+    }
+    fn decode<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = Style::deserialize(deserializer)?;
+        AnnotationStyle::new(
+            match value.tool {
+                Tool::Point => AnnotationTool::Point,
+                Tool::Arrow => AnnotationTool::Arrow,
+                Tool::Brush => AnnotationTool::Brush,
+                Tool::Rectangle => AnnotationTool::Rectangle,
+                Tool::Ellipse => AnnotationTool::Ellipse,
+                Tool::Text => AnnotationTool::Text,
+                Tool::Line => AnnotationTool::Line,
+                Tool::Highlighter => AnnotationTool::Highlighter,
+                Tool::Polygon => AnnotationTool::Polygon,
+                Tool::Ruler => AnnotationTool::Ruler,
+            },
+            match value.color {
+                Color::Red => AnnotationColor::Red,
+                Color::Orange => AnnotationColor::Orange,
+                Color::Yellow => AnnotationColor::Yellow,
+                Color::Green => AnnotationColor::Green,
+                Color::Teal => AnnotationColor::Teal,
+                Color::Blue => AnnotationColor::Blue,
+                Color::Purple => AnnotationColor::Purple,
+                Color::Black => AnnotationColor::Black,
+            },
+            match value.width {
+                Width::Thin => AnnotationWidth::Thin,
+                Width::Medium => AnnotationWidth::Medium,
+                Width::Thick => AnnotationWidth::Thick,
+            },
+            value.opacity_percent,
+            value.dashed,
+            value.text_size.map(|size| match size {
+                TextSize::Small => AnnotationTextSize::Small,
+                TextSize::Medium => AnnotationTextSize::Medium,
+                TextSize::Large => AnnotationTextSize::Large,
+            }),
+        )
+        .map_err(|_| de::Error::custom("invalid annotation style"))
     }
 }

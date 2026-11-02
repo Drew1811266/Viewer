@@ -552,3 +552,23 @@ entry records the 23-frame rebuild against the actual 0.2.5 interface.
 - `node docs/design/0.3.0/check.mjs` still passes the older static HTML only; it is not
   evidence for the Pen frames.
 - No 0.3.0 product acceptance is claimed.
+
+## 0.3.0 annotation visual sign-off (2026-11-01)
+
+- Scope: annotation tools 35–37, synced product frames 09/10/11, review style bar.
+- Decision: user confirmed the visual direction on 2026-10-31; implementation
+  parameters are recorded in `docs/design/0.3.0/README.md` §3.4/§7.1 and
+  `docs/adr/0011-material-design-3-design-system.md`.
+- Implemented evidence: `docs/design/0.3.0/audit/annotation-v2/` (RVW-16,
+  RVW-17, RVW-38) plus the unit/native tests listed in
+  `docs/acceptance/0.3.0-acceptance-catalog.md`.
+- 38-frame audit (2026-11-01): `docs/design/0.3.0/AUDIT-2026-11-01.md`.
+  Fixed the launch screen card and the grouped markup-tool palette. Decisions:
+  direct review workbench, floating draft editor, always-on workspace review
+  controls, forced three-up compare, and a new `DOC-08` edit-split state.
+- 1024×720 audit (2026-11-01): fixed the selection summary colliding with the
+  task bar and the advanced filter popover clipping its right-hand fields /
+  footer; evidence in `docs/design/0.3.0/audit/responsive-1024/`.
+- Remaining: the full 38-frame pixel pass and the rest of the 1024×720 states
+  are not claimed; native highlighter multiply and the overview export are done.
+- This is a design sign-off, not a product release acceptance.

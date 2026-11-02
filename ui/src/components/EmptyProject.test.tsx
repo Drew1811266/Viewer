@@ -16,12 +16,13 @@ function bridge(): ViewerBridge {
     closeProject: vi.fn().mockResolvedValue('closed'),
     projectSnapshot: vi.fn().mockResolvedValue(null),
     getViewerSettings: vi.fn().mockResolvedValue({
-      schemaVersion: 4,
+      schemaVersion: 5,
       thumbnailDensity: 'standard',
       magnifier: { shape: 'circle', magnification: 2, area: 'small' },
+      speech: { inputMode: 'click', locale: 'simplified_chinese', autoPunctuation: true },
     }),
     updateViewerSettings: vi.fn().mockImplementation(async (settings) => ({
-      schemaVersion: 4,
+      schemaVersion: 5,
       ...settings,
     })),
     folderTree: vi.fn().mockResolvedValue([]),
@@ -97,16 +98,33 @@ function bridge(): ViewerBridge {
     listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDropEvents: vi.fn().mockResolvedValue(() => undefined),
+    speechStatus: vi.fn().mockResolvedValue({
+      available: false,
+      speechAuthorized: false,
+      microphoneAuthorized: false,
+      onDevice: false,
+      localeSupported: false,
+      locale: 'zh-CN',
+    }),
+    requestSpeechPermissions: vi
+      .fn()
+      .mockResolvedValue({ speechAuthorized: false, microphoneAuthorized: false }),
+    startSpeechCapture: vi.fn(),
+    stopSpeechCapture: vi.fn(),
+    cancelSpeechCapture: vi.fn(),
+    openSpeechSettings: vi.fn().mockResolvedValue(undefined),
   }
 }
 
 describe('EmptyProject', () => {
-  it('keeps the resting entry state to the approved three elements', () => {
+  it('keeps the approved project-entry card and local-only copy', () => {
     render(<EmptyProject bridge={bridge()} />)
 
     const entry = screen.getByTestId('project-drop-zone')
-    expect(within(entry).getByRole('heading', { name: 'Viewer' })).toBeVisible()
-    expect(within(entry).getByText('选择或拖入一个项目文件夹')).toBeVisible()
+    expect(within(entry).getByRole('heading', { name: '打开一个项目' })).toBeVisible()
+    expect(within(entry).getByText(/所有素材、意见与历史都留在本机/)).toBeVisible()
+    expect(within(entry).getByText('也可以把文件夹拖到窗口里')).toBeVisible()
+    expect(within(entry).getByText(/macOS 13\+/)).toBeVisible()
     expect(within(entry).getByRole('button', { name: '选择项目文件夹' })).toHaveClass(
       'empty-project-primary-action',
     )
@@ -225,7 +243,7 @@ describe('EmptyProject', () => {
     expect(screen.getByRole('heading', { name: '无法打开项目' })).toBeVisible()
     expect(screen.getByText('项目审阅数据库不可用。')).toBeVisible()
     expect(screen.getByRole('button', { name: '重新选择' })).toBeVisible()
-    expect(screen.queryByRole('heading', { name: 'Viewer' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '打开一个项目' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '选择项目文件夹' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '重新选择' }))

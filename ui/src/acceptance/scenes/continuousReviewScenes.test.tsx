@@ -23,10 +23,11 @@ const CONTINUOUS_REVIEW_IDS = [
   'RVW-30',
   'RVW-31',
   'RVW-32',
+  'RVW-38',
 ] as const
 
 describe('continuous review acceptance scenes', () => {
-  it('registers the approved RVW-25 through RVW-32 acceptance matrix', () => {
+  it('registers the approved continuous review acceptance matrix', () => {
     const catalogIds = ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)
     expect(
       catalogIds.filter((catalogId) =>

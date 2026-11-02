@@ -46,7 +46,12 @@ export default function ViewerMenuRow({
           <span className="viewer-menu-row__reason">{disabledReason}</span>
         )}
       </span>
-      {current && <span className="viewer-menu-row__current">当前</span>}
+      {current && (
+        <span className="viewer-menu-row__current">
+          <ViewerIcon name="check" />
+          <span className="visually-hidden">当前</span>
+        </span>
+      )}
       {shortcut === undefined ? null : <kbd>{shortcut}</kbd>}
     </button>
   )

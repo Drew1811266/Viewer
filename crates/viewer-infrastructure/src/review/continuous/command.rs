@@ -95,18 +95,22 @@ impl ReviewCommandCodecPort for ContinuousReviewCommandCodec {
                         TargetEdit::Add {
                             asset_version_id,
                             anchor,
+                            style,
                         } => {
                             out.field(&("add", asset_version_id))?;
                             out.anchor(anchor)?;
+                            out.style(*style)?;
                         }
                         TargetEdit::Redraw {
                             key,
                             asset_version_id,
                             anchor,
+                            style,
                         } => {
                             out.field(&("redraw", asset_version_id))?;
                             out.key(key)?;
                             out.anchor(anchor)?;
+                            out.style(*style)?;
                         }
                     }
                 }

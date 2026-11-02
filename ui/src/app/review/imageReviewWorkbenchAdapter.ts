@@ -1,9 +1,15 @@
 import type {
   PreparedReviewAsset,
+  ReviewAssetVersion,
   ReviewTargetEdit,
   ReviewTargetVersionKey,
 } from '../../api/reviewWorkspaceTypes'
-import type { ReviewAnchor, ReviewScopeRequest, ReviewSessionSnapshot } from '../../api/types'
+import type {
+  ReviewAnchor,
+  ReviewAnnotationStyle,
+  ReviewScopeRequest,
+  ReviewSessionSnapshot,
+} from '../../api/types'
 import {
   type ContinuousReviewEditorSeed,
   reviewWorkspaceError,
@@ -26,6 +32,7 @@ export interface ImageReviewWorkbenchFeedback {
   createdAtMs: number
   ordinal: number | null
   anchor: ReviewAnchor
+  style?: ReviewAnnotationStyle | null
 }
 
 export interface ImageReviewPreparation {
@@ -47,6 +54,7 @@ export interface ImageReviewSaveRequest {
   operation: 'text' | 'geometry'
   text: string
   anchor: ReviewAnchor
+  style?: ReviewAnnotationStyle | null
   preparation: ImageReviewPreparation
 }
 
@@ -81,16 +89,17 @@ export function continuousImageReviewWorkbenchAdapter(
   function view(entityId: string, preparation: ImageReviewPreparation | null) {
     const snapshot = coordinator.getSnapshot()
     const asset = preparedAsset(entityId, preparation)
+    const equivalentIds = equivalentAssetVersionIds(snapshot, asset?.asset ?? null)
     const status =
       asset === null ? undefined : operationStatus.get(statusMessageKey(entityId, asset.asset.id))
-    const savedHere = asset !== null && snapshot.lastChangedAssetVersionIds.includes(asset.asset.id)
+    const savedHere = snapshot.lastChangedAssetVersionIds.some((id) => equivalentIds.has(id))
     return {
-      feedback: continuousFeedback(snapshot, asset?.asset.id ?? null),
+      feedback: continuousFeedback(snapshot, asset?.asset ?? null),
       readOnlyReason: continuousReadOnlyReason(snapshot, entityId, preparation),
       restorableItemId: null,
       statusMessage:
         status === 'saved' || savedHere
-          ? pendingTargetForAsset(snapshot, asset?.asset.id ?? null)
+          ? pendingTargetForAsset(snapshot, equivalentIds)
             ? '已保存，待确认'
             : publicationMessage(snapshot)
           : status === 'deleted'
@@ -104,9 +113,18 @@ export function continuousImageReviewWorkbenchAdapter(
     viewKey: (entityId) => continuousViewKey(coordinator, entityId),
     async prepareEntity(entityId) {
       const assets = await coordinator.prepareAssets([entityId])
+      const prepared = assets[0]
       return {
         key: `continuous:${coordinator.workbenchSessionKey}:${entityId}`,
-        prepared: assets[0] ?? null,
+        // Reuse may return a historical version whose stored source identity
+        // predates the current scan. The requested preview entity is the
+        // verified current owner, so bind that version to it.
+        prepared:
+          prepared === undefined
+            ? null
+            : prepared.asset.sourceEntityId === entityId
+              ? prepared
+              : { ...prepared, asset: { ...prepared.asset, sourceEntityId: entityId } },
       }
     },
     view,
@@ -120,7 +138,12 @@ export function continuousImageReviewWorkbenchAdapter(
         request.preparation,
       )
       if (blocked !== null) throw continuousReadOnlyError(blocked)
-      if (request.item !== null && request.item.assetVersionId !== asset.asset.id)
+      if (
+        request.item !== null &&
+        !equivalentAssetVersionIds(coordinator.getSnapshot(), asset.asset).has(
+          request.item.assetVersionId,
+        )
+      )
         throw reviewWorkspaceError('wrong_context', '意见不属于当前素材版本', false)
       if (
         request.item !== null &&
@@ -135,7 +158,12 @@ export function continuousImageReviewWorkbenchAdapter(
     },
     async deleteFeedback(request) {
       const asset = preparedAsset(request.entityId, request.preparation)
-      if (asset === null || request.item.assetVersionId !== asset.asset.id)
+      if (
+        asset === null ||
+        !equivalentAssetVersionIds(coordinator.getSnapshot(), asset.asset).has(
+          request.item.assetVersionId,
+        )
+      )
         throw reviewWorkspaceError('wrong_context', '意见不属于当前素材版本', false)
       const blocked = continuousReadOnlyReason(
         coordinator.getSnapshot(),
@@ -171,7 +199,11 @@ function continuousItemIsCurrent(
   snapshot: ReturnType<ContinuousReviewCoordinator['getSnapshot']>,
   item: ImageReviewWorkbenchFeedback,
 ) {
-  return continuousFeedback(snapshot, item.assetVersionId).some(
+  const asset =
+    snapshot.view?.current?.authoring.state.assets.find(
+      (candidate) => candidate.id === item.assetVersionId,
+    ) ?? null
+  return continuousFeedback(snapshot, asset).some(
     (candidate) =>
       candidate.itemId === item.itemId && sameReviewValue(candidate.targetKey, item.targetKey),
   )
@@ -179,8 +211,10 @@ function continuousItemIsCurrent(
 
 function continuousFeedback(
   snapshot: ReturnType<ContinuousReviewCoordinator['getSnapshot']>,
-  assetVersionId: string | null,
+  asset: ReviewAssetVersion | null,
 ) {
+  const assetVersionIds = equivalentAssetVersionIds(snapshot, asset)
+  if (assetVersionIds.size === 0) return []
   let ordinal = 0
   return [...(snapshot.view?.current?.authoring.state.feedback ?? [])]
     .sort(
@@ -190,7 +224,7 @@ function continuousFeedback(
     )
     .flatMap((item): ImageReviewWorkbenchFeedback[] =>
       item.targets.flatMap((target) => {
-        if (assetVersionId === null || target.assetVersionId !== assetVersionId) return []
+        if (!assetVersionIds.has(target.assetVersionId)) return []
         return [
           {
             itemId: target.id,
@@ -206,10 +240,36 @@ function continuousFeedback(
             createdAtMs: item.createdAtMs,
             ordinal: target.anchor.kind === 'asset' ? null : ++ordinal,
             anchor: cloneAnchor(target.anchor),
+            style: target.style ?? null,
           },
         ]
       }),
     )
+}
+
+/**
+ * Source identity can converge onto one live file more than once when a prior
+ * scan captured the same bytes under a different entity generation. Those
+ * versions share one current source, so their feedback belongs to the same
+ * preview even though the target keys keep their original versions.
+ */
+function equivalentAssetVersionIds(
+  snapshot: ReturnType<ContinuousReviewCoordinator['getSnapshot']>,
+  asset: ReviewAssetVersion | null,
+): ReadonlySet<string> {
+  const ids = new Set<string>()
+  if (asset === null) return ids
+  ids.add(asset.id)
+  if (asset.evidence.blake3 === null) return ids
+  for (const candidate of snapshot.view?.current?.authoring.state.assets ?? []) {
+    if (candidate.relativePath !== asset.relativePath) continue
+    if (candidate.sourceEntityId !== asset.sourceEntityId) continue
+    if (candidate.evidence.sizeBytes !== asset.evidence.sizeBytes) continue
+    if (candidate.evidence.blake3 !== asset.evidence.blake3) continue
+    if (candidate.media.kind !== asset.media.kind) continue
+    ids.add(candidate.id)
+  }
+  return ids
 }
 
 function continuousEditorSeed(
@@ -218,7 +278,14 @@ function continuousEditorSeed(
 ): ContinuousReviewEditorSeed {
   let targets: ReviewTargetEdit[]
   if (request.item === null) {
-    targets = [{ kind: 'add', assetVersionId, anchor: cloneAnchor(request.anchor) }]
+    targets = [
+      {
+        kind: 'add',
+        assetVersionId,
+        anchor: cloneAnchor(request.anchor),
+        style: request.style ?? null,
+      },
+    ]
   } else if (request.operation === 'text') {
     targets = []
   } else {
@@ -228,8 +295,9 @@ function continuousEditorSeed(
       {
         kind: 'redraw',
         key: request.item.targetKey,
-        assetVersionId,
+        assetVersionId: request.item.assetVersionId,
         anchor: cloneAnchor(request.anchor),
+        style: request.style ?? null,
       },
     ]
   }
@@ -372,6 +440,7 @@ function continuousReadOnlyReason(
   if (preparation === null) return 'loading'
   const asset = preparedAsset(entityId, preparation)
   if (asset === null) return 'source_confirmation'
+  const equivalentIds = equivalentAssetVersionIds(snapshot, asset.asset)
   const current = snapshot.view.current?.authoring.state
   const assetVersionsForEntity = new Set(
     current?.assets
@@ -387,18 +456,18 @@ function continuousReadOnlyReason(
   )
   if (
     [...referencedAssetVersionsForEntity].some(
-      (assetVersionId) => assetVersionId !== asset.asset.id,
+      (assetVersionId) => !equivalentIds.has(assetVersionId),
     )
   )
     return 'source_confirmation'
   if (
     snapshot.view.sourceChecks.some(
-      (check) => check.assetVersionId === asset.asset.id && check.status !== 'match',
+      (check) => equivalentIds.has(check.assetVersionId) && check.status !== 'match',
     ) ||
     snapshot.view.current?.authoring.state.feedback.some((feedback) =>
       feedback.targets.some(
         (target) =>
-          target.assetVersionId === asset.asset.id &&
+          equivalentIds.has(target.assetVersionId) &&
           target.availability.kind === 'needs_confirmation',
       ),
     )
@@ -450,14 +519,14 @@ function continuousViewKey(coordinator: ContinuousReviewCoordinator, entityId: s
 
 function pendingTargetForAsset(
   snapshot: ReturnType<ContinuousReviewCoordinator['getSnapshot']>,
-  assetVersionId: string | null,
+  assetVersionIds: ReadonlySet<string>,
 ) {
-  if (assetVersionId === null) return false
+  if (assetVersionIds.size === 0) return false
   const pending = new Set(snapshot.view?.projection.needsConfirmation ?? [])
   return (
     snapshot.view?.current?.authoring.state.feedback.some((feedback) =>
       feedback.targets.some(
-        (target) => target.assetVersionId === assetVersionId && pending.has(target.id),
+        (target) => assetVersionIds.has(target.assetVersionId) && pending.has(target.id),
       ),
     ) ?? false
   )
@@ -490,10 +559,13 @@ function cloneAnchor(anchor: ReviewAnchor): ReviewAnchor {
     case 'asset':
       return { kind: 'asset' }
     case 'image_point':
+    case 'image_text':
       return { ...anchor }
     case 'image_arrow':
+    case 'image_line':
       return { kind: anchor.kind, tail: { ...anchor.tail }, head: { ...anchor.head } }
     case 'image_stroke':
+    case 'image_polygon':
       return { kind: anchor.kind, points: anchor.points.map((point) => ({ ...point })) }
     case 'image_rect':
     case 'image_ellipse':

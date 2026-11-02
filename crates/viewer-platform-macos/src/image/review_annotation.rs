@@ -10,8 +10,8 @@ use objc2_app_kit::{
 };
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{
-    CGBitmapContextCreate, CGBitmapContextCreateImage, CGColorSpace, CGContext, CGImage,
-    CGImageAlphaInfo, CGLineCap, CGLineJoin,
+    CGBitmapContextCreate, CGBitmapContextCreateImage, CGBlendMode, CGColorSpace, CGContext,
+    CGImage, CGImageAlphaInfo, CGLineCap, CGLineJoin, CGMutablePath, CGPath,
 };
 use objc2_foundation::{NSDictionary, NSString};
 use std::fs::{self, File, Metadata, OpenOptions};
@@ -24,9 +24,10 @@ use viewer_application::{
     REVIEW_ANNOTATION_MAX_EDGE, ReviewArtifactAnnotation, ReviewArtifactError, ReviewArtifactPort,
     ReviewArtifactRenderRequest, ReviewRenderedArtifact,
 };
-use viewer_domain::review::{FeedbackAnchor, NormalizedPoint, NormalizedRect, ReviewMedia};
-
-const REVIEW_RED: (f64, f64, f64) = (0.443, 0.302, 0.0);
+use viewer_domain::review::{
+    AnnotationColor, AnnotationStyle, AnnotationTool, AnnotationWidth, FeedbackAnchor,
+    NormalizedPoint, NormalizedRect, ReviewMedia,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ReviewArtifactRenderCheckpoint {
@@ -328,24 +329,31 @@ pub(super) fn draw_annotations(
     // A plain bitmap context preserves CGImage row orientation. Only normalized
     // top-origin annotation coordinates need the y conversion below.
     CGContext::draw_image(Some(&context), bounds, Some(source));
-
-    let line_width = (f64::from(width.min(height)) * 0.006).clamp(3.0, 12.0);
-    CGContext::set_rgb_stroke_color(
-        Some(&context),
-        REVIEW_RED.0,
-        REVIEW_RED.1,
-        REVIEW_RED.2,
-        1.0,
-    );
-    CGContext::set_line_width(Some(&context), line_width);
     CGContext::set_line_cap(Some(&context), CGLineCap::Round);
     CGContext::set_line_join(Some(&context), CGLineJoin::Round);
 
+    let short_edge = f64::from(width.min(height));
+    let base_width = (short_edge * 0.006).clamp(3.0, 12.0);
     for annotation in annotations {
+        let paint = EvidencePaint::from_style(annotation.style, base_width);
         let marker = match &annotation.anchor {
             FeedbackAnchor::ImageRect(rect) => {
                 let region = source_rect(*rect, width, height);
-                CGContext::stroke_rect_with_width(Some(&context), region, line_width);
+                let radius = paint.corner_radius();
+                let path =
+                    unsafe { CGPath::with_rounded_rect(region, radius, radius, std::ptr::null()) };
+                paint_path(&context, &path, &paint, true);
+                source_point(
+                    NormalizedPoint::new(rect.x(), rect.y())
+                        .map_err(|_| ReviewArtifactError::InvalidRequest)?,
+                    width,
+                    height,
+                )
+            }
+            FeedbackAnchor::ImageEllipse(rect) => {
+                let region = source_rect(*rect, width, height);
+                let path = unsafe { CGPath::with_ellipse_in_rect(region, std::ptr::null()) };
+                paint_path(&context, &path, &paint, true);
                 source_point(
                     NormalizedPoint::new(rect.x(), rect.y())
                         .map_err(|_| ReviewArtifactError::InvalidRequest)?,
@@ -354,49 +362,243 @@ pub(super) fn draw_annotations(
                 )
             }
             FeedbackAnchor::ImageStroke(stroke) => {
-                let first = stroke
+                let points = stroke
                     .points()
-                    .first()
-                    .ok_or(ReviewArtifactError::InvalidRequest)?;
-                let first = source_point(*first, width, height);
-                CGContext::begin_path(Some(&context));
-                CGContext::move_to_point(Some(&context), first.x, first.y);
-                for point in &stroke.points()[1..] {
-                    let point = source_point(*point, width, height);
-                    CGContext::add_line_to_point(Some(&context), point.x, point.y);
+                    .iter()
+                    .map(|point| source_point(*point, width, height))
+                    .collect::<Vec<_>>();
+                if points.len() < 2 {
+                    return Err(ReviewArtifactError::InvalidRequest);
                 }
-                CGContext::stroke_path(Some(&context));
-                first
+                let path = polyline_path(&points, false);
+                paint_path(&context, &path, &paint, false);
+                points[0]
             }
-            FeedbackAnchor::ImagePoint(point) => {
-                let target = source_point(*point, width, height);
-                draw_point(&context, target, line_width);
-                target
+            FeedbackAnchor::ImageLine(line) => {
+                let tail = source_point(line.tail(), width, height);
+                let head = source_point(line.head(), width, height);
+                let path = polyline_path(&[tail, head], false);
+                paint_path(&context, &path, &paint, false);
+                tail
+            }
+            FeedbackAnchor::ImagePolygon(polygon) => {
+                let points = polygon
+                    .points()
+                    .iter()
+                    .map(|point| source_point(*point, width, height))
+                    .collect::<Vec<_>>();
+                if points.len() < 3 {
+                    return Err(ReviewArtifactError::InvalidRequest);
+                }
+                let path = polyline_path(&points, true);
+                paint_path(&context, &path, &paint, true);
+                points[0]
             }
             FeedbackAnchor::ImageArrow(arrow) => {
                 let tail = source_point(arrow.tail(), width, height);
                 let head = source_point(arrow.head(), width, height);
-                draw_arrow(&context, tail, head, line_width, width, height);
+                let path = arrow_path(tail, head, width, height);
+                paint_path(&context, &path, &paint, false);
                 tail
             }
-            FeedbackAnchor::ImageEllipse(rect) => {
-                draw_ellipse(&context, *rect, width, height, line_width);
-                source_point(
-                    NormalizedPoint::new(rect.x(), rect.y())
-                        .map_err(|_| ReviewArtifactError::InvalidRequest)?,
-                    width,
-                    height,
-                )
-            }
+            FeedbackAnchor::ImagePoint(point) => source_point(*point, width, height),
+            FeedbackAnchor::ImageText(point) => source_point(*point, width, height),
             FeedbackAnchor::Asset
             | FeedbackAnchor::VideoPoint { .. }
             | FeedbackAnchor::VideoRange { .. } => {
                 return Err(ReviewArtifactError::InvalidRequest);
             }
         };
-        draw_marker(&context, marker, annotation.ordinal, width, height);
+        draw_marker(&context, marker, annotation.ordinal, width, height, &paint);
     }
     CGBitmapContextCreateImage(Some(&context)).ok_or(ReviewArtifactError::Unavailable)
+}
+
+struct EvidencePaint {
+    color: (f64, f64, f64),
+    alpha: f64,
+    width: f64,
+    halo: f64,
+    dashed: bool,
+    multiply: bool,
+}
+
+impl EvidencePaint {
+    fn from_style(style: Option<AnnotationStyle>, base_width: f64) -> Self {
+        let fallback = AnnotationStyle::new(
+            AnnotationTool::Rectangle,
+            AnnotationColor::Red,
+            AnnotationWidth::Medium,
+            100,
+            false,
+            None,
+        )
+        .expect("hard-coded fallback style is valid");
+        let style = style.unwrap_or(fallback);
+        let factor = match style.width() {
+            AnnotationWidth::Thin => 0.75,
+            AnnotationWidth::Medium => 1.0,
+            AnnotationWidth::Thick => 2.0,
+        };
+        let width = (base_width * factor).clamp(2.0, 24.0);
+        let highlighter = style.tool() == AnnotationTool::Highlighter;
+        Self {
+            color: annotation_rgb(style.color()),
+            alpha: if highlighter {
+                0.35
+            } else {
+                f64::from(style.opacity_percent()) / 100.0
+            },
+            width,
+            halo: if highlighter {
+                0.0
+            } else {
+                (base_width * 0.3).clamp(1.5, 5.0)
+            },
+            dashed: style.dashed(),
+            multiply: highlighter,
+        }
+    }
+
+    fn corner_radius(&self) -> f64 {
+        (self.width * 1.2).clamp(3.5, 12.0)
+    }
+}
+
+fn annotation_rgb(color: AnnotationColor) -> (f64, f64, f64) {
+    match color {
+        AnnotationColor::Red => (0.776, 0.157, 0.157),
+        AnnotationColor::Orange => (0.937, 0.424, 0.0),
+        AnnotationColor::Yellow => (0.976, 0.659, 0.145),
+        AnnotationColor::Green => (0.18, 0.49, 0.196),
+        AnnotationColor::Teal => (0.0, 0.412, 0.361),
+        AnnotationColor::Blue => (0.082, 0.4, 0.753),
+        AnnotationColor::Purple => (0.416, 0.106, 0.604),
+        AnnotationColor::Black => (0.129, 0.129, 0.129),
+    }
+}
+
+fn polyline_path(points: &[CGPoint], closed: bool) -> CFRetained<CGPath> {
+    let path = CGMutablePath::new();
+    if let Some(first) = points.first() {
+        // SAFETY: `path` is a fresh mutable path and the transform is null.
+        unsafe {
+            CGMutablePath::move_to_point(Some(&path), std::ptr::null(), first.x, first.y);
+            for point in &points[1..] {
+                CGMutablePath::add_line_to_point(Some(&path), std::ptr::null(), point.x, point.y);
+            }
+            if closed {
+                CGMutablePath::close_subpath(Some(&path));
+            }
+        }
+    }
+    // SAFETY: The mutable path is complete and no caller retains a mutable
+    // reference while it is drawn.
+    unsafe { CFRetained::cast_unchecked(path) }
+}
+
+fn arrow_path(tail: CGPoint, head: CGPoint, width: u32, height: u32) -> CFRetained<CGPath> {
+    let dx = head.x - tail.x;
+    let dy = head.y - tail.y;
+    let distance = dx.hypot(dy);
+    if distance <= f64::EPSILON {
+        return polyline_path(&[tail, head], false);
+    }
+    let unit_x = dx / distance;
+    let unit_y = dy / distance;
+    let head_length = (f64::from(width.min(height)) * 0.035)
+        .clamp(12.0, 36.0)
+        .min(distance * 0.45);
+    let wing = head_length * 0.55;
+    let base_x = head.x - unit_x * head_length;
+    let base_y = head.y - unit_y * head_length;
+    let perpendicular_x = -unit_y;
+    let perpendicular_y = unit_x;
+    let points = [
+        tail,
+        head,
+        CGPoint::new(
+            base_x + perpendicular_x * wing,
+            base_y + perpendicular_y * wing,
+        ),
+        head,
+        CGPoint::new(
+            base_x - perpendicular_x * wing,
+            base_y - perpendicular_y * wing,
+        ),
+    ];
+    let path = CGMutablePath::new();
+    // SAFETY: `path` is fresh mutable storage and the transform is null.
+    unsafe {
+        CGMutablePath::move_to_point(Some(&path), std::ptr::null(), points[0].x, points[0].y);
+        for point in &points[1..] {
+            CGMutablePath::add_line_to_point(Some(&path), std::ptr::null(), point.x, point.y);
+        }
+    }
+    // SAFETY: The mutable path is complete and not aliased.
+    unsafe { CFRetained::cast_unchecked(path) }
+}
+
+fn paint_path(context: &CGContext, path: &CGPath, paint: &EvidencePaint, fill: bool) {
+    CGContext::set_blend_mode(
+        Some(context),
+        if paint.multiply {
+            CGBlendMode::Multiply
+        } else {
+            CGBlendMode::Normal
+        },
+    );
+    if fill {
+        CGContext::begin_path(Some(context));
+        CGContext::add_path(Some(context), Some(path));
+        CGContext::set_rgb_fill_color(
+            Some(context),
+            paint.color.0,
+            paint.color.1,
+            paint.color.2,
+            0.1,
+        );
+        CGContext::fill_path(Some(context));
+    }
+    if paint.halo > 0.0 {
+        CGContext::begin_path(Some(context));
+        CGContext::add_path(Some(context), Some(path));
+        CGContext::set_rgb_stroke_color(Some(context), 1.0, 1.0, 1.0, 0.9);
+        CGContext::set_line_width(Some(context), paint.width + paint.halo * 2.0);
+        set_dash(context, &[]);
+        CGContext::stroke_path(Some(context));
+    }
+    CGContext::begin_path(Some(context));
+    CGContext::add_path(Some(context), Some(path));
+    CGContext::set_rgb_stroke_color(
+        Some(context),
+        paint.color.0,
+        paint.color.1,
+        paint.color.2,
+        paint.alpha,
+    );
+    CGContext::set_line_width(Some(context), paint.width);
+    let dashed = [paint.width * 3.0, paint.width * 2.0];
+    set_dash(context, if paint.dashed { &dashed } else { &[] });
+    CGContext::stroke_path(Some(context));
+    CGContext::set_blend_mode(Some(context), CGBlendMode::Normal);
+}
+
+fn set_dash(context: &CGContext, lengths: &[f64]) {
+    // SAFETY: `lengths` points to a valid slice for the duration of the call;
+    // an empty slice is explicitly permitted as "solid".
+    unsafe {
+        CGContext::set_line_dash(
+            Some(context),
+            0.0,
+            if lengths.is_empty() {
+                std::ptr::null()
+            } else {
+                lengths.as_ptr()
+            },
+            lengths.len(),
+        );
+    }
 }
 
 fn source_point(point: NormalizedPoint, width: u32, height: u32) -> CGPoint {
@@ -419,72 +621,14 @@ fn source_rect(rect: NormalizedRect, width: u32, height: u32) -> CGRect {
     )
 }
 
-fn draw_point(context: &CGContext, target: CGPoint, line_width: f64) {
-    let radius = (line_width * 1.25).max(4.0);
-    let target_dot = CGRect::new(
-        CGPoint::new(target.x - radius, target.y - radius),
-        CGSize::new(radius * 2.0, radius * 2.0),
-    );
-    CGContext::set_rgb_fill_color(Some(context), REVIEW_RED.0, REVIEW_RED.1, REVIEW_RED.2, 1.0);
-    CGContext::fill_ellipse_in_rect(Some(context), target_dot);
-}
-
-fn draw_ellipse(
+fn draw_marker(
     context: &CGContext,
-    rect: NormalizedRect,
+    center: CGPoint,
+    ordinal: u32,
     width: u32,
     height: u32,
-    line_width: f64,
+    paint: &EvidencePaint,
 ) {
-    CGContext::set_line_width(Some(context), line_width);
-    CGContext::stroke_ellipse_in_rect(Some(context), source_rect(rect, width, height));
-}
-
-fn draw_arrow(
-    context: &CGContext,
-    tail: CGPoint,
-    head: CGPoint,
-    line_width: f64,
-    width: u32,
-    height: u32,
-) {
-    let dx = head.x - tail.x;
-    let dy = head.y - tail.y;
-    let distance = dx.hypot(dy);
-    if distance <= f64::EPSILON {
-        return;
-    }
-    let unit_x = dx / distance;
-    let unit_y = dy / distance;
-    let head_length = (f64::from(width.min(height)) * 0.035)
-        .clamp(12.0, 36.0)
-        .max(line_width * 2.0)
-        .min(distance * 0.45);
-    let wing = head_length * 0.55;
-    let base_x = head.x - unit_x * head_length;
-    let base_y = head.y - unit_y * head_length;
-    let perpendicular_x = -unit_y;
-    let perpendicular_y = unit_x;
-
-    CGContext::begin_path(Some(context));
-    CGContext::move_to_point(Some(context), tail.x, tail.y);
-    CGContext::add_line_to_point(Some(context), head.x, head.y);
-    CGContext::move_to_point(Some(context), head.x, head.y);
-    CGContext::add_line_to_point(
-        Some(context),
-        base_x + perpendicular_x * wing,
-        base_y + perpendicular_y * wing,
-    );
-    CGContext::move_to_point(Some(context), head.x, head.y);
-    CGContext::add_line_to_point(
-        Some(context),
-        base_x - perpendicular_x * wing,
-        base_y - perpendicular_y * wing,
-    );
-    CGContext::stroke_path(Some(context));
-}
-
-fn draw_marker(context: &CGContext, center: CGPoint, ordinal: u32, width: u32, height: u32) {
     let graphics_context = NSGraphicsContext::graphicsContextWithCGContext_flipped(context, false);
     let _guard = GraphicsContextGuard::install(context, &graphics_context);
     let short_edge = f64::from(width.min(height));
@@ -497,11 +641,25 @@ fn draw_marker(context: &CGContext, center: CGPoint, ordinal: u32, width: u32, h
         CGPoint::new(center.x - radius, center.y - radius),
         CGSize::new(radius * 2.0, radius * 2.0),
     );
-    CGContext::set_rgb_fill_color(Some(context), REVIEW_RED.0, REVIEW_RED.1, REVIEW_RED.2, 1.0);
+    CGContext::set_rgb_fill_color(Some(context), 1.0, 1.0, 1.0, 0.97);
     CGContext::fill_ellipse_in_rect(Some(context), marker);
+    CGContext::set_rgb_stroke_color(
+        Some(context),
+        paint.color.0,
+        paint.color.1,
+        paint.color.2,
+        1.0,
+    );
+    CGContext::set_line_width(Some(context), (radius * 0.08).max(1.5));
+    CGContext::stroke_ellipse_in_rect(Some(context), marker);
 
-    let font = NSFont::boldSystemFontOfSize(radius);
-    let color = NSColor::whiteColor();
+    let font = NSFont::boldSystemFontOfSize(radius * 0.9);
+    let color = NSColor::colorWithSRGBRed_green_blue_alpha(
+        paint.color.0,
+        paint.color.1,
+        paint.color.2,
+        1.0,
+    );
     let values: [&AnyObject; 2] = [font.as_super().as_super(), color.as_super().as_super()];
     let attributes = NSDictionary::from_slices(
         &[unsafe { NSFontAttributeName }, unsafe {
@@ -621,7 +779,7 @@ impl Drop for OwnedArtifact {
 
 #[cfg(test)]
 pub(super) mod tests {
-    use super::{MacReviewArtifactRenderer, ReviewArtifactRenderCheckpoint};
+    use super::{EvidencePaint, MacReviewArtifactRenderer, ReviewArtifactRenderCheckpoint};
     use objc2_core_foundation::{
         CFDictionary, CFNumber, CFString, CFType, CFURL, CGPoint, CGRect, CGSize,
     };
@@ -639,11 +797,41 @@ pub(super) mod tests {
         ReviewTaskCancellation,
     };
     use viewer_domain::review::{
-        AssetEvidence, AssetVersion, FeedbackAnchor, ImageStroke,
-        MAX_IMAGE_STROKE_POINTS_PER_ROUND, NormalizedArrow, NormalizedPoint, NormalizedRect,
-        ReviewMedia,
+        AnnotationColor, AnnotationStyle, AnnotationTool, AnnotationWidth, AssetEvidence,
+        AssetVersion, FeedbackAnchor, ImageStroke, MAX_IMAGE_STROKE_POINTS_PER_ROUND,
+        NormalizedArrow, NormalizedPoint, NormalizedRect, ReviewMedia,
     };
     use viewer_domain::{AssetVersionId, FeedbackId, RelativePath};
+
+    #[test]
+    fn highlighter_evidence_paint_multiplies_without_halo() {
+        let style = AnnotationStyle::new(
+            AnnotationTool::Highlighter,
+            AnnotationColor::Yellow,
+            AnnotationWidth::Thick,
+            35,
+            false,
+            None,
+        )
+        .unwrap();
+        let paint = EvidencePaint::from_style(Some(style), 8.0);
+        assert!(paint.multiply);
+        assert_eq!(paint.alpha, 0.35);
+        assert_eq!(paint.halo, 0.0);
+
+        let rectangle = AnnotationStyle::new(
+            AnnotationTool::Rectangle,
+            AnnotationColor::Red,
+            AnnotationWidth::Medium,
+            100,
+            false,
+            None,
+        )
+        .unwrap();
+        let paint = EvidencePaint::from_style(Some(rectangle), 8.0);
+        assert!(!paint.multiply);
+        assert!(paint.halo > 0.0);
+    }
 
     fn fixture(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -681,6 +869,7 @@ pub(super) mod tests {
     fn annotations(rect_x: f64) -> Vec<NumberedImageAnnotation> {
         vec![
             NumberedImageAnnotation {
+                style: None,
                 ordinal: 1,
                 feedback_id: FeedbackId::from_u128(11),
                 anchor: FeedbackAnchor::ImageRect(
@@ -688,6 +877,7 @@ pub(super) mod tests {
                 ),
             },
             NumberedImageAnnotation {
+                style: None,
                 ordinal: 2,
                 feedback_id: FeedbackId::from_u128(12),
                 anchor: FeedbackAnchor::ImageStroke(
@@ -823,6 +1013,7 @@ pub(super) mod tests {
                 source.clone(),
                 ReviewTaskCancellation::default(),
                 vec![NumberedImageAnnotation {
+                    style: None,
                     ordinal: 1,
                     feedback_id: FeedbackId::from_u128(1),
                     anchor: FeedbackAnchor::ImageRect(
@@ -846,12 +1037,49 @@ pub(super) mod tests {
                 pixel(110, 190)[2] > 240 && pixel(110, 190)[0] < 15,
                 "bottom must remain blue"
             );
-            // Right edge of the top rectangle is gold, not source red/blue.
+            // Right edge of the top rectangle uses the annotation red, not
+            // the source image's red/blue.
             assert!(
-                (pixel(84, 40)[0] as i32 - 113).abs() < 8
-                    && (pixel(84, 40)[1] as i32 - 77).abs() < 8
+                (pixel(84, 40)[0] as i32 - 198).abs() < 8
+                    && (pixel(84, 40)[1] as i32 - 40).abs() < 8
             );
             assert_eq!(fs::read(&source).unwrap(), original);
+        }
+    }
+
+    #[tokio::test]
+    async fn renderer_honors_stored_color_and_width() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("styled.png");
+        asymmetric_source(&source, 600, 800, 0);
+        let renderer = MacReviewArtifactRenderer::new(root.path()).unwrap();
+        let styled = |ordinal, x, color, width| NumberedImageAnnotation {
+            ordinal,
+            feedback_id: FeedbackId::from_u128(100 + ordinal as u128),
+            anchor: FeedbackAnchor::ImageRect(NormalizedRect::new(x, 0.2, 0.2, 0.3).unwrap()),
+            style: Some(
+                AnnotationStyle::new(AnnotationTool::Rectangle, color, width, 100, false, None)
+                    .unwrap(),
+            ),
+        };
+        let artifact = renderer
+            .render(request(
+                source,
+                ReviewTaskCancellation::default(),
+                vec![
+                    styled(1, 0.1, AnnotationColor::Blue, AnnotationWidth::Thick),
+                    styled(2, 0.6, AnnotationColor::Green, AnnotationWidth::Thin),
+                ],
+            ))
+            .await
+            .unwrap();
+        let pixels = decoded_rgba(&artifact.temporary_path, 600, 800);
+        let pixel = |x: usize, y: usize| &pixels[(y * 600 + x) * 4..(y * 600 + x) * 4 + 3];
+        for (channel, expected) in pixel(60, 300).iter().zip([21_i16, 101, 192]) {
+            assert!((i16::from(*channel) - expected).abs() < 12);
+        }
+        for (channel, expected) in pixel(360, 300).iter().zip([46_i16, 125, 50]) {
+            assert!((i16::from(*channel) - expected).abs() < 12);
         }
     }
 
@@ -914,6 +1142,7 @@ pub(super) mod tests {
                 .iter()
                 .enumerate()
                 .map(|(index, &anchor)| NumberedImageAnnotation {
+                    style: None,
                     ordinal: index as u32 + 1,
                     feedback_id: FeedbackId::from_u128(index as u128 + 11),
                     anchor: anchors[anchor].clone(),
@@ -932,7 +1161,7 @@ pub(super) mod tests {
 
             // Literal midpoints on both paths and both rectangle edges, away from badges.
             for (outline_x, marker_x) in [(90, 60), (210, 180), (300, 300), (450, 450)] {
-                for (channel, expected) in pixel(outline_x, 240).iter().zip([113_i16, 77, 0]) {
+                for (channel, expected) in pixel(outline_x, 240).iter().zip([198_i16, 40, 40]) {
                     assert!(
                         (i16::from(*channel) - expected).abs() < 8,
                         "outline at ({outline_x},240) lost its color for order {order:?}: {:?}",
@@ -1009,11 +1238,13 @@ pub(super) mod tests {
         let renderer = MacReviewArtifactRenderer::new(cache.path()).unwrap();
         let annotations = vec![
             NumberedImageAnnotation {
+                style: None,
                 ordinal: 1,
                 feedback_id: FeedbackId::from_u128(11),
                 anchor: FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.20, 0.25).unwrap()),
             },
             NumberedImageAnnotation {
+                style: None,
                 ordinal: 2,
                 feedback_id: FeedbackId::from_u128(12),
                 anchor: FeedbackAnchor::ImageArrow(
@@ -1025,6 +1256,7 @@ pub(super) mod tests {
                 ),
             },
             NumberedImageAnnotation {
+                style: None,
                 ordinal: 3,
                 feedback_id: FeedbackId::from_u128(13),
                 anchor: FeedbackAnchor::ImageEllipse(
@@ -1032,6 +1264,7 @@ pub(super) mod tests {
                 ),
             },
             NumberedImageAnnotation {
+                style: None,
                 ordinal: 4,
                 feedback_id: FeedbackId::from_u128(14),
                 anchor: FeedbackAnchor::ImageRect(
@@ -1039,6 +1272,7 @@ pub(super) mod tests {
                 ),
             },
             NumberedImageAnnotation {
+                style: None,
                 ordinal: 5,
                 feedback_id: FeedbackId::from_u128(15),
                 anchor: FeedbackAnchor::ImageStroke(
@@ -1180,6 +1414,7 @@ pub(super) mod tests {
                     source_path.clone(),
                     ReviewTaskCancellation::default(),
                     vec![NumberedImageAnnotation {
+                        style: None,
                         ordinal: 1,
                         feedback_id: FeedbackId::from_u128(1),
                         anchor: FeedbackAnchor::Asset,
@@ -1199,6 +1434,7 @@ pub(super) mod tests {
             .collect::<Vec<_>>();
         let too_many_points = (0..stroke_count)
             .map(|index| NumberedImageAnnotation {
+                style: None,
                 ordinal: u32::try_from(index + 1).unwrap(),
                 feedback_id: FeedbackId::from_u128(index as u128 + 1),
                 anchor: FeedbackAnchor::ImageStroke(ImageStroke::new(points.clone()).unwrap()),

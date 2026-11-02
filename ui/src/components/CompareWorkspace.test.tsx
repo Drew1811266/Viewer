@@ -347,7 +347,7 @@ describe('CompareWorkspace', () => {
     for (const file of queuedFiles) {
       expect(await screen.findByRole('img', { name: file.name })).toHaveAttribute(
         'src',
-        `viewer-image://localhost/original-${file.entityId}`,
+        `viewer-image://localhost/proxy-${file.entityId}`,
       )
     }
   })
@@ -367,11 +367,11 @@ describe('CompareWorkspace', () => {
 
     expect(await screen.findByRole('img', { name: 'a.jpg' })).toHaveAttribute(
       'src',
-      'viewer-image://localhost/original-a',
+      'viewer-image://localhost/proxy-a',
     )
     expect(await screen.findByRole('img', { name: 'b.jpg' })).toHaveAttribute(
       'src',
-      'viewer-image://localhost/original-b',
+      'viewer-image://localhost/proxy-b',
     )
   })
 
@@ -384,11 +384,11 @@ describe('CompareWorkspace', () => {
     renderWorkspace({ requestImage })
     expect(await screen.findByRole('img', { name: 'a.jpg' })).toHaveAttribute(
       'src',
-      'viewer-image://localhost/original-a',
+      'viewer-image://localhost/proxy-a',
     )
     expect(await screen.findByRole('img', { name: 'b.jpg' })).toHaveAttribute(
       'src',
-      'viewer-image://localhost/original-b',
+      'viewer-image://localhost/proxy-b',
     )
     const originalCount = requestImage.mock.calls.filter(
       ([, request]) => request.kind === 'original100_percent',

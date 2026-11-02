@@ -330,6 +330,8 @@ struct Target {
     #[serde(with = "wire")]
     anchor: FeedbackAnchor,
     #[serde(with = "wire")]
+    style: Option<AnnotationStyle>,
+    #[serde(with = "wire")]
     availability: ReviewAvailability,
 }
 remote_output!(VersionedTarget, Target);

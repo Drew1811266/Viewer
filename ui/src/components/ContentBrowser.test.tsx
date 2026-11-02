@@ -366,8 +366,8 @@ describe('ContentBrowser', () => {
 
     const imageOption = await screen.findByRole('option', { name: '1.jpg' })
     const videoOption = screen.getByRole('option', { name: 'clip.mp4' })
-    expect(within(imageOption).getByText('返工 · 2 条')).toBeVisible()
-    expect(within(videoOption).getByText('返工 · 1 条')).toBeVisible()
+    expect(within(imageOption).getByText('返工 · 2')).toBeVisible()
+    expect(within(videoOption).getByText('返工 · 1')).toBeVisible()
     expect(screen.queryByRole('button', { name: /通过/ })).not.toBeInTheDocument()
   })
 
@@ -767,11 +767,11 @@ describe('ContentBrowser', () => {
   })
 
   it.each([
-    ['compact', 96, 156],
-    ['standard', 132, 192],
-    ['large', 168, 228],
-    ['extra_large', 204, 528],
-    ['maximum', 240, 600],
+    ['compact', 96, 168],
+    ['standard', 132, 204],
+    ['large', 164, 236],
+    ['extra_large', 204, 552],
+    ['maximum', 240, 624],
   ] satisfies [ThumbnailDensity, number, number][])(
     'uses the %s global density height with proportional source-order rows',
     (density, expectedHeight, expectedThirdTop) => {
@@ -870,7 +870,7 @@ describe('ContentBrowser', () => {
     expect(screen.queryByRole('status', { name: '选择摘要' })).not.toBeInTheDocument()
   })
 
-  it('keeps the file name and non-default marker in one compact metadata row', () => {
+  it('keeps the file name, file metadata, and review marker on the card', () => {
     const marked = {
       ...image(1, { width: 1, height: 1 }),
       marker: { favorite: false, reviewState: 'pending' as const },
@@ -886,7 +886,8 @@ describe('ContentBrowser', () => {
 
     expect(metadata).not.toBeNull()
     expect(metadata).toContainElement(screen.getByText('1.jpg'))
-    expect(metadata).toContainElement(screen.getByText('待定'))
+    expect(option.querySelector('.image-cell-submeta')).toHaveTextContent('JPG · 10 B')
+    expect(option.querySelector('.image-cell-marker')).toHaveTextContent('待定')
     expect(option.querySelector('.image-cell-name')).toHaveTextContent('1.jpg')
   })
 
@@ -1084,7 +1085,7 @@ describe('ContentBrowser', () => {
     ).toHaveStyle({
       visibility: 'visible',
     })
-    expect(itemWrapper('image-2')).toHaveStyle({ top: '192px' })
+    expect(itemWrapper('image-2')).toHaveStyle({ top: '204px' })
 
     rendered.rerender(
       <ContentBrowser

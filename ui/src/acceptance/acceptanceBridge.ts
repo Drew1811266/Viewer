@@ -37,18 +37,44 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     },
     async getViewerSettings() {
       return {
-        schemaVersion: 4 as const,
+        schemaVersion: 5 as const,
         thumbnailDensity: 'standard' as const,
         magnifier: {
           shape: 'circle' as const,
           magnification: 2 as const,
           area: 'small' as const,
         },
+        speech: {
+          inputMode: 'click' as const,
+          locale: 'simplified_chinese' as const,
+          autoPunctuation: true,
+        },
       }
     },
     async updateViewerSettings(settings) {
-      return { schemaVersion: 4 as const, ...settings }
+      return { schemaVersion: 5 as const, ...settings }
     },
+    async speechStatus() {
+      return {
+        available: false,
+        speechAuthorized: false,
+        microphoneAuthorized: false,
+        onDevice: false,
+        localeSupported: false,
+        locale: 'zh-CN',
+      }
+    },
+    async requestSpeechPermissions() {
+      return { speechAuthorized: false, microphoneAuthorized: false }
+    },
+    async startSpeechCapture() {
+      throw new Error('Speech capture is unavailable in the acceptance bridge')
+    },
+    async stopSpeechCapture() {
+      throw new Error('Speech capture is unavailable in the acceptance bridge')
+    },
+    cancelSpeechCapture() {},
+    async openSpeechSettings() {},
     async folderTree() {
       return ACCEPTANCE_FOLDER_TREE
     },

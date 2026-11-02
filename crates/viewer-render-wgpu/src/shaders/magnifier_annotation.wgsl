@@ -87,5 +87,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     if input.dashed > 0.5 && (input.segment_distance_px % 10.0) > 6.0 {
         discard;
     }
-    return input.color;
+    // Match the main annotation shader: straight colors in, premultiplied out.
+    let alpha = input.color.a;
+    return vec4<f32>(input.color.rgb * alpha, alpha);
 }

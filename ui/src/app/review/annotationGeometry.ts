@@ -6,7 +6,13 @@ export type ImagePointAnchor = Extract<ReviewAnchor, { kind: 'image_point' }>
 export type ImageArrowAnchor = Extract<ReviewAnchor, { kind: 'image_arrow' }>
 export type ImageRectAnchor = Extract<ReviewAnchor, { kind: 'image_rect' }>
 export type ImageEllipseAnchor = Extract<ReviewAnchor, { kind: 'image_ellipse' }>
-export type BoxHandle = 'north_west' | 'north_east' | 'south_east' | 'south_west'
+export type ImageTextAnchor = Extract<ReviewAnchor, { kind: 'image_text' }>
+export type ImageLineAnchor = Extract<ReviewAnchor, { kind: 'image_line' }>
+export type ImagePolygonAnchor = Extract<ReviewAnchor, { kind: 'image_polygon' }>
+export type CornerHandle = 'north_west' | 'north_east' | 'south_east' | 'south_west'
+export type EdgeHandle = 'north' | 'east' | 'south' | 'west'
+export type BoxHandle = CornerHandle | EdgeHandle
+export type PolygonVertexHandle = `vertex_${number}`
 
 export interface EllipseOptions {
   constrainCircle: boolean
@@ -30,6 +36,39 @@ export interface NormalizedRect {
 export function pointAnchor(point: NormalizedPoint): ImagePointAnchor | null {
   if (!isNormalizedPoint(point)) return null
   return { kind: 'image_point', x: roundNormalized(point.x), y: roundNormalized(point.y) }
+}
+
+export function textAnchor(point: NormalizedPoint): ImageTextAnchor | null {
+  if (!isNormalizedPoint(point)) return null
+  return { kind: 'image_text', x: roundNormalized(point.x), y: roundNormalized(point.y) }
+}
+
+export function lineFromDrag(start: NormalizedPoint, end: NormalizedPoint): ImageLineAnchor | null {
+  const arrow = arrowFromDrag(start, end)
+  return arrow === null ? null : { kind: 'image_line', tail: arrow.tail, head: arrow.head }
+}
+
+export function polygonFromPoints(
+  points: ReadonlyArray<NormalizedPoint>,
+): ImagePolygonAnchor | null {
+  if (points.length < 3 || points.length > 64) return null
+  if (points.some((point) => !isNormalizedPoint(point))) return null
+  const rounded = points.map((point) => clampedPoint(point))
+  if (Math.abs(polygonArea(rounded)) <= 1e-12) return null
+  return { kind: 'image_polygon', points: rounded }
+}
+
+export function movePolygonVertex(
+  anchor: ImagePolygonAnchor,
+  index: number,
+  point: NormalizedPoint,
+): ImagePolygonAnchor | null {
+  if (!Number.isInteger(index) || index < 0 || index >= anchor.points.length) return null
+  if (!isNormalizedPoint(point)) return null
+  const points = anchor.points.map((current, position) =>
+    position === index ? clampedPoint(point) : { ...current },
+  )
+  return polygonFromPoints(points)
 }
 
 export function arrowFromDrag(
@@ -83,7 +122,8 @@ export function moveAnchor(anchor: ImageAnchor, delta: NormalizedPoint): ImageAn
       const point = clampedPoint({ x: anchor.x + delta.x, y: anchor.y + delta.y })
       return { kind: anchor.kind, ...point }
     }
-    case 'image_arrow': {
+    case 'image_arrow':
+    case 'image_line': {
       const movement = constrainedMovement([anchor.tail, anchor.head], delta)
       return {
         kind: anchor.kind,
@@ -91,7 +131,16 @@ export function moveAnchor(anchor: ImageAnchor, delta: NormalizedPoint): ImageAn
         head: translatedPoint(anchor.head, movement),
       }
     }
-    case 'image_stroke': {
+    case 'image_text': {
+      const point = constrainedMovement([anchor], delta)
+      return {
+        kind: anchor.kind,
+        x: roundNormalized(anchor.x + point.x),
+        y: roundNormalized(anchor.y + point.y),
+      }
+    }
+    case 'image_stroke':
+    case 'image_polygon': {
       const movement = constrainedMovement(anchor.points, delta)
       return {
         kind: anchor.kind,
@@ -123,9 +172,35 @@ export function resizeBoxAnchor<T extends ImageRectAnchor | ImageEllipseAnchor>(
 ): T | null {
   if (!isFinitePoint(point)) return null
   const active = clampedPoint(point)
-  const opposite = oppositeCorner(anchor, handle)
-  const rect = rectFromDrag(opposite, active)
+  const rect = isEdgeHandle(handle)
+    ? rectFromEdge(anchor, handle, active)
+    : rectFromDrag(oppositeCorner(anchor, handle), active)
   return rect === null ? null : ({ kind: anchor.kind, ...rect } as T)
+}
+
+function isEdgeHandle(handle: BoxHandle): handle is EdgeHandle {
+  return handle === 'north' || handle === 'east' || handle === 'south' || handle === 'west'
+}
+
+function rectFromEdge(
+  anchor: ImageRectAnchor | ImageEllipseAnchor,
+  handle: EdgeHandle,
+  active: NormalizedPoint,
+): NormalizedRect | null {
+  const left = anchor.x
+  const top = anchor.y
+  const right = anchor.x + anchor.width
+  const bottom = anchor.y + anchor.height
+  switch (handle) {
+    case 'north':
+      return rectFromDrag({ x: left, y: active.y }, { x: right, y: bottom })
+    case 'east':
+      return rectFromDrag({ x: left, y: top }, { x: active.x, y: bottom })
+    case 'south':
+      return rectFromDrag({ x: left, y: top }, { x: right, y: active.y })
+    case 'west':
+      return rectFromDrag({ x: active.x, y: top }, { x: right, y: bottom })
+  }
 }
 
 export function rectFromDrag(start: NormalizedPoint, end: NormalizedPoint): NormalizedRect | null {
@@ -330,7 +405,7 @@ function constrainedMovement(
 
 function oppositeCorner(
   anchor: ImageRectAnchor | ImageEllipseAnchor,
-  handle: BoxHandle,
+  handle: CornerHandle,
 ): NormalizedPoint {
   const left = anchor.x
   const top = anchor.y
@@ -351,12 +426,24 @@ function oppositeCorner(
 function cloneAnchor(anchor: ImageAnchor): ImageAnchor {
   switch (anchor.kind) {
     case 'image_arrow':
+    case 'image_line':
       return { kind: anchor.kind, tail: { ...anchor.tail }, head: { ...anchor.head } }
     case 'image_stroke':
+    case 'image_polygon':
       return { kind: anchor.kind, points: anchor.points.map((point) => ({ ...point })) }
     default:
       return { ...anchor }
   }
+}
+
+function polygonArea(points: ReadonlyArray<NormalizedPoint>): number {
+  let area = 0
+  for (let index = 0; index < points.length; index += 1) {
+    const left = points[index] as NormalizedPoint
+    const right = points[(index + 1) % points.length] as NormalizedPoint
+    area += left.x * right.y - right.x * left.y
+  }
+  return area / 2
 }
 
 function clamp01(value: number): number {

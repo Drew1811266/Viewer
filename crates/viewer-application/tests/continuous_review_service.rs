@@ -54,6 +54,7 @@ fn save(asset_version_id: AssetVersionId, text: &str) -> ReviewWorkspaceCommand 
         targets: vec![TargetEdit::Add {
             asset_version_id,
             anchor: FeedbackAnchor::Asset,
+            style: None,
         }],
     }
 }
@@ -464,10 +465,12 @@ async fn archive_history_coalesces_groups_of_the_same_exact_snapshot() {
                             TargetEdit::Add {
                                 asset_version_id: a.id,
                                 anchor: FeedbackAnchor::Asset,
+                                style: None,
                             },
                             TargetEdit::Add {
                                 asset_version_id: a.id,
                                 anchor: FeedbackAnchor::Asset,
+                                style: None,
                             },
                         ],
                     },
@@ -744,6 +747,7 @@ async fn shared_text_revision_updates_all_targets_and_partial_archive_only_remov
             .map(|a| TargetEdit::Add {
                 asset_version_id: a.id,
                 anchor: FeedbackAnchor::Asset,
+                style: None,
             })
             .collect(),
     };
@@ -1165,6 +1169,7 @@ async fn text_edit_reuses_local_annotation_pixels_but_updates_text_revision_mapp
                 targets: vec![TargetEdit::Add {
                     asset_version_id: assets[0].id,
                     anchor: anchor.clone(),
+                    style: None,
                 }],
             },
         )
@@ -1207,6 +1212,7 @@ async fn text_edit_reuses_local_annotation_pixels_but_updates_text_revision_mapp
                     key: key(&c),
                     asset_version_id: assets[0].id,
                     anchor: changed,
+                    style: None,
                 }],
             },
         )
@@ -1243,6 +1249,7 @@ async fn prepared_command_cache_has_an_aggregate_memory_budget() {
                 .map(|_| TargetEdit::Add {
                     asset_version_id: AssetVersionId::from_u128(10),
                     anchor: FeedbackAnchor::ImageStroke(stroke.clone()),
+                    style: None,
                 })
                 .collect(),
         };
@@ -1612,6 +1619,7 @@ async fn prebound_preview_has_the_exact_asset_that_save_accepts() {
                 targets: vec![TargetEdit::Add {
                     asset_version_id: preview.asset.id,
                     anchor: FeedbackAnchor::Asset,
+                    style: None,
                 }],
             },
         )
@@ -1645,6 +1653,7 @@ async fn cancellation_after_commit_keeps_receipt_instead_of_reporting_uncommitte
                 targets: vec![TargetEdit::Add {
                     asset_version_id: assets[0].id,
                     anchor: FeedbackAnchor::Asset,
+                    style: None,
                 }],
             },
         )

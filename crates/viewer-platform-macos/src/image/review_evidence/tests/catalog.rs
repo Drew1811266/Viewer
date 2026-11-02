@@ -159,6 +159,7 @@ async fn review_workspace_native_save_archive_restore_and_preview_version_guard(
             .map(|a| TargetEdit::Add {
                 asset_version_id: asset.id,
                 anchor: a.anchor,
+                style: None,
             })
             .collect(),
     };

@@ -1,11 +1,22 @@
 import { type ReactNode, useCallback, useEffect } from 'react'
-import type { FileCommandPreflight, RenamePreview, RenameRules } from '../../api/types'
+import type {
+  BatchImageExecution,
+  BatchImagePlanRow,
+  BatchImageSettingsRequest,
+  FileCommandPreflight,
+  RenamePreview,
+  RenameRules,
+  SpeechPreferences,
+} from '../../api/types'
+import BatchImageDialog from '../../components/BatchImageDialog'
 import BatchRenameDialog from '../../components/BatchRenameDialog'
 import CloseOperationDialog from '../../components/CloseOperationDialog'
 import DestinationDialog from '../../components/DestinationDialog'
 import RenameDialog from '../../components/RenameDialog'
 import SettingsDialog from '../../components/SettingsDialog'
 import TrashConfirmation from '../../components/TrashConfirmation'
+import type { SpeechServicePort } from '../../speech/SpeechServiceContext'
+import { SpeechServiceProvider } from '../../speech/SpeechServiceContext'
 import type { AcceptanceSceneRegistry } from '../AcceptanceApp'
 import {
   ACCEPTANCE_FILES,
@@ -17,6 +28,19 @@ import AcceptanceProductScene, { setAcceptanceInputValue } from './sceneHarness'
 const noOp = () => undefined
 const SELECTED_IDS = ACCEPTANCE_FILES.slice(0, 3).map(({ entityId }) => entityId)
 const DESTINATION_ID = 'acceptance-folder-destination'
+const SPEECH_PREFERENCES: SpeechPreferences = {
+  inputMode: 'click',
+  locale: 'simplified_chinese',
+  autoPunctuation: true,
+}
+const ACCEPTANCE_SPEECH_STATUS = {
+  available: true,
+  speechAuthorized: true,
+  microphoneAuthorized: true,
+  onDevice: true,
+  localeSupported: true,
+  locale: 'zh-CN',
+}
 
 export const DIALOG_SCENES: AcceptanceSceneRegistry = {
   'DIA-01': () => (
@@ -73,9 +97,50 @@ export const DIALOG_SCENES: AcceptanceSceneRegistry = {
   ),
   'DIA-07': () => (
     <DialogBackdrop ready={() => dialogIsNamed('文件操作尚未完成')}>
-      <CloseOperationDialog busy={false} onWait={noOp} onCancelPending={noOp} onStay={noOp} />
+      <CloseOperationDialog busy onWait={noOp} onCancelPending={noOp} onStay={noOp} />
     </DialogBackdrop>
   ),
+  'DIA-08': () => <BatchImageScene />,
+  'DIA-09': () => (
+    <DialogBackdrop ready={settingsSpeechReady}>
+      <SpeechServiceProvider port={acceptanceSpeechPort()} preferences={SPEECH_PREFERENCES}>
+        <SettingsDialog
+          bridge={acceptanceVideoCacheBridge()}
+          density="standard"
+          magnifier={{ shape: 'circle', magnification: 2, area: 'small' }}
+          error={null}
+          speech={SPEECH_PREFERENCES}
+          onDensityChange={noOp}
+          onMagnifierShapeChange={noOp}
+          onMagnifierMagnificationChange={noOp}
+          onMagnifierAreaChange={noOp}
+          onSpeechInputModeChange={noOp}
+          onSpeechLocaleChange={noOp}
+          onSpeechAutoPunctuationChange={noOp}
+          onClose={noOp}
+        />
+      </SpeechServiceProvider>
+    </DialogBackdrop>
+  ),
+}
+
+function acceptanceSpeechPort(): SpeechServicePort {
+  return {
+    async speechStatus() {
+      return ACCEPTANCE_SPEECH_STATUS
+    },
+    async requestSpeechPermissions() {
+      return { speechAuthorized: true, microphoneAuthorized: true }
+    },
+    async startSpeechCapture() {
+      return ACCEPTANCE_SPEECH_STATUS
+    },
+    async stopSpeechCapture() {
+      return { text: '袖口再收紧一些，保留褶皱。', elapsedMs: 2400, onDevice: true }
+    },
+    cancelSpeechCapture() {},
+    async openSpeechSettings() {},
+  }
 }
 
 function DialogBackdrop({ children, ready }: { children: ReactNode; ready(): boolean }) {
@@ -204,10 +269,79 @@ const CONFLICT_PREFLIGHT: FileCommandPreflight = {
   })),
 }
 
+function BatchImageScene() {
+  const ready = useCallback(
+    () =>
+      dialogIsNamed('批量处理图片') &&
+      document.querySelector('[data-testid="batch-image-plan"]') !== null,
+    [],
+  )
+  return (
+    <AcceptanceProductScene ready={ready}>
+      <BatchImageDialog
+        entityIds={SELECTED_IDS}
+        busy={false}
+        previewBatchImage={requestBatchImagePreview}
+        executeBatchImage={requestBatchImageExecution}
+        onCancel={noOp}
+      />
+    </AcceptanceProductScene>
+  )
+}
+
+async function requestBatchImagePreview(
+  entityIds: readonly string[],
+  settings: BatchImageSettingsRequest,
+): Promise<BatchImagePlanRow[]> {
+  return entityIds.map((entityId, index) => {
+    const source = ACCEPTANCE_FILES[index]
+    const suffix = settings.output.kind === 'sibling' ? settings.output.suffix : ''
+    return {
+      entityId,
+      relativePath: source?.relativePath ?? `衣服/A01/商品-${index + 1}.jpg`,
+      sourceSizeBytes: source?.size ?? 32_768,
+      targetWidth: 1024,
+      targetHeight: 768,
+      estimatedSizeBytes: 16_384,
+      disposition: {
+        kind: 'convert',
+        destination: `衣服/A01/商品-0${index + 1}${suffix}.jpg`,
+      },
+    }
+  })
+}
+
+async function requestBatchImageExecution(): Promise<BatchImageExecution> {
+  return { batchId: 'acceptance-batch-image', outcomes: [] }
+}
+
 function dialogIsNamed(title: string): boolean {
   const dialog = document.querySelector('[role="dialog"]')
   if (dialog === null) return false
   return [...dialog.querySelectorAll('h2')].some((heading) => heading.textContent?.trim() === title)
+}
+
+function settingsSpeechReady(): boolean {
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
+  if (dialog === null || !dialogIsNamed('软件设置')) return false
+  const navigation = dialog.querySelector<HTMLElement>('[aria-label="设置分类"]')
+  const speechNav = [...(navigation?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+    (button) => button.textContent?.trim() === '语音与转写',
+  )
+  if (speechNav === undefined) return false
+  if (speechNav.getAttribute('aria-pressed') !== 'true') {
+    if (speechNav.dataset.acceptanceAction !== 'select-speech') {
+      speechNav.dataset.acceptanceAction = 'select-speech'
+      speechNav.click()
+    }
+    return false
+  }
+  return (
+    dialog.querySelector('.settings-speech-privacy') !== null &&
+    dialog.querySelector('.settings-status-chip')?.textContent?.trim() === '已就绪' &&
+    dialog.querySelector('[aria-label="识别语言"]') !== null &&
+    dialog.querySelector('[aria-label="自动标点"]') !== null
+  )
 }
 
 function settingsDialogReady(): boolean {

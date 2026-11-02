@@ -30,7 +30,7 @@ impl CatalogState {
         &self,
         prepared: &PreparedReviewAsset,
     ) -> Result<Option<AssetVersion>, ReviewAssetError> {
-        let mut matches = self.assets.values().filter(|old| {
+        let matches = self.assets.values().filter(|old| {
             let same_entity = old.source_entity_id == Some(prepared.entity_id)
                 || self
                     .locators
@@ -42,21 +42,25 @@ impl CatalogState {
                 && old.evidence.size_bytes == prepared.asset.evidence.size_bytes
                 && old.media == prepared.asset.media
         });
-        let Some(old) = matches.next() else {
-            return Ok(None);
-        };
-        if matches.next().is_some() {
-            return Err(ReviewAssetError::UnconfirmedLocation);
+        // A source can converge onto one live identity more than once when an
+        // earlier identity drift captured the same bytes under a new version.
+        // Keep every converged version addressable, but reuse one deterministic
+        // canonical version instead of failing the entire preview.
+        let mut canonical: Option<&AssetVersion> = None;
+        for old in matches {
+            let located = self
+                .locators
+                .get(&old.id)
+                .map(|l| &l.relative_path)
+                .unwrap_or(&old.relative_path);
+            if located != &prepared.asset.relative_path {
+                return Err(ReviewAssetError::UnconfirmedLocation);
+            }
+            if canonical.is_none_or(|current| old.id.to_string() < current.id.to_string()) {
+                canonical = Some(old);
+            }
         }
-        let located = self
-            .locators
-            .get(&old.id)
-            .map(|l| &l.relative_path)
-            .unwrap_or(&old.relative_path);
-        if located != &prepared.asset.relative_path {
-            return Err(ReviewAssetError::UnconfirmedLocation);
-        }
-        Ok(Some(old.clone()))
+        Ok(canonical.cloned())
     }
 }
 impl IndexedReviewAssetCatalog {
@@ -358,5 +362,61 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
         state.register(asset)?;
         state.locators.insert(asset.id, decision.candidate);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn asset(id: u128, entity: u128, path: &str) -> AssetVersion {
+        AssetVersion {
+            id: AssetVersionId::from_u128(id),
+            source_entity_id: Some(EntityId::from_u128(entity)),
+            relative_path: RelativePath::parse(path).unwrap(),
+            evidence: AssetEvidence {
+                size_bytes: 100,
+                modified_ns: 1,
+                blake3: Some([7; 32]),
+            },
+            media: ReviewMedia::Image {
+                width: Some(640),
+                height: Some(480),
+            },
+            producer_asset_id: None,
+            parent_asset_version_id: None,
+        }
+    }
+
+    fn prepared(asset: AssetVersion) -> PreparedReviewAsset {
+        PreparedReviewAsset {
+            entity_id: asset.source_entity_id.unwrap(),
+            source_path: PathBuf::from(asset.relative_path.as_str()),
+            asset,
+            failure: None,
+            change_revision: 0,
+        }
+    }
+
+    #[test]
+    fn reuse_picks_one_canonical_version_when_identities_converge() {
+        let mut state = CatalogState::default();
+        state.register(&asset(2, 10, "a.jpg")).unwrap();
+        state.register(&asset(1, 10, "a.jpg")).unwrap();
+
+        let reused = state.reuse(&prepared(asset(3, 10, "a.jpg"))).unwrap();
+
+        assert_eq!(reused, Some(asset(1, 10, "a.jpg")));
+    }
+
+    #[test]
+    fn reuse_still_rejects_converged_identities_at_different_paths() {
+        let mut state = CatalogState::default();
+        state.register(&asset(1, 10, "a.jpg")).unwrap();
+        state.register(&asset(2, 10, "b.jpg")).unwrap();
+
+        let error = state.reuse(&prepared(asset(3, 10, "a.jpg"))).unwrap_err();
+
+        assert_eq!(error, ReviewAssetError::UnconfirmedLocation);
     }
 }

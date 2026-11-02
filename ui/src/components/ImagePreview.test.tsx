@@ -885,7 +885,7 @@ describe('ImagePreview', () => {
     expect(pointerMove).not.toHaveBeenCalled()
     expect(pointerClientPoint.current).toEqual({ x: 320, y: 240 })
     expect(lens).toHaveAttribute('data-visible', 'true')
-    expect(lens).toHaveStyle({ '--magnifier-x': '438px', '--magnifier-y': '358px' })
+    expect(lens).toHaveStyle({ '--magnifier-x': '428px', '--magnifier-y': '348px' })
     expect(lens).toHaveStyle({ '--magnifier-scale': '0.9' })
 
     fireEvent.click(screen.getByRole('button', { name: '放大' }))

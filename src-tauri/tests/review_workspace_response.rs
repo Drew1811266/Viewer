@@ -48,6 +48,7 @@ fn shared_restore_plan() -> RestorePlan {
                         revision_id: key.target_revision_id,
                         asset_version_id: asset.id,
                         anchor: FeedbackAnchor::Asset,
+                        style: None,
                         availability: ReviewAvailability::Ready,
                     },
                     asset: asset.clone(),

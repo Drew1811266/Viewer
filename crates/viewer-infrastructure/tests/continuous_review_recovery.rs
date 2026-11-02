@@ -238,6 +238,7 @@ fn recovery_binding_roundtrips_geometry_and_rejects_mismatched_selection_ids() {
         revision_id: ReviewTargetRevisionId::new(),
         asset_version_id: AssetVersionId::new(),
         anchor: FeedbackAnchor::ImageRect(NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap()),
+        style: None,
         availability: ReviewAvailability::Ready,
     };
     d.editor_input.selections = vec![RecoveryTargetSelection {

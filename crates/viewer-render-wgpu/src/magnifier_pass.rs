@@ -25,6 +25,7 @@ struct MagnifierUniform {
 pub struct MagnifierPass {
     image_pipeline: wgpu::RenderPipeline,
     annotation_pipeline: wgpu::RenderPipeline,
+    annotation_multiply_pipeline: wgpu::RenderPipeline,
     glyph_pipeline: wgpu::RenderPipeline,
     border_pipeline: wgpu::RenderPipeline,
     uniform_buffer: GpuBuffer,
@@ -128,6 +129,15 @@ impl MagnifierPass {
             annotation_vertex_layout(),
             target_format,
         );
+        let annotation_multiply_pipeline = create_pipeline_with_blend(
+            device,
+            "Viewer magnifier annotation multiply pipeline",
+            &annotation_pipeline_layout,
+            &annotation_shader,
+            annotation_vertex_layout(),
+            target_format,
+            crate::annotation_pass::multiply_blend(),
+        );
 
         let glyph_shader =
             device.create_shader_module(wgpu::include_wgsl!("shaders/magnifier_glyph.wgsl"));
@@ -166,6 +176,7 @@ impl MagnifierPass {
             memory: memory.clone(),
             image_pipeline,
             annotation_pipeline,
+            annotation_multiply_pipeline,
             glyph_pipeline,
             border_pipeline,
             uniform_buffer,
@@ -255,6 +266,7 @@ impl MagnifierPass {
         annotation_pass.encode_with(
             render_pass,
             &self.annotation_pipeline,
+            &self.annotation_multiply_pipeline,
             &self.glyph_pipeline,
             &self.uniform_bind_group,
         );
@@ -272,7 +284,31 @@ fn create_pipeline(
     vertex_buffer: wgpu::VertexBufferLayout<'static>,
     target_format: wgpu::TextureFormat,
 ) -> wgpu::RenderPipeline {
-    let targets = [Some(color_target(target_format))];
+    create_pipeline_with_blend(
+        device,
+        label,
+        layout,
+        shader,
+        vertex_buffer,
+        target_format,
+        wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING,
+    )
+}
+
+fn create_pipeline_with_blend(
+    device: &wgpu::Device,
+    label: &'static str,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    vertex_buffer: wgpu::VertexBufferLayout<'static>,
+    target_format: wgpu::TextureFormat,
+    blend: wgpu::BlendState,
+) -> wgpu::RenderPipeline {
+    let targets = [Some(wgpu::ColorTargetState {
+        format: target_format,
+        blend: Some(blend),
+        write_mask: wgpu::ColorWrites::ALL,
+    })];
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(label),
         layout: Some(layout),
@@ -294,6 +330,14 @@ fn create_pipeline(
         multiview_mask: None,
         cache: None,
     })
+}
+
+fn color_target(target_format: wgpu::TextureFormat) -> wgpu::ColorTargetState {
+    wgpu::ColorTargetState {
+        format: target_format,
+        blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+        write_mask: wgpu::ColorWrites::ALL,
+    }
 }
 
 fn create_pipeline_without_vertices(
@@ -325,14 +369,6 @@ fn create_pipeline_without_vertices(
         multiview_mask: None,
         cache: None,
     })
-}
-
-fn color_target(target_format: wgpu::TextureFormat) -> wgpu::ColorTargetState {
-    wgpu::ColorTargetState {
-        format: target_format,
-        blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-        write_mask: wgpu::ColorWrites::ALL,
-    }
 }
 
 fn to_clip(point: LogicalPoint, width: f64, height: f64) -> [f32; 2] {

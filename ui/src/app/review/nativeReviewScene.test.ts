@@ -130,6 +130,61 @@ describe('nativeReviewScene', () => {
     expect(scene.draft).toBeNull()
   })
 
+  it('renders historical targets without stored styles with their tool defaults', () => {
+    const scene = toNativeScene(
+      [item('stroke', 1, STROKE), item('rectangle', 2, RECTANGLE)],
+      idleEditor(),
+      { revision: 3, clientMutationId: null },
+    )
+
+    expect(scene.annotations[0]?.style.lineWidthPx).toBe(4)
+    expect(scene.annotations[1]?.style.lineWidthPx).toBe(2)
+
+    const styled = toNativeScene(
+      [
+        {
+          ...item('highlighter', 1, STROKE),
+          style: {
+            tool: 'highlighter',
+            color: 'yellow',
+            width: 'thick',
+            opacityPercent: 35,
+            dashed: false,
+          },
+        },
+        {
+          ...item('ruler', 2, {
+            kind: 'image_line',
+            tail: { x: 0.1, y: 0.2 },
+            head: { x: 0.8, y: 0.7 },
+          }),
+          style: {
+            tool: 'ruler',
+            color: 'black',
+            width: 'thin',
+            opacityPercent: 100,
+            dashed: false,
+          },
+        },
+      ],
+      idleEditor(),
+      { revision: 4, clientMutationId: null },
+    )
+    expect(styled.annotations[0]?.style.lineWidthPx).toBe(12)
+    expect(styled.annotations[0]?.style.multiply).toBe(true)
+    expect(styled.annotations[1]?.style.lineWidthPx).toBe(1.5)
+    expect(styled.annotations[1]?.style.multiply).toBeUndefined()
+  })
+
+  it('derives a 4px image-space corner radius for native rectangles', () => {
+    const scene = toNativeScene([item('rect', 1, RECTANGLE)], idleEditor(), {
+      revision: 1,
+      clientMutationId: null,
+      imageSize: { width: 1000, height: 500 },
+    })
+    expect(scene.annotations[0]?.style.cornerRadius).toEqual([0.004, 0.008])
+  })
+
   it('publishes a stable provisional annotation while a new opinion is saving', () => {
     const editor: AnnotationInteractionState = {
       activeTool: 'rectangle',

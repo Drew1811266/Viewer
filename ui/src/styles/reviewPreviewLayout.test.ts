@@ -10,4 +10,9 @@ describe('native image review preview layout', () => {
       /\.image-preview:has\(\.annotation-toolbar\) \.image-preview-stage\s*\{[^}]*margin-bottom:\s*0;/m,
     )
   })
+
+  it('centers the annotation style bar from its full content width', () => {
+    expect(css).toMatch(/\.annotation-style-bar\s*\{[^}]*width:\s*max-content;/m)
+    expect(css).toMatch(/\.annotation-style-bar\s*\{[^}]*max-width:\s*calc\(100%\s*-\s*24px\);/m)
+  })
 })

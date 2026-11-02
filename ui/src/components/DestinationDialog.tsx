@@ -10,6 +10,7 @@ import ModalSheet from './ModalSheet'
 import ViewerButton from './ui/ViewerButton'
 import ViewerChoiceChip from './ui/ViewerChoiceChip'
 import ViewerField from './ui/ViewerField'
+import ViewerIcon from './ui/ViewerIcon'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 import ViewerStatusTag from './ui/ViewerStatusTag'
 
@@ -114,12 +115,13 @@ export default function DestinationDialog({
 
   return (
     <ModalSheet
-      title={mode === 'copy' ? '选择复制目标' : '选择移动目标'}
+      title={mode === 'copy' ? '复制到' : '移动到'}
+      description={`已选择 ${entityIds.length} 个文件；目标位置必须在当前项目内。`}
       size="large"
       onCancel={onCancel}
       initialFocusRef={firstFolderRef}
       footer={
-        <>
+        <div className="destination-dialog-footer">
           <ViewerButton tone="secondary" disabled={busy} onClick={onCancel}>
             取消
           </ViewerButton>
@@ -130,42 +132,45 @@ export default function DestinationDialog({
             title={canExecute ? undefined : '请完成目标检查并处理所有冲突'}
             onClick={submit}
           >
-            {mode === 'copy' ? '开始复制' : '开始移动'}
+            {mode === 'copy' ? `复制 ${entityIds.length} 项` : `移动 ${entityIds.length} 项`}
           </ViewerButton>
-        </>
+        </div>
       }
     >
       <div className="destination-dialog-layout">
-        <aside className="destination-dialog-sidebar">
-          <fieldset className="destination-list">
-            <legend>项目内文件夹</legend>
-            {folders.map((folder, index) => (
-              <label
-                key={folder.entityId}
-                style={{ paddingLeft: `${folderDepth(folder, folders) * 14}px` }}
-              >
-                <input
-                  ref={index === 0 ? firstFolderRef : undefined}
-                  type="radio"
-                  name="destination"
-                  checked={destinationId === folder.entityId}
-                  onChange={() => chooseDestination(folder.entityId)}
-                />
-                <span>{folder.name}</span>
-                <small>{folder.relativePath}</small>
-              </label>
-            ))}
-          </fieldset>
-        </aside>
-        <section className="destination-dialog-main">
-          <ViewerButton
-            tone="secondary"
-            loading={loading}
-            disabled={destinationId === null || busy}
-            onClick={() => void checkConflicts()}
-          >
-            检查冲突
-          </ViewerButton>
+        <fieldset className="destination-list">
+          <legend className="visually-hidden">项目内文件夹</legend>
+          {folders.map((folder, index) => (
+            <label
+              key={folder.entityId}
+              style={{ paddingLeft: `${12 + folderDepth(folder, folders) * 14}px` }}
+            >
+              <input
+                ref={index === 0 ? firstFolderRef : undefined}
+                className="visually-hidden"
+                type="radio"
+                name="destination"
+                checked={destinationId === folder.entityId}
+                onChange={() => chooseDestination(folder.entityId)}
+              />
+              <ViewerIcon name="folder" />
+              <span>{folder.name}</span>
+              <small>{folder.relativePath}</small>
+            </label>
+          ))}
+        </fieldset>
+        <div className="destination-dialog-main">
+          <div className="destination-dialog-check">
+            <p>目标中已有同名文件时，会逐项要求选择跳过、保留两者或替换。</p>
+            <ViewerButton
+              tone="secondary"
+              loading={loading}
+              disabled={destinationId === null || busy}
+              onClick={() => void checkConflicts()}
+            >
+              检查冲突
+            </ViewerButton>
+          </div>
           {message && (
             <ViewerLocalFeedback tone="danger" title="无法检查目标文件夹">
               {message}
@@ -231,7 +236,7 @@ export default function DestinationDialog({
               })}
             </section>
           )}
-        </section>
+        </div>
       </div>
     </ModalSheet>
   )

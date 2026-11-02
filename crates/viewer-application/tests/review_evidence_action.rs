@@ -80,6 +80,7 @@ fn state(text: &str, digest: [u8; 32], rect_x: f64) -> ContinuousReviewState {
                 anchor: FeedbackAnchor::ImageRect(
                     NormalizedRect::new(rect_x, 0.2, 0.3, 0.4).unwrap(),
                 ),
+                style: None,
                 availability: ReviewAvailability::Ready,
             }],
             history_ref: None,

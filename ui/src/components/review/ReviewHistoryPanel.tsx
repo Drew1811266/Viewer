@@ -10,6 +10,7 @@ import type {
   ReviewVersionedFeedback,
   ReviewWorkspaceError,
 } from '../../api/reviewWorkspaceTypes'
+import { reviewAnchorLabel } from '../../app/review/reviewAnchorLabel'
 import ModalSheet from '../ModalSheet'
 import ViewerButton from '../ui/ViewerButton'
 import {
@@ -88,7 +89,9 @@ export default function ReviewHistoryPanel({
         />
       }
     >
-      <p>历史内容仅供背景查看，不是当前执行要求。</p>
+      <p>
+        历史内容仅供背景查看，不是当前执行要求。以下快照按素材版本保存；可以继续提出或预览恢复，但不会自动变回当前任务。
+      </p>
       {error !== null && (
         <p className="review-history-panel__error" role="alert">
           {error.message}
@@ -182,24 +185,33 @@ function HistoryEntries({
   busy,
   onRequestEvidence,
 }: Pick<ReviewHistoryPanelProps, 'history' | 'evidence' | 'busy' | 'onRequestEvidence'>) {
-  return history.entries.map((entry) => (
-    <section
-      className="review-history-panel__entry"
-      key={`${entry.snapshot.snapshotId}:${entry.snapshot.blake3}`}
-    >
-      <h3>历史快照 {entry.snapshot.snapshotId}</h3>
-      {displayHistoryFeedback(history, entry).map((feedback) => (
-        <HistoryFeedback
-          key={`${feedback.id}:${feedback.textRevisionId}`}
-          entry={entry}
-          feedback={feedback}
-          evidence={evidence ?? []}
-          busy={busy}
-          onRequestEvidence={onRequestEvidence}
-        />
-      ))}
-    </section>
-  ))
+  return history.entries.map((entry) => {
+    const feedback = displayHistoryFeedback(history, entry)
+    const fileName = entry.assets[0]?.relativePath.split('/').at(-1)
+    return (
+      <section
+        className="review-history-panel__entry"
+        key={`${entry.snapshot.snapshotId}:${entry.snapshot.blake3}`}
+      >
+        <h3>历史快照 {entry.snapshot.snapshotId}</h3>
+        <p className="review-history-panel__summary">
+          {feedback.length} 条意见{fileName === undefined ? '' : ` · ${fileName}`}
+        </p>
+        <div className="review-history-panel__opinions">
+          {feedback.map((item) => (
+            <HistoryFeedback
+              key={`${item.id}:${item.textRevisionId}`}
+              entry={entry}
+              feedback={item}
+              evidence={evidence ?? []}
+              busy={busy}
+              onRequestEvidence={onRequestEvidence}
+            />
+          ))}
+        </div>
+      </section>
+    )
+  })
 }
 
 function HistoryPanelFooter({
@@ -229,25 +241,27 @@ function HistoryPanelFooter({
       <ViewerButton ref={closeRef} disabled={!canClose} onClick={onClose}>
         关闭历史
       </ViewerButton>
-      <ViewerButton
-        tone="secondary"
-        disabled={busy || selectedContinuation === null}
-        onClick={() => {
-          if (selectedContinuation !== null) onContinue(selectedContinuation)
-        }}
-      >
-        继续提出
-      </ViewerButton>
-      <ViewerButton
-        tone="primary"
-        loading={restorePlan !== null && busy}
-        disabled={disabled}
-        onClick={() => {
-          if (submission.kind === 'preview') onRestore(submission.decisions)
-        }}
-      >
-        {restorePlan === null ? '查看恢复影响' : '确认恢复'}
-      </ViewerButton>
+      <div className="review-history-footer-actions">
+        <ViewerButton
+          tone="secondary"
+          disabled={busy || selectedContinuation === null}
+          onClick={() => {
+            if (selectedContinuation !== null) onContinue(selectedContinuation)
+          }}
+        >
+          继续提出
+        </ViewerButton>
+        <ViewerButton
+          tone="primary"
+          loading={restorePlan !== null && busy}
+          disabled={disabled}
+          onClick={() => {
+            if (submission.kind === 'preview') onRestore(submission.decisions)
+          }}
+        >
+          {restorePlan === null ? '查看恢复影响' : '确认恢复'}
+        </ViewerButton>
+      </div>
     </>
   )
 }
@@ -270,13 +284,14 @@ function ContinuationChoices({
       {refs.map((reference) => (
         <label key={historyReferenceKey(reference)}>
           <input
+            aria-label={historyReferenceLabel(reference)}
             type="radio"
             name="continue-historical"
             checked={selectedKey === historyReferenceKey(reference)}
             disabled={busy}
             onChange={() => onChange(historyReferenceKey(reference))}
           />
-          {historyReferenceLabel(reference)}
+          <span>{historyReferenceLabel(reference)}</span>
         </label>
       ))}
     </section>
@@ -312,7 +327,7 @@ function HistoryFeedback({
         )
         return (
           <div className="review-history-panel__target" key={`${target.id}:${target.revisionId}`}>
-            <span>目标 {target.id}</span>
+            <span>{reviewAnchorLabel(target.anchor.kind)}</span>
             {capability?.kind === 'image' && (
               <ViewerButton
                 tone="quiet"
@@ -392,6 +407,7 @@ function RestoreOptions({
           {selectableKeys.map((key) => (
             <label key={targetKey(key)}>
               <input
+                aria-label={formatTarget(key)}
                 type="checkbox"
                 checked={selected[targetKey(key)] === true}
                 disabled={busy}
@@ -402,7 +418,7 @@ function RestoreOptions({
                   }))
                 }
               />
-              {formatTarget(key)}
+              <span>{displayTarget(key, history)}</span>
             </label>
           ))}
         </section>
@@ -572,6 +588,11 @@ function currentText(feedback: ReviewVersionedFeedback[], targetId: string) {
 
 function formatTarget(key: ReviewTargetVersionKey) {
   return `Feedback ID ${key.feedbackId} · Target ID ${key.targetId}`
+}
+
+function displayTarget(key: ReviewTargetVersionKey, history: ReviewHistoryView) {
+  const text = historicalText(history, key)
+  return text === null ? '历史意见（当前项目中不可见）' : `意见：${text}`
 }
 
 function uniqueKeys(keys: ReviewTargetVersionKey[]) {

@@ -1,6 +1,6 @@
 use super::{migration, migration_inspect, owned_io::Directory};
 use crate::review::{
-    ContinuousReviewProtocol, MAX_REVIEW_INDEX_BYTES, detect_continuous_review_protocol, v3, v4,
+    ContinuousReviewProtocol, MAX_REVIEW_INDEX_BYTES, detect_continuous_review_protocol, v3, v4, v5,
 };
 use std::path::Path;
 use viewer_application::review_workspace::ReviewCommitError;
@@ -36,6 +36,7 @@ pub(in crate::review) fn resolve(
         match detect_continuous_review_protocol(bytes, MAX_REVIEW_INDEX_BYTES)? {
             ContinuousReviewProtocol::V3 => v3::decode_index_v3(bytes),
             ContinuousReviewProtocol::V4 => v4::decode_index_v4(bytes),
+            ContinuousReviewProtocol::V5 => v5::decode_index_v5(bytes),
         }
     }) {
         Some(Ok(index)) => {

@@ -1,4 +1,5 @@
 import type { InputHTMLAttributes, ReactNode } from 'react'
+import ViewerIcon from './ViewerIcon'
 
 export interface ViewerChoiceChipProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, 'children' | 'onChange' | 'type'> {
@@ -31,6 +32,7 @@ export default function ViewerChoiceChip({
         disabled={disabled}
         onChange={(event) => onCheckedChange?.(event.currentTarget.checked)}
       />
+      {checked && <ViewerIcon name="check" />}
       <span>{children}</span>
     </label>
   )

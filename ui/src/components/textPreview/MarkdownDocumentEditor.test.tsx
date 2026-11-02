@@ -76,6 +76,7 @@ describe('MarkdownDocumentEditor', () => {
       <MarkdownDocumentEditor
         file={markdownFile}
         preview={preview()}
+        headingId="doc-heading"
         readOnly
         saveText={saveText}
         renderMarkdown={renderMarkdown}
@@ -94,6 +95,7 @@ describe('MarkdownDocumentEditor', () => {
       <MarkdownDocumentEditor
         file={markdownFile}
         preview={preview()}
+        headingId="doc-heading"
         readOnly={false}
         saveText={saveText}
         renderMarkdown={renderMarkdown}
@@ -139,6 +141,7 @@ describe('MarkdownDocumentEditor', () => {
       <MarkdownDocumentEditor
         file={markdownFile}
         preview={preview()}
+        headingId="doc-heading"
         readOnly={false}
         saveText={saveText}
         renderMarkdown={renderMarkdown}
@@ -170,6 +173,7 @@ describe('MarkdownDocumentEditor', () => {
       <MarkdownDocumentEditor
         file={markdownFile}
         preview={preview()}
+        headingId="doc-heading"
         readOnly={false}
         saveText={saveText}
         renderMarkdown={renderMarkdown}
@@ -206,6 +210,7 @@ describe('MarkdownDocumentEditor', () => {
       <MarkdownDocumentEditor
         file={markdownFile}
         preview={preview({ encoding: 'gb18030' })}
+        headingId="doc-heading"
         readOnly={false}
         saveText={saveText}
         renderMarkdown={renderMarkdown}

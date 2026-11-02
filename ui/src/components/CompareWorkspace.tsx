@@ -64,6 +64,9 @@ export default function CompareWorkspace({
   }
   const presentKey = files.map((file) => file.entityId).join('\u0000')
   const filesById = useMemo(() => new Map(files.map((file) => [file.entityId, file])), [files])
+  const rotationKey = (model?.entityIds ?? [])
+    .map((entityId) => `${entityId}:${model?.transforms[entityId]?.rotation ?? 0}`)
+    .join('\u0000')
   const rotations = useMemo(
     () =>
       Object.fromEntries(
@@ -72,7 +75,9 @@ export default function CompareWorkspace({
           model?.transforms[entityId]?.rotation ?? 0,
         ]),
       ),
-    [model],
+    // Pan/zoom updates keep the same entity ids and rotations; only rebuild
+    // this input when either actually changes.
+    [model?.entityIds, rotationKey],
   )
   const comparedFiles = useMemo(
     () =>
@@ -82,7 +87,7 @@ export default function CompareWorkspace({
             const file = filesById.get(entityId)
             return file === undefined ? [] : [file]
           }),
-    [files, filesById, model],
+    [files, filesById, model?.entityIds],
   )
   const { containerRef, plan } = useCompareLayout({
     files: comparedFiles,
@@ -227,6 +232,17 @@ export default function CompareWorkspace({
     setActualSizeEntityId(activeEntityId)
     update({ type: 'actual_size', entityId: activeEntityId })
   }
+  function zoomBy(factor: number) {
+    if (transformsDisabled) return
+    setActualSizeEntityId(null)
+    update({ type: 'zoom', entityId: activeEntityId, factor })
+  }
+
+  function zoomAt(targetId: string, factor: number, anchorX: number, anchorY: number) {
+    if (transformsDisabled) return
+    setActualSizeEntityId(null)
+    update({ type: 'zoom_at', entityId: targetId, factor, anchorX, anchorY })
+  }
 
   function keyboard(event: KeyboardEvent<HTMLElement>) {
     if (event.key === 'Escape') {
@@ -234,10 +250,10 @@ export default function CompareWorkspace({
       onEntityIdsChange([])
     } else if (!transformsDisabled && (event.key === '+' || event.key === '=')) {
       event.preventDefault()
-      update({ type: 'zoom', entityId: activeEntityId, factor: 1.25 })
+      zoomBy(1.25)
     } else if (!transformsDisabled && event.key === '-') {
       event.preventDefault()
-      update({ type: 'zoom', entityId: activeEntityId, factor: 0.8 })
+      zoomBy(0.8)
     } else if (!transformsDisabled && event.key === '0') {
       event.preventDefault()
       fitView()
@@ -266,6 +282,8 @@ export default function CompareWorkspace({
         onPan={(targetId, deltaX, deltaY) =>
           update({ type: 'pan', entityId: targetId, deltaX, deltaY })
         }
+        onZoomAt={zoomAt}
+        panWheelEnabled={plan.scrollAxis === 'none'}
         onRemove={remove}
         onSetReview={onSetReview}
         onToggleFavorite={onToggleFavorite}
@@ -298,13 +316,13 @@ export default function CompareWorkspace({
         icon="minus"
         label="缩小当前对比"
         disabled={transformsDisabled}
-        onClick={() => update({ type: 'zoom', entityId: activeEntityId, factor: 0.8 })}
+        onClick={() => zoomBy(0.8)}
       />
       <ViewerIconButton
         icon="plus"
         label="放大当前对比"
         disabled={transformsDisabled}
-        onClick={() => update({ type: 'zoom', entityId: activeEntityId, factor: 1.25 })}
+        onClick={() => zoomBy(1.25)}
       />
       <ViewerIconButton
         icon="rotate-cw"

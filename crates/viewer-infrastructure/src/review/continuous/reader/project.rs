@@ -6,7 +6,7 @@ use crate::review::{
         migration,
         repository::{VersionedReviewIndex, View},
     },
-    v3, v4,
+    v3, v4, v5,
 };
 use std::path::Path;
 use viewer_application::review_workspace::ReviewPublicationProtocol;
@@ -85,6 +85,7 @@ impl Project {
             let index = match wire_protocol {
                 crate::review::ContinuousReviewProtocol::V3 => v3::decode_index_v3(&bytes),
                 crate::review::ContinuousReviewProtocol::V4 => v4::decode_index_v4(&bytes),
+                crate::review::ContinuousReviewProtocol::V5 => v5::decode_index_v5(&bytes),
             };
             let index = index?;
             if let Some(backup) = &index.legacy_index {

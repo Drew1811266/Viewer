@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use viewer_application::{
-    MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape, ThumbnailDensity,
-    VIEWER_SETTINGS_SCHEMA_VERSION, ViewerSettings,
+    MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape, SpeechInputMode,
+    SpeechLocale, SpeechPreferences, ThumbnailDensity, VIEWER_SETTINGS_SCHEMA_VERSION,
+    ViewerSettings,
 };
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -109,12 +110,98 @@ impl From<MagnifierPreferences> for MagnifierPreferencesDto {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpeechInputModeDto {
+    Click,
+    Hold,
+}
+
+impl From<SpeechInputMode> for SpeechInputModeDto {
+    fn from(value: SpeechInputMode) -> Self {
+        match value {
+            SpeechInputMode::Click => Self::Click,
+            SpeechInputMode::Hold => Self::Hold,
+        }
+    }
+}
+
+impl From<SpeechInputModeDto> for SpeechInputMode {
+    fn from(value: SpeechInputModeDto) -> Self {
+        match value {
+            SpeechInputModeDto::Click => Self::Click,
+            SpeechInputModeDto::Hold => Self::Hold,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpeechLocaleDto {
+    SimplifiedChinese,
+    English,
+}
+
+impl From<SpeechLocale> for SpeechLocaleDto {
+    fn from(value: SpeechLocale) -> Self {
+        match value {
+            SpeechLocale::SimplifiedChinese => Self::SimplifiedChinese,
+            SpeechLocale::English => Self::English,
+        }
+    }
+}
+
+impl From<SpeechLocaleDto> for SpeechLocale {
+    fn from(value: SpeechLocaleDto) -> Self {
+        match value {
+            SpeechLocaleDto::SimplifiedChinese => Self::SimplifiedChinese,
+            SpeechLocaleDto::English => Self::English,
+        }
+    }
+}
+
+impl SpeechLocaleDto {
+    pub fn bcp47(self) -> &'static str {
+        match self {
+            Self::SimplifiedChinese => "zh-CN",
+            Self::English => "en-US",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechPreferencesDto {
+    pub input_mode: SpeechInputModeDto,
+    pub locale: SpeechLocaleDto,
+    pub auto_punctuation: bool,
+}
+
+impl From<SpeechPreferences> for SpeechPreferencesDto {
+    fn from(value: SpeechPreferences) -> Self {
+        Self {
+            input_mode: value.input_mode.into(),
+            locale: value.locale.into(),
+            auto_punctuation: value.auto_punctuation,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SpeechPreferencesUpdateDto {
+    pub input_mode: SpeechInputModeDto,
+    pub locale: SpeechLocaleDto,
+    pub auto_punctuation: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewerSettingsDto {
     pub schema_version: u32,
     pub thumbnail_density: ThumbnailDensityDto,
     pub magnifier: MagnifierPreferencesDto,
+    pub speech: SpeechPreferencesDto,
 }
 
 impl From<ViewerSettings> for ViewerSettingsDto {
@@ -123,6 +210,7 @@ impl From<ViewerSettings> for ViewerSettingsDto {
             schema_version: VIEWER_SETTINGS_SCHEMA_VERSION,
             thumbnail_density: value.thumbnail_density.into(),
             magnifier: value.magnifier.into(),
+            speech: value.speech.into(),
         }
     }
 }
@@ -140,6 +228,7 @@ pub struct MagnifierPreferencesUpdateDto {
 pub struct ViewerSettingsUpdateDto {
     pub thumbnail_density: ThumbnailDensityDto,
     pub magnifier: MagnifierPreferencesUpdateDto,
+    pub speech: SpeechPreferencesUpdateDto,
 }
 
 impl TryFrom<ViewerSettingsUpdateDto> for ViewerSettings {
@@ -153,6 +242,11 @@ impl TryFrom<ViewerSettingsUpdateDto> for ViewerSettings {
                 magnification: MagnifierMagnification::try_from(value.magnifier.magnification)?,
                 area: value.magnifier.area.into(),
             },
+            speech: SpeechPreferences {
+                input_mode: value.speech.input_mode.into(),
+                locale: value.speech.locale.into(),
+                auto_punctuation: value.speech.auto_punctuation,
+            },
         })
     }
 }
@@ -162,7 +256,7 @@ mod tests {
     use super::{ThumbnailDensityDto, ViewerSettingsDto, ViewerSettingsUpdateDto};
     use viewer_application::{
         MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape,
-        ThumbnailDensity, ViewerSettings,
+        SpeechInputMode, SpeechLocale, SpeechPreferences, ThumbnailDensity, ViewerSettings,
     };
 
     #[test]
@@ -175,15 +269,25 @@ mod tests {
                     magnification: MagnifierMagnification::Four,
                     area: MagnifierArea::Medium,
                 },
+                speech: SpeechPreferences {
+                    input_mode: SpeechInputMode::Hold,
+                    locale: SpeechLocale::English,
+                    auto_punctuation: false,
+                },
             }))
             .unwrap(),
             serde_json::json!({
-                "schemaVersion": 4,
+                "schemaVersion": 5,
                 "thumbnailDensity": "compact",
                 "magnifier": {
                     "shape": "rounded_rectangle",
                     "magnification": 4.0,
                     "area": "medium"
+                },
+                "speech": {
+                    "inputMode": "hold",
+                    "locale": "english",
+                    "autoPunctuation": false
                 }
             })
         );
@@ -197,6 +301,11 @@ mod tests {
                 "shape": "rounded_rectangle",
                 "magnification": 4,
                 "area": "large"
+            },
+            "speech": {
+                "inputMode": "hold",
+                "locale": "english",
+                "autoPunctuation": false
             }
         }))
         .unwrap();
@@ -209,6 +318,11 @@ mod tests {
                     shape: MagnifierShape::RoundedRectangle,
                     magnification: MagnifierMagnification::Four,
                     area: MagnifierArea::Large,
+                },
+                speech: SpeechPreferences {
+                    input_mode: SpeechInputMode::Hold,
+                    locale: SpeechLocale::English,
+                    auto_punctuation: false,
                 },
             })
         );
@@ -223,6 +337,11 @@ mod tests {
                     "shape": "circle",
                     "magnification": magnification,
                     "area": "small"
+                },
+                "speech": {
+                    "inputMode": "click",
+                    "locale": "simplified_chinese",
+                    "autoPunctuation": true
                 }
             }))
             .unwrap();
@@ -232,11 +351,21 @@ mod tests {
         for invalid in [
             serde_json::json!({
                 "thumbnailDensity": "standard",
-                "magnifier": { "shape": "square", "magnification": 1.5, "area": "small" }
+                "magnifier": { "shape": "square", "magnification": 1.5, "area": "small" },
+                "speech": {
+                    "inputMode": "click",
+                    "locale": "simplified_chinese",
+                    "autoPunctuation": true
+                }
             }),
             serde_json::json!({
                 "thumbnailDensity": "standard",
-                "magnifier": { "shape": "circle", "magnification": 1.5, "area": "huge" }
+                "magnifier": { "shape": "circle", "magnification": 1.5, "area": "huge" },
+                "speech": {
+                    "inputMode": "click",
+                    "locale": "simplified_chinese",
+                    "autoPunctuation": true
+                }
             }),
             serde_json::json!({
                 "thumbnailDensity": "standard",
@@ -245,11 +374,30 @@ mod tests {
                     "magnification": 1.5,
                     "area": "small",
                     "unexpected": true
+                },
+                "speech": {
+                    "inputMode": "click",
+                    "locale": "simplified_chinese",
+                    "autoPunctuation": true
                 }
             }),
             serde_json::json!({
                 "thumbnailDensity": "standard",
-                "magnifier": { "shape": "circle", "magnification": "1.5", "area": "small" }
+                "magnifier": { "shape": "circle", "magnification": "1.5", "area": "small" },
+                "speech": {
+                    "inputMode": "click",
+                    "locale": "simplified_chinese",
+                    "autoPunctuation": true
+                }
+            }),
+            serde_json::json!({
+                "thumbnailDensity": "standard",
+                "magnifier": { "shape": "circle", "magnification": 2, "area": "small" },
+                "speech": {
+                    "inputMode": "press",
+                    "locale": "simplified_chinese",
+                    "autoPunctuation": true
+                }
             }),
         ] {
             assert!(serde_json::from_value::<ViewerSettingsUpdateDto>(invalid).is_err());

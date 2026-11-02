@@ -11,7 +11,7 @@ use viewer_application::{
     ReviewUserError, StartReviewWithFeedback, UpdateReviewFeedback, UpdateReviewFeedbackText,
 };
 use viewer_domain::review::{
-    FeedbackAnchor, ImageStroke, MAX_ASSETS_PER_ROUND, MAX_FEEDBACK_TEXT_BYTES,
+    FeedbackAnchor, ImagePolygon, ImageStroke, MAX_ASSETS_PER_ROUND, MAX_FEEDBACK_TEXT_BYTES,
     MAX_TARGETS_PER_FEEDBACK, NormalizedArrow, NormalizedPoint, NormalizedRect, ReviewAssetKind,
     ReviewabilityFailure,
 };
@@ -159,6 +159,17 @@ pub enum ReviewAnchorDto {
     ImageStroke {
         points: Vec<ReviewPointDto>,
     },
+    ImageText {
+        x: f64,
+        y: f64,
+    },
+    ImageLine {
+        tail: ReviewPointDto,
+        head: ReviewPointDto,
+    },
+    ImagePolygon {
+        points: Vec<ReviewPointDto>,
+    },
     VideoPoint {
         position_us: u64,
     },
@@ -211,6 +222,29 @@ impl ReviewAnchorDto {
                         .map(FeedbackAnchor::ImageStroke)
                         .map_err(|_| review_invalid_data())
                 }),
+            Self::ImageText { x, y } => NormalizedPoint::new(x, y)
+                .map(FeedbackAnchor::ImageText)
+                .map_err(|_| review_invalid_data()),
+            Self::ImageLine { tail, head } => {
+                let tail =
+                    NormalizedPoint::new(tail.x, tail.y).map_err(|_| review_invalid_data())?;
+                let head =
+                    NormalizedPoint::new(head.x, head.y).map_err(|_| review_invalid_data())?;
+                NormalizedArrow::new(tail, head)
+                    .map(FeedbackAnchor::ImageLine)
+                    .map_err(|_| review_invalid_data())
+            }
+            Self::ImagePolygon { points } => points
+                .into_iter()
+                .map(|point| {
+                    NormalizedPoint::new(point.x, point.y).map_err(|_| review_invalid_data())
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .and_then(|points| {
+                    ImagePolygon::new(points)
+                        .map(FeedbackAnchor::ImagePolygon)
+                        .map_err(|_| review_invalid_data())
+                }),
             Self::VideoPoint { position_us } => Ok(FeedbackAnchor::VideoPoint { position_us }),
             Self::VideoRange { start_us, end_us } if start_us < end_us => {
                 Ok(FeedbackAnchor::VideoRange { start_us, end_us })
@@ -252,6 +286,30 @@ impl From<FeedbackAnchor> for ReviewAnchorDto {
             },
             FeedbackAnchor::ImageStroke(stroke) => Self::ImageStroke {
                 points: stroke
+                    .points()
+                    .iter()
+                    .map(|point| ReviewPointDto {
+                        x: point.x(),
+                        y: point.y(),
+                    })
+                    .collect(),
+            },
+            FeedbackAnchor::ImageText(point) => Self::ImageText {
+                x: point.x(),
+                y: point.y(),
+            },
+            FeedbackAnchor::ImageLine(line) => Self::ImageLine {
+                tail: ReviewPointDto {
+                    x: line.tail().x(),
+                    y: line.tail().y(),
+                },
+                head: ReviewPointDto {
+                    x: line.head().x(),
+                    y: line.head().y(),
+                },
+            },
+            FeedbackAnchor::ImagePolygon(polygon) => Self::ImagePolygon {
+                points: polygon
                     .points()
                     .iter()
                     .map(|point| ReviewPointDto {

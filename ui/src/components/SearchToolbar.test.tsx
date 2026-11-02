@@ -63,6 +63,16 @@ describe('SearchToolbar', () => {
     expect(advancedRule).toContain('scrollbar-gutter: stable')
   })
 
+  it('anchors the filter popover right and pins its footer when the viewport is narrow', () => {
+    const narrowRule = appCss.match(/@media \(max-width: 1180px\) \{([\s\S]*?)\n\}/)?.[1] ?? ''
+    expect(narrowRule).toContain('.search-options-popover')
+    expect(narrowRule).toContain('left: auto')
+    expect(narrowRule).toContain('right: 0')
+
+    const footerRule = appCss.match(/\.viewer-filter-footer\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(footerRule).toContain('position: sticky')
+    expect(footerRule).toContain('bottom: 0')
+  })
   it('exposes a named filter menu with keyboard-controlled expanded state', () => {
     render(
       <SearchToolbar

@@ -6,7 +6,7 @@ use super::{
 use crate::review::{
     ContinuousReviewProtocol,
     continuous::{history, references, repository::View},
-    v3, v4,
+    v3, v4, v5,
 };
 use serde_json::{Value, json};
 use viewer_application::{
@@ -243,6 +243,7 @@ pub(super) fn result(
     let bytes = match protocol {
         ReviewPublicationProtocol::V3 => v3::encode_read_result_v3(&value),
         ReviewPublicationProtocol::V4 => v4::encode_read_result_v4(&value),
+        ReviewPublicationProtocol::V5 => v5::encode_read_result_v5(&value),
     }?;
     serde_json::from_slice(&bytes)
         .map_err(|_| Failure::integrity("cannot encode verified read result"))

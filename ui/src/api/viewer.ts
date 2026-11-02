@@ -92,6 +92,10 @@ import type {
   SelectionInfo,
   SelectionInfoRequest,
   SetReviewStateRequest,
+  SpeechCaptureRequest,
+  SpeechPermissions,
+  SpeechStatus,
+  SpeechTranscript,
   TextPreview,
   TextPreviewRequest,
   TextSnippet,
@@ -147,6 +151,12 @@ export interface ViewerBridge {
   projectSnapshot(): Promise<ProjectSnapshot | null>
   getViewerSettings(): Promise<ViewerSettings>
   updateViewerSettings(settings: ViewerSettingsUpdate): Promise<ViewerSettings>
+  speechStatus(request: SpeechCaptureRequest): Promise<SpeechStatus>
+  requestSpeechPermissions(): Promise<SpeechPermissions>
+  startSpeechCapture(request: SpeechCaptureRequest): Promise<SpeechStatus>
+  stopSpeechCapture(): Promise<SpeechTranscript>
+  cancelSpeechCapture(): void
+  openSpeechSettings(): Promise<void>
   folderTree(): Promise<FolderTreeItem[]>
   queryFolder(entityId: string | null, aggregate?: boolean): Promise<FolderWorkspace>
   requestImage(request: ImageRequest, signal?: AbortSignal): Promise<ImageRepresentation>
@@ -256,6 +266,24 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   updateViewerSettings(settings) {
     return invoke<ViewerSettings>('update_viewer_settings', { settings })
+  },
+  speechStatus(request) {
+    return invoke<SpeechStatus>('speech_status', { request })
+  },
+  requestSpeechPermissions() {
+    return invoke<SpeechPermissions>('request_speech_permissions')
+  },
+  startSpeechCapture(request) {
+    return invoke<SpeechStatus>('start_speech_capture', { request })
+  },
+  stopSpeechCapture() {
+    return invoke<SpeechTranscript>('stop_speech_capture')
+  },
+  cancelSpeechCapture() {
+    void invoke('cancel_speech_capture')
+  },
+  openSpeechSettings() {
+    return invoke<void>('open_speech_settings')
   },
   folderTree() {
     return invoke<FolderTreeItem[]>('folder_tree')

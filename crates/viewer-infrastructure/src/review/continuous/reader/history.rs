@@ -5,7 +5,7 @@ use super::{
 };
 use crate::review::{
     continuous::{evidence, history, legacy, mapping, references, repository::View},
-    v3, v4,
+    v3, v4, v5,
 };
 use viewer_application::review_workspace::{LegacyReviewContents, ReviewPublicationProtocol};
 use viewer_domain::{
@@ -70,6 +70,7 @@ pub(super) fn read(
             let encoded = match record.protocol {
                 ReviewPublicationProtocol::V3 => v3::encode_state_v3(&record.record),
                 ReviewPublicationProtocol::V4 => v4::encode_state_v4(&record.record),
+                ReviewPublicationProtocol::V5 => v5::encode_state_v5(&record.record),
             }?;
             retained_bytes += encoded.len() as u64;
             if retained_bytes > crate::review::MAX_REVIEW_DOCUMENT_BYTES {
@@ -78,7 +79,9 @@ pub(super) fn read(
                     "history result exceeds retained document limit",
                 ));
             }
-            if record.protocol == ReviewPublicationProtocol::V4 {
+            if record.protocol == ReviewPublicationProtocol::V5 {
+                protocol = ReviewPublicationProtocol::V5;
+            } else if record.protocol == ReviewPublicationProtocol::V4 {
                 protocol = ReviewPublicationProtocol::V4;
             }
             entries.push(entry(reference, record.record, keys, &mut limitations));

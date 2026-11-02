@@ -34,23 +34,36 @@ pub enum ReviewPublicationProtocol {
     #[default]
     V3,
     V4,
+    V5,
 }
 
 impl ReviewPublicationProtocol {
     pub fn promote_for(self, state: &ContinuousReviewState) -> Self {
-        let requires_v4 = state
-            .feedback
-            .iter()
-            .flat_map(|item| &item.targets)
-            .any(|target| {
-                matches!(
+        let mut requires_v4 = false;
+        let mut requires_v5 = false;
+        for target in state.feedback.iter().flat_map(|item| &item.targets) {
+            if target.style.is_some()
+                || matches!(
                     &target.anchor,
-                    FeedbackAnchor::ImagePoint(_)
-                        | FeedbackAnchor::ImageArrow(_)
-                        | FeedbackAnchor::ImageEllipse(_)
+                    FeedbackAnchor::ImageText(_)
+                        | FeedbackAnchor::ImageLine(_)
+                        | FeedbackAnchor::ImagePolygon(_)
                 )
-            });
-        if self == Self::V4 || requires_v4 {
+            {
+                requires_v5 = true;
+            }
+            if matches!(
+                &target.anchor,
+                FeedbackAnchor::ImagePoint(_)
+                    | FeedbackAnchor::ImageArrow(_)
+                    | FeedbackAnchor::ImageEllipse(_)
+            ) {
+                requires_v4 = true;
+            }
+        }
+        if self == Self::V5 || requires_v5 {
+            Self::V5
+        } else if self == Self::V4 || requires_v4 {
             Self::V4
         } else {
             Self::V3

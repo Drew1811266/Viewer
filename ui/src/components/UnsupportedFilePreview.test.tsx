@@ -26,14 +26,16 @@ describe('UnsupportedFilePreview', () => {
     const dialog = screen.getByRole('dialog', { name: 'archive.zip' })
     const toolbar = within(dialog).getByRole('toolbar', { name: '文件预览工具' })
     expect(toolbar).toHaveClass('viewer-toolbar')
-    expect(within(dialog).getByText('暂不支持预览')).toHaveClass('unsupported-file-message')
-    expect(screen.getByText('.ZIP')).toBeInTheDocument()
+    expect(within(dialog).getByText('此格式暂不支持预览')).toHaveClass(
+      'unsupported-file-state__title',
+    )
+    expect(screen.getByText('.ZIP · 归档')).toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: /外部|其它应用/ })).not.toBeInTheDocument()
-    const complete = within(dialog).getByRole('button', { name: '关闭预览' })
+    const complete = within(dialog).getByRole('button', { name: '返回网格' })
     expect(complete).toHaveClass('viewer-button', 'preview-complete-action')
-    expect(complete).toHaveTextContent('完成')
+    expect(complete).toHaveTextContent('返回网格')
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
     expect(onClose).toHaveBeenCalledOnce()
   })
 

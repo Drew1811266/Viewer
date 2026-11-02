@@ -67,6 +67,7 @@
   { "id": "DOC-05", "wave": 2, "referenceState": "document-dual", "sceneGroup": "viewing", "components": ["TextPreview", "TextPreviewPane"] },
   { "id": "DOC-06", "wave": 2, "referenceState": "document-unsupported", "sceneGroup": "viewing", "components": ["UnsupportedFilePreview"] },
   { "id": "DOC-07", "wave": 2, "referenceState": "document-unavailable", "sceneGroup": "viewing", "components": ["UnsupportedFilePreview", "UnsupportedFileState"] },
+  { "id": "DOC-08", "wave": 2, "referenceState": "document-edit-split", "sceneGroup": "viewing", "components": ["TextPreview", "MarkdownDocumentEditor"] },
   { "id": "INF-01", "wave": 2, "referenceState": "info-single", "sceneGroup": "viewing", "components": ["InfoOverlay"] },
   { "id": "INF-02", "wave": 2, "referenceState": "info-multiple", "sceneGroup": "viewing", "components": ["InfoOverlay"] },
   { "id": "DIA-01", "wave": 3, "referenceState": "dialog-settings", "sceneGroup": "dialog", "components": ["SettingsDialog"] },
@@ -76,6 +77,8 @@
   { "id": "DIA-05", "wave": 3, "referenceState": "dialog-conflict", "sceneGroup": "dialog", "components": ["DestinationDialog"] },
   { "id": "DIA-06", "wave": 3, "referenceState": "dialog-trash", "sceneGroup": "dialog", "components": ["TrashConfirmation"] },
   { "id": "DIA-07", "wave": 3, "referenceState": "dialog-close", "sceneGroup": "dialog", "components": ["CloseOperationDialog"] },
+  { "id": "DIA-08", "wave": 3, "referenceState": "dialog-batch-image", "sceneGroup": "dialog", "components": ["BatchImageDialog"] },
+  { "id": "DIA-09", "wave": 3, "referenceState": "dialog-settings-voice", "sceneGroup": "dialog", "components": ["SettingsDialog", "SpeechSettings"] },
   { "id": "TAS-01", "wave": 3, "referenceState": "task-running", "sceneGroup": "feedback", "components": ["TaskBar"] },
   { "id": "TAS-02", "wave": 3, "referenceState": "task-success", "sceneGroup": "feedback", "components": ["TaskBar"] },
   { "id": "TAS-03", "wave": 3, "referenceState": "task-failure", "sceneGroup": "feedback", "components": ["TaskBar"] },
@@ -139,5 +142,8 @@
   { "id": "RVW-34", "wave": 4, "referenceState": "review-markup-menu-wide", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "AnnotationToolMenu", "NativeImageViewport"] },
   { "id": "RVW-35", "wave": 4, "referenceState": "review-markup-menu-compact", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "AnnotationToolMenu", "NativeImageViewport"] },
   { "id": "RVW-36", "wave": 4, "referenceState": "review-arrow-selected", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "NativeImageViewport", "ReviewFeedbackRail"] },
-  { "id": "RVW-37", "wave": 4, "referenceState": "review-ellipse-edge-edit", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "NativeImageViewport", "ReviewFeedbackRail"] }
+  { "id": "RVW-37", "wave": 4, "referenceState": "review-ellipse-edge-edit", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "NativeImageViewport", "ReviewFeedbackRail"] },
+  { "id": "RVW-38", "wave": 4, "referenceState": "review-annotation-styles", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "NativeImageViewport", "AnnotationStyleBar"] },
+  { "id": "RVW-39", "wave": 4, "referenceState": "review-text-voice", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "ReviewFeedbackRail", "SpeechDictation"] },
+  { "id": "RVW-40", "wave": 4, "referenceState": "review-mic-error", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "ReviewFeedbackRail", "SpeechDictation"] }
 ]

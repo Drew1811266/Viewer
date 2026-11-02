@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::io::{self, Write};
 use viewer_application::review_workspace::ReviewWorkspaceError;
-use viewer_domain::review::{FeedbackAnchor, continuous::*};
+use viewer_domain::review::{AnnotationStyle, FeedbackAnchor, continuous::*};
 
 pub(super) struct Encoder {
     hash: blake3::Hasher,
@@ -125,8 +125,36 @@ impl Encoder {
                 canonical(r.width()),
                 canonical(r.height()),
             )),
+            FeedbackAnchor::ImageText(p) => self.field(&(canonical(p.x()), canonical(p.y()))),
+            FeedbackAnchor::ImageLine(a) => self.field(&(
+                canonical(a.tail().x()),
+                canonical(a.tail().y()),
+                canonical(a.head().x()),
+                canonical(a.head().y()),
+            )),
+            FeedbackAnchor::ImagePolygon(polygon) => {
+                self.field(&polygon.points().len())?;
+                for p in polygon.points() {
+                    self.field(&(canonical(p.x()), canonical(p.y())))?;
+                }
+                Ok(())
+            }
             FeedbackAnchor::VideoPoint { position_us } => self.field(position_us),
             FeedbackAnchor::VideoRange { start_us, end_us } => self.field(&(start_us, end_us)),
+        }
+    }
+    pub fn style(&mut self, style: Option<AnnotationStyle>) -> Result<(), ReviewWorkspaceError> {
+        match style {
+            None => self.field(&"none"),
+            Some(style) => self.field(&(
+                "style",
+                style.tool().as_str(),
+                style.color().as_str(),
+                style.width().as_str(),
+                style.opacity_percent(),
+                style.dashed(),
+                style.text_size().map(|size| size.as_str()),
+            )),
         }
     }
 }

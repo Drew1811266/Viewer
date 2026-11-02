@@ -301,7 +301,10 @@ pub(super) fn validate_anchor(
             | FeedbackAnchor::ImageArrow(_)
             | FeedbackAnchor::ImageStroke(_)
             | FeedbackAnchor::ImageRect(_)
-            | FeedbackAnchor::ImageEllipse(_),
+            | FeedbackAnchor::ImageEllipse(_)
+            | FeedbackAnchor::ImageText(_)
+            | FeedbackAnchor::ImageLine(_)
+            | FeedbackAnchor::ImagePolygon(_),
         ) if *width > 0 && *height > 0 => Ok(()),
         (
             ReviewMedia::Image { .. },
@@ -309,7 +312,10 @@ pub(super) fn validate_anchor(
             | FeedbackAnchor::ImageArrow(_)
             | FeedbackAnchor::ImageStroke(_)
             | FeedbackAnchor::ImageRect(_)
-            | FeedbackAnchor::ImageEllipse(_),
+            | FeedbackAnchor::ImageEllipse(_)
+            | FeedbackAnchor::ImageText(_)
+            | FeedbackAnchor::ImageLine(_)
+            | FeedbackAnchor::ImagePolygon(_),
         ) => Err(ReviewRoundError::AnchorUnavailable),
         (ReviewMedia::Video { duration_us, .. }, FeedbackAnchor::VideoPoint { position_us }) => {
             if duration_us.is_some_and(|duration| *position_us > duration) {

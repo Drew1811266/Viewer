@@ -19,12 +19,15 @@ describe('CloseOperationDialog', () => {
     const dialog = screen.getByRole('dialog', { name: '文件操作尚未完成' })
     expect(dialog).toHaveAttribute('data-size', 'medium')
     expect(dialog).toHaveTextContent('已经完成的项目不会撤销')
-    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
+    const footerButtons = [
+      ...(dialog.querySelector('.viewer-dialog__footer')?.querySelectorAll('button') ?? []),
+    ]
+    expect(footerButtons.map((button) => button.textContent)).toEqual([
       '停留在当前项目',
       '取消待处理项目并关闭',
       '等待完成后关闭',
     ])
-    expect(dialog.querySelector('.viewer-dialog__footer')).not.toBeNull()
+    expect(screen.getByRole('button', { name: '关闭对话框' })).toBeVisible()
     expect(screen.getByRole('button', { name: '等待完成后关闭' })).toHaveAttribute(
       'data-tone',
       'primary',
@@ -43,7 +46,7 @@ describe('CloseOperationDialog', () => {
     rendered.rerender(
       <CloseOperationDialog busy onWait={wait} onCancelPending={cancelPending} onStay={stay} />,
     )
-    for (const button of screen.getAllByRole('button')) expect(button).toBeDisabled()
+    for (const button of footerButtons) expect(button).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent('正在安全结束文件操作')
     fireEvent.keyDown(dialog, { key: 'Escape' })
     expect(stay).toHaveBeenCalledOnce()

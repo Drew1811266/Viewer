@@ -4,7 +4,10 @@ use crate::{
     review_evidence::HistorySelector,
 };
 use viewer_domain::{
-    review::{AssetVersion, FeedbackAnchor, ProductionScope, ReviewSnapshot, continuous::*},
+    review::{
+        AnnotationStyle, AssetVersion, FeedbackAnchor, ProductionScope, ReviewSnapshot,
+        continuous::*,
+    },
     *,
 };
 
@@ -21,11 +24,13 @@ pub enum TargetEdit {
     Add {
         asset_version_id: AssetVersionId,
         anchor: FeedbackAnchor,
+        style: Option<AnnotationStyle>,
     },
     Redraw {
         key: TargetVersionKey,
         asset_version_id: AssetVersionId,
         anchor: FeedbackAnchor,
+        style: Option<AnnotationStyle>,
     },
 }
 

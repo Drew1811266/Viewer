@@ -13,6 +13,9 @@ import type {
   MagnifierMagnification,
   MagnifierPreferences,
   MagnifierShape,
+  SpeechInputMode,
+  SpeechLocale,
+  SpeechPreferences,
   ThumbnailDensity,
   ViewerSettings,
   ViewerSettingsUpdate,
@@ -26,11 +29,15 @@ export interface ViewerSettingsContextValue {
   thumbnailDensity: ThumbnailDensity
   thumbnailHeight: number
   magnifier: MagnifierPreferences
+  speech: SpeechPreferences
   settingsError: string | null
   setThumbnailDensity: (density: ThumbnailDensity) => void
   setMagnifierShape: (shape: MagnifierShape) => void
   setMagnifierMagnification: (magnification: MagnifierMagnification) => void
   setMagnifierArea: (area: MagnifierArea) => void
+  setSpeechInputMode: (mode: SpeechInputMode) => void
+  setSpeechLocale: (locale: SpeechLocale) => void
+  setSpeechAutoPunctuation: (enabled: boolean) => void
 }
 
 interface ViewerSettingsProviderProps {
@@ -44,6 +51,7 @@ function withoutSchema(settings: ViewerSettings): ViewerSettingsUpdate {
   return {
     thumbnailDensity: settings.thumbnailDensity,
     magnifier: { ...settings.magnifier },
+    speech: { ...settings.speech },
   }
 }
 
@@ -51,6 +59,7 @@ function initialSettings(): ViewerSettingsUpdate {
   return {
     thumbnailDensity: DEFAULT_VIEWER_SETTINGS_UPDATE.thumbnailDensity,
     magnifier: { ...DEFAULT_VIEWER_SETTINGS_UPDATE.magnifier },
+    speech: { ...DEFAULT_VIEWER_SETTINGS_UPDATE.speech },
   }
 }
 
@@ -154,21 +163,58 @@ export function ViewerSettingsProvider({ bridge, children }: ViewerSettingsProvi
     [updateOptimistically],
   )
 
+  const setSpeechInputMode = useCallback(
+    (inputMode: SpeechInputMode) => {
+      updateOptimistically((current) => ({
+        ...current,
+        speech: { ...current.speech, inputMode },
+      }))
+    },
+    [updateOptimistically],
+  )
+
+  const setSpeechLocale = useCallback(
+    (locale: SpeechLocale) => {
+      updateOptimistically((current) => ({
+        ...current,
+        speech: { ...current.speech, locale },
+      }))
+    },
+    [updateOptimistically],
+  )
+
+  const setSpeechAutoPunctuation = useCallback(
+    (autoPunctuation: boolean) => {
+      updateOptimistically((current) => ({
+        ...current,
+        speech: { ...current.speech, autoPunctuation },
+      }))
+    },
+    [updateOptimistically],
+  )
+
   const value = useMemo<ViewerSettingsContextValue>(
     () => ({
       thumbnailDensity: settings.thumbnailDensity,
       thumbnailHeight: THUMBNAIL_HEIGHT[settings.thumbnailDensity],
       magnifier: settings.magnifier,
+      speech: settings.speech,
       settingsError,
       setThumbnailDensity,
       setMagnifierShape,
       setMagnifierMagnification,
       setMagnifierArea,
+      setSpeechInputMode,
+      setSpeechLocale,
+      setSpeechAutoPunctuation,
     }),
     [
       setMagnifierArea,
       setMagnifierMagnification,
       setMagnifierShape,
+      setSpeechAutoPunctuation,
+      setSpeechInputMode,
+      setSpeechLocale,
       setThumbnailDensity,
       settings,
       settingsError,

@@ -382,6 +382,14 @@ export const solveCompareLayout = (input: CompareLayoutInput): CompareLayoutPlan
   )
   const eligible = candidates.filter((candidate) => candidate.eligible)
 
+  // Three compared images are a deliberate three-up review: keep one row even
+  // when the viewport is narrow, instead of falling back to a 2+1 grid.
+  const forcedThreeUp =
+    items.length === 3 ? candidates.find((candidate) => candidate.columns === 3) : undefined
+  if (forcedThreeUp !== undefined) {
+    return planFromFitCandidate(forcedThreeUp, input, candidates.length, false)
+  }
+
   if (eligible.length > 0) {
     const best = eligible.reduce((current, candidate) =>
       candidate.score > current.score ? candidate : current,

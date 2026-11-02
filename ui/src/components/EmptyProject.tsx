@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { safeUserMessage } from '../api/viewer'
 import type { EmptyProjectPort } from '../app/workspace/ports'
 import ViewerButton from './ui/ViewerButton'
+import ViewerIcon from './ui/ViewerIcon'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
 interface EmptyProjectProps {
@@ -167,16 +168,34 @@ export default function EmptyProject({
       onDragLeave={leaveProjectDrag}
       onDrop={dropProject}
     >
-      <h1>Viewer</h1>
-      <p>选择或拖入一个项目文件夹</p>
-      <ViewerButton
-        className="empty-project-primary-action"
-        tone="primary"
-        disabled={disabled}
-        onClick={() => void chooseProject()}
-      >
-        选择项目文件夹
-      </ViewerButton>
+      <div className="empty-project-brand" aria-hidden="true">
+        <span className="empty-project-brand__mark">V</span>
+        <span>Viewer</span>
+      </div>
+      <section className="empty-project-card" aria-labelledby="empty-project-title">
+        <div className="empty-project-icon" aria-hidden="true">
+          <ViewerIcon name="folder" size={24} />
+        </div>
+        <h1 id="empty-project-title">打开一个项目</h1>
+        <p className="empty-project-description">
+          所有素材、意见与历史都留在本机。
+          <br />
+          Viewer 不会自动改写原素材；评审记录保存在项目内。
+        </p>
+        <ViewerButton
+          className="empty-project-primary-action"
+          tone="primary"
+          leadingIcon="folder"
+          disabled={disabled}
+          onClick={() => void chooseProject()}
+        >
+          选择项目文件夹
+        </ViewerButton>
+        <p className="empty-project-hint">也可以把文件夹拖到窗口里</p>
+        <div className="empty-project-divider" />
+        <p className="empty-project-platform">macOS 13+ · Apple Silicon · 本地优先 · 无需账号</p>
+      </section>
+      <span className="empty-project-version">Viewer 0.3.0</span>
       {dropState !== 'idle' && (
         <div className="project-drop-feedback" data-drop-state={dropState}>
           {dropState === 'valid' ? (

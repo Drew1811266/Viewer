@@ -67,7 +67,7 @@ describe('VideoSection', () => {
       'aria-selected',
       'true',
     )
-    expect(screen.getByText('返工 · 2 条')).toBeVisible()
+    expect(screen.getByText('返工 · 2')).toBeVisible()
     fireEvent.doubleClick(screen.getByRole('option', { name: 'clip.mp4' }))
     expect(onOpen).toHaveBeenCalledWith('video-1')
 

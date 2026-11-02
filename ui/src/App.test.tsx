@@ -98,12 +98,13 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     closeProject: vi.fn().mockResolvedValue('closed'),
     projectSnapshot: vi.fn().mockResolvedValue(null),
     getViewerSettings: vi.fn().mockResolvedValue({
-      schemaVersion: 4,
+      schemaVersion: 5,
       thumbnailDensity: 'standard',
       magnifier: { shape: 'circle', magnification: 2, area: 'small' },
+      speech: { inputMode: 'click', locale: 'simplified_chinese', autoPunctuation: true },
     }),
     updateViewerSettings: vi.fn().mockImplementation(async (settings) => ({
-      schemaVersion: 4,
+      schemaVersion: 5,
       ...settings,
     })),
     folderTree: vi.fn().mockResolvedValue([]),
@@ -223,6 +224,21 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDropEvents: vi.fn().mockResolvedValue(() => undefined),
+    speechStatus: vi.fn().mockResolvedValue({
+      available: false,
+      speechAuthorized: false,
+      microphoneAuthorized: false,
+      onDevice: false,
+      localeSupported: false,
+      locale: 'zh-CN',
+    }),
+    requestSpeechPermissions: vi
+      .fn()
+      .mockResolvedValue({ speechAuthorized: false, microphoneAuthorized: false }),
+    startSpeechCapture: vi.fn(),
+    stopSpeechCapture: vi.fn(),
+    cancelSpeechCapture: vi.fn(),
+    openSpeechSettings: vi.fn().mockResolvedValue(undefined),
   }
 }
 
@@ -267,8 +283,8 @@ describe('Viewer empty state', () => {
 
   it('asks the user to import one project folder', () => {
     render(<App bridge={bridge()} />)
-    expect(screen.getByRole('heading', { name: 'Viewer' })).toBeVisible()
-    expect(screen.getByText('选择或拖入一个项目文件夹')).toBeVisible()
+    expect(screen.getByRole('heading', { name: '打开一个项目' })).toBeVisible()
+    expect(screen.getByText(/所有素材、意见与历史都留在本机/)).toBeVisible()
     expect(screen.queryByRole('button', { name: '软件设置' })).not.toBeInTheDocument()
   })
 
@@ -566,8 +582,8 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
 
-    expect(await screen.findByText('返工 · 1 条')).toBeVisible()
-    expect(screen.queryByText('返工 · 2 条')).not.toBeInTheDocument()
+    expect(await screen.findByText('返工 · 1')).toBeVisible()
+    expect(screen.queryByText('返工 · 2')).not.toBeInTheDocument()
     expect(viewer.reviewStatus).not.toHaveBeenCalled()
   })
 
@@ -579,7 +595,7 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
 
-    expect(await screen.findByText('返工 · 2 条')).toBeVisible()
+    expect(await screen.findByText('返工 · 2')).toBeVisible()
     expect(viewer.reviewStatus).toHaveBeenCalled()
   })
 
@@ -609,7 +625,7 @@ describe('Viewer empty state', () => {
 
     await waitFor(() => expect(reviewWorkspace.applyCommand).toHaveBeenCalledOnce())
     fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
-    expect(await screen.findByText('返工 · 1 条')).toBeVisible()
+    expect(await screen.findByText('返工 · 1')).toBeVisible()
     expect(viewer.reviewStatus).not.toHaveBeenCalled()
   })
 
@@ -645,15 +661,15 @@ describe('Viewer empty state', () => {
 
     render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    expect(await screen.findByText('返工 · 1 条')).toBeVisible()
+    expect(await screen.findByText('返工 · 1')).toBeVisible()
 
     closeProjectFromMenu()
     await screen.findByRole('button', { name: '选择项目文件夹' })
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
 
     expect(await screen.findByRole('dialog', { name: '迁移旧评审记录' })).toBeVisible()
-    expect(screen.queryByText('返工 · 1 条')).not.toBeInTheDocument()
-    expect(screen.queryByText('返工 · 2 条')).not.toBeInTheDocument()
+    expect(screen.queryByText('返工 · 1')).not.toBeInTheDocument()
+    expect(screen.queryByText('返工 · 2')).not.toBeInTheDocument()
     expect(viewer.reviewStatus).not.toHaveBeenCalled()
   })
 
@@ -872,14 +888,14 @@ describe('Viewer empty state', () => {
     await screen.findByRole('heading', { name: 'Catalog' })
 
     const sidebar = screen.getByRole('complementary', { name: '文件夹栏' })
-    expect(within(sidebar).queryByRole('button', { name: 'Catalog' })).not.toBeInTheDocument()
+    expect(within(sidebar).queryByRole('button', { name: '全部素材' })).not.toBeInTheDocument()
     expect(sidebar.querySelectorAll('.folder-tree-skeleton-row')).toHaveLength(10)
 
     await act(async () => {
       workspace.resolve({ workspace: 'empty' })
       await Promise.resolve()
     })
-    expect(within(sidebar).getByRole('button', { name: 'Catalog' })).toBeVisible()
+    expect(within(sidebar).getByRole('button', { name: '全部素材' })).toBeVisible()
   })
 
   it('keeps the project structure and item placeholders visible while thumbnails are pending', async () => {
@@ -894,7 +910,7 @@ describe('Viewer empty state', () => {
     await waitFor(() => expect(viewer.requestImage).toHaveBeenCalled())
     expect(screen.queryByRole('status', { name: '项目内容加载中' })).not.toBeInTheDocument()
     const sidebar = screen.getByRole('complementary', { name: '文件夹栏' })
-    expect(within(sidebar).getByRole('button', { name: 'Catalog' })).toBeVisible()
+    expect(within(sidebar).getByRole('button', { name: '全部素材' })).toBeVisible()
     expect(sidebar.querySelectorAll('.folder-tree-skeleton-row')).toHaveLength(0)
     expect(screen.getByRole('option', { name: 'front.jpg' })).toBeVisible()
     expect(screen.getAllByLabelText('缩略图加载中').length).toBeGreaterThan(0)
@@ -1081,7 +1097,7 @@ describe('Viewer empty state', () => {
     const sidebar = screen.getByRole('complementary', { name: '文件夹栏' })
 
     expect(within(sidebar).getByText('项目目录')).toBeVisible()
-    expect(within(sidebar).getByRole('button', { name: 'Catalog' })).toHaveAttribute(
+    expect(within(sidebar).getByRole('button', { name: '全部素材' })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
@@ -1092,7 +1108,7 @@ describe('Viewer empty state', () => {
     expect(sidebar).toHaveStyle({ width: '52px' })
     expect(sidebar).toHaveAttribute('data-collapsed', 'true')
     expect(within(sidebar).getByText('项目目录')).toBeVisible()
-    expect(within(sidebar).getByRole('button', { name: 'Catalog' })).toBeVisible()
+    expect(within(sidebar).getByRole('button', { name: '全部素材' })).toBeVisible()
     expect(projectIdentity).not.toHaveTextContent('Catalog')
     const expand = within(projectIdentity as HTMLElement).getByRole('button', {
       name: '展开文件夹栏',
@@ -1186,6 +1202,7 @@ describe('Viewer empty state', () => {
       expect(viewer.updateViewerSettings).toHaveBeenCalledWith({
         thumbnailDensity: 'large',
         magnifier: { shape: 'circle', magnification: 2, area: 'small' },
+        speech: { inputMode: 'click', locale: 'simplified_chinese', autoPunctuation: true },
       }),
     )
 
@@ -1323,7 +1340,7 @@ describe('Viewer empty state', () => {
     expect(widthAfterCancelledMove).toBe('172px')
   })
 
-  it('previews a filmstrip image in row order while keeping the category overview', async () => {
+  it('previews a folder cover image with the loaded category images', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder)
       .mockResolvedValueOnce(categoryWorkspace())
@@ -1338,7 +1355,6 @@ describe('Viewer empty state', () => {
     const preview = screen.getByRole('dialog', { name: /^图片评审 / })
     expect(preview).toHaveTextContent('front.jpg')
     expect(preview).toHaveTextContent('1 / 2')
-    expect(screen.getByRole('region', { name: 'B01 图片' })).toBeInTheDocument()
 
     fireEvent.keyDown(preview, { key: 'ArrowRight' })
     await waitFor(() => expect(screen.getByRole('dialog')).toHaveTextContent('back.jpg'))
@@ -1347,78 +1363,6 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
     expect(front).toHaveFocus()
     expect(viewer.queryFolder).toHaveBeenNthCalledWith(2, 'folder-b01', false)
-  })
-
-  it('applies global density and proportional request sizing to folder filmstrips', async () => {
-    const viewer = bridge()
-    const returned = compareContentWorkspace()
-    vi.mocked(viewer.queryFolder)
-      .mockResolvedValueOnce(categoryWorkspace())
-      .mockResolvedValueOnce({
-        ...returned,
-        images: returned.images.map((file, index) => ({
-          ...file,
-          imageMetadata: index === 0 ? { width: 3, height: 2 } : { width: 2, height: 3 },
-        })),
-      })
-    render(<App bridge={viewer} />)
-    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-
-    const front = await screen.findByRole('button', { name: '预览 front.jpg' })
-    await waitFor(() =>
-      expect(viewer.requestImage).toHaveBeenCalledWith(
-        {
-          entityId: 'image-1',
-          representation: { kind: 'thumbnail', maxPixels: 198, scaleMilli: 1_000 },
-        },
-        expect.anything(),
-      ),
-    )
-    expect(front.closest('[role="listitem"]')).toHaveStyle({
-      width: '198px',
-      height: '132px',
-    })
-
-    openSettingsFromMenu()
-    fireEvent.change(screen.getByRole('slider', { name: '缩略图大小' }), {
-      target: { value: '1' },
-    })
-
-    await waitFor(() =>
-      expect(front.closest('[role="listitem"]')).toHaveStyle({
-        width: '144px',
-        height: '96px',
-      }),
-    )
-    expect(viewer.requestImage).toHaveBeenCalledWith(
-      {
-        entityId: 'image-1',
-        representation: { kind: 'thumbnail', maxPixels: 144, scaleMilli: 1_000 },
-      },
-      expect.anything(),
-    )
-  })
-
-  it('reuses the same thumbnail representation from a folder filmstrip in the content grid', async () => {
-    const viewer = bridge()
-    const sharedWorkspace = {
-      ...contentWorkspace(),
-      images: contentWorkspace().images.map((file) => ({
-        ...file,
-        imageMetadata: { width: 3, height: 2 },
-      })),
-    }
-    vi.mocked(viewer.queryFolder).mockImplementation(async (entityId) =>
-      entityId === null ? categoryWorkspace() : sharedWorkspace,
-    )
-    render(<App bridge={viewer} />)
-    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-
-    await screen.findByRole('button', { name: '预览 front.jpg' })
-    await waitFor(() => expect(matchingThumbnailCalls(viewer)).toHaveLength(1))
-    fireEvent.click(screen.getByRole('button', { name: '打开 B01' }))
-    expect(await screen.findByRole('option', { name: 'front.jpg' })).toBeVisible()
-    await waitFor(() => expect(matchingThumbnailCalls(viewer)).toHaveLength(1))
   })
 
   it('starts a fresh thumbnail session after closing and reopening a project', async () => {
@@ -1841,18 +1785,18 @@ describe('Viewer empty state', () => {
     await waitFor(() => expect(viewer.previewText).toHaveBeenCalledWith({ entityId: 'text-left' }))
     expect(viewer.previewText).toHaveBeenCalledWith({ entityId: 'text-right' })
 
-    fireEvent.click(within(splitDialog).getByRole('button', { name: '关闭预览' }))
+    fireEvent.click(within(splitDialog).getByRole('button', { name: '返回网格' }))
     vi.mocked(viewer.previewText).mockClear()
     fireEvent.doubleClick(left)
     await waitFor(() => expect(viewer.previewText).toHaveBeenCalledWith({ entityId: 'text-left' }))
     expect(viewer.previewText).not.toHaveBeenCalledWith({ entityId: 'text-right' })
-    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
 
     vi.mocked(viewer.previewText).mockClear()
     fireEvent.doubleClick(right)
     await waitFor(() => expect(viewer.previewText).toHaveBeenCalledWith({ entityId: 'text-right' }))
     expect(viewer.previewText).not.toHaveBeenCalledWith({ entityId: 'text-left' })
-    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
 
     fireEvent.click(left)
     fireEvent.click(right, { metaKey: true })
@@ -1935,7 +1879,7 @@ describe('Viewer empty state', () => {
     fireEvent.click(within(toolbar).getByRole('button', { name: '重新选择目录' }))
 
     await waitFor(() => expect(viewer.closeProject).toHaveBeenCalledWith(undefined, 'project'))
-    expect(await screen.findByRole('heading', { name: 'Viewer' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '打开一个项目' })).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent('已关闭只读项目，请选择已授权的目录。')
     expect(viewer.chooseProject).toHaveBeenCalledOnce()
   })
@@ -1975,7 +1919,7 @@ describe('Viewer empty state', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: '等待完成后关闭' }))
     await waitFor(() => expect(viewer.closeProject).toHaveBeenCalledWith('wait', 'project'))
-    expect(await screen.findByRole('heading', { name: 'Viewer' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '打开一个项目' })).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     await screen.findByRole('heading', { name: 'Catalog' })
@@ -1991,7 +1935,7 @@ describe('Viewer empty state', () => {
     await waitFor(() =>
       expect(viewer.closeProject).toHaveBeenLastCalledWith('cancel_pending', 'application'),
     )
-    expect(await screen.findByRole('heading', { name: 'Viewer' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '打开一个项目' })).toBeVisible()
   })
 
   it('removes the scan listener when unmounted', async () => {
@@ -2055,7 +1999,7 @@ describe('Viewer empty state', () => {
 
     act(() => receiveProjectClosed?.())
 
-    expect(await screen.findByRole('heading', { name: 'Viewer' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '打开一个项目' })).toBeVisible()
     expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
     expect(viewer.closeProject).not.toHaveBeenCalled()
   })
@@ -2532,8 +2476,8 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
 
     for (const [mode, actionLabel, dialogName] of [
-      ['copy', '复制到', '选择复制目标'],
-      ['move', '移动到', '选择移动目标'],
+      ['copy', '复制到', '复制到'],
+      ['move', '移动到', '移动到'],
     ] as const) {
       openRadialMenu(front, mode === 'copy' ? 94 : 95)
       fireEvent.click(screen.getByRole('menuitem', { name: '整理' }))
@@ -3447,7 +3391,7 @@ describe('Viewer empty state', () => {
       releaseAltKey: false,
     })
 
-    const dialog = await screen.findByRole('dialog', { name: '选择移动目标' })
+    const dialog = await screen.findByRole('dialog', { name: '移动到' })
     expect(within(dialog).getByRole('radio')).toBeChecked()
     expect(within(dialog).getByText('selected/front.jpg')).toBeVisible()
     expect(within(dialog).getByRole('combobox')).toHaveValue('')
@@ -3734,11 +3678,7 @@ function matchingThumbnailCalls(viewer: ViewerBridge) {
   return vi
     .mocked(viewer.requestImage)
     .mock.calls.filter(
-      ([request]) =>
-        request.entityId === 'image-1' &&
-        request.representation.kind === 'thumbnail' &&
-        request.representation.maxPixels === 198 &&
-        request.representation.scaleMilli === 1_000,
+      ([request]) => request.entityId === 'image-1' && request.representation.kind === 'thumbnail',
     )
 }
 

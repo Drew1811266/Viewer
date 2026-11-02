@@ -7,6 +7,7 @@ impl From<app::ReviewPublicationProtocol> for ContinuousReviewProtocol {
         match value {
             app::ReviewPublicationProtocol::V3 => Self::V3,
             app::ReviewPublicationProtocol::V4 => Self::V4,
+            app::ReviewPublicationProtocol::V5 => Self::V5,
         }
     }
 }
@@ -16,6 +17,7 @@ impl From<ContinuousReviewProtocol> for app::ReviewPublicationProtocol {
         match value {
             ContinuousReviewProtocol::V3 => Self::V3,
             ContinuousReviewProtocol::V4 => Self::V4,
+            ContinuousReviewProtocol::V5 => Self::V5,
         }
     }
 }

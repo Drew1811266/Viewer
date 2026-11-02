@@ -1,6 +1,6 @@
 import { markdown as markdownLanguage } from '@codemirror/lang-markdown'
 import CodeMirror from '@uiw/react-codemirror'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   BrowserFile,
   SaveTextRequest,
@@ -11,10 +11,13 @@ import { safeUserMessage } from '../../api/viewer'
 import ViewerButton from '../ui/ViewerButton'
 import ViewerDialog from '../ui/ViewerDialog'
 import ViewerLocalFeedback from '../ui/ViewerLocalFeedback'
+import ViewerSegmentedControl from '../ui/ViewerSegmentedControl'
 
 export interface MarkdownDocumentEditorProps {
   file: BrowserFile
   preview: TextPreviewDto
+  headingId: string
+  encodingControl?: ReactNode
   readOnly: boolean
   saveText(request: SaveTextRequest): Promise<SaveTextResult>
   renderMarkdown(content: string): Promise<string>
@@ -27,6 +30,8 @@ type SaveIssue = 'conflict' | 'encoding' | null
 export default function MarkdownDocumentEditor({
   file,
   preview,
+  headingId,
+  encodingControl,
   readOnly,
   saveText,
   renderMarkdown,
@@ -34,6 +39,7 @@ export default function MarkdownDocumentEditor({
   onSaved,
 }: MarkdownDocumentEditorProps) {
   const [editing, setEditing] = useState(false)
+  const [viewMode, setViewMode] = useState<'single' | 'split'>('split')
   const [content, setContent] = useState(preview.plainText ?? '')
   const [fingerprint, setFingerprint] = useState(preview.fingerprint)
   const [entityId, setEntityId] = useState(preview.entityId)
@@ -159,17 +165,54 @@ export default function MarkdownDocumentEditor({
     onSaved(entityId)
   }
 
+  function finishEditing() {
+    setEditing(false)
+    setContent(savedContent)
+    setRenderedHtml(preview.markdownHtml ?? '')
+  }
+
   return (
     <div className="markdown-document-editor">
-      {!editing ? (
-        <>
-          {editable && (
-            <div className="markdown-editor-actions">
-              <ViewerButton tone="quiet" onClick={() => setEditing(true)}>
-                编辑
+      <header className="text-preview-pane-toolbar markdown-editor-toolbar">
+        <div className="markdown-editor-heading">
+          <h2 id={headingId}>{file.name}</h2>
+          {editing && dirty && <span className="markdown-unsaved-chip">未保存</span>}
+        </div>
+        <div className="markdown-editor-controls">
+          {editing && (
+            <ViewerSegmentedControl label="编辑视图">
+              <ViewerButton active={viewMode === 'single'} onClick={() => setViewMode('single')}>
+                单栏
               </ViewerButton>
-            </div>
+              <ViewerButton active={viewMode === 'split'} onClick={() => setViewMode('split')}>
+                双栏
+              </ViewerButton>
+            </ViewerSegmentedControl>
           )}
+          {encodingControl}
+          {!editing && editable && (
+            <ViewerButton className="markdown-edit-action" onClick={() => setEditing(true)}>
+              编辑
+            </ViewerButton>
+          )}
+          {editing && (
+            <>
+              <ViewerButton tone="quiet" disabled={saving} onClick={finishEditing}>
+                完成
+              </ViewerButton>
+              <ViewerButton
+                tone="primary"
+                disabled={!dirty || saving}
+                onClick={() => void performSave(pendingAcknowledge.current)}
+              >
+                {saving ? '保存中…' : '保存'}
+              </ViewerButton>
+            </>
+          )}
+        </div>
+      </header>
+      {!editing ? (
+        <div className="markdown-editor-body">
           {readOnly && (
             <ViewerLocalFeedback tone="info" title="只读项目">
               当前项目为只读，文档以阅读模式打开。
@@ -180,28 +223,9 @@ export default function MarkdownDocumentEditor({
             onClick={markdownClicked}
             dangerouslySetInnerHTML={{ __html: preview.markdownHtml ?? '' }}
           />
-        </>
+        </div>
       ) : (
-        <>
-          <div className="markdown-editor-actions" data-dirty={dirty ? 'true' : 'false'}>
-            <ViewerButton
-              tone="quiet"
-              onClick={() => {
-                setEditing(false)
-                setContent(savedContent)
-                setRenderedHtml(preview.markdownHtml ?? '')
-              }}
-            >
-              完成编辑
-            </ViewerButton>
-            <ViewerButton
-              tone="primary"
-              disabled={!dirty || saving}
-              onClick={() => void performSave(pendingAcknowledge.current)}
-            >
-              {saving ? '保存中…' : dirty ? '保存' : '已保存'}
-            </ViewerButton>
-          </div>
+        <div className="markdown-editor-body markdown-editor-body--editing">
           {error && (
             <ViewerLocalFeedback tone="danger" title="保存失败">
               {error}
@@ -212,28 +236,42 @@ export default function MarkdownDocumentEditor({
               {notice}
             </ViewerLocalFeedback>
           )}
-          <div className="markdown-editor-columns">
-            <div className="markdown-editor-source">
-              <CodeMirror
-                value={content}
-                extensions={extensions}
-                height="100%"
-                theme="light"
-                basicSetup={{ foldGutter: false, highlightActiveLine: false }}
-                onChange={setContent}
-                aria-label={`${file.name} 源码编辑器`}
-              />
+          <div className="markdown-editor-columns" data-view={viewMode}>
+            <div className="markdown-editor-pane">
+              <div className="markdown-editor-pane-header">
+                <span>Markdown 源码</span>
+                <span>{content.split('\n').length} 行</span>
+              </div>
+              <div className="markdown-editor-source">
+                <CodeMirror
+                  value={content}
+                  extensions={extensions}
+                  height="100%"
+                  theme="light"
+                  basicSetup={{ foldGutter: false, highlightActiveLine: false }}
+                  onChange={setContent}
+                  aria-label={`${file.name} 源码编辑器`}
+                />
+              </div>
             </div>
-            <div
-              className="markdown-preview markdown-reading-surface"
-              onClick={markdownClicked}
-              dangerouslySetInnerHTML={{ __html: renderedHtml }}
-            />
+            {viewMode === 'split' && (
+              <div className="markdown-editor-pane">
+                <div className="markdown-editor-pane-header">
+                  <span>预览</span>
+                  <span>实时渲染</span>
+                </div>
+                <div
+                  className="markdown-preview markdown-reading-surface"
+                  onClick={markdownClicked}
+                  dangerouslySetInnerHTML={{ __html: renderedHtml }}
+                />
+              </div>
+            )}
           </div>
-          <ViewerLocalFeedback tone="info" title="编辑提示">
-            ⌘S 保存；预览栏实时渲染未保存内容（项目内图片在保存后解析）。
-          </ViewerLocalFeedback>
-        </>
+          <p className="markdown-editor-hint">
+            ⌘S 保存 · 预览实时渲染未保存内容（项目内图片在保存后解析）
+          </p>
+        </div>
       )}
       {issue === 'conflict' && (
         <ViewerDialog

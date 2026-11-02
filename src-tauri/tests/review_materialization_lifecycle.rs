@@ -52,6 +52,7 @@ fn save(asset_version_id: AssetVersionId) -> ReviewWorkspaceCommand {
         feedback_id: None,
         text: "袖口收紧，保留材质".into(),
         targets: vec![TargetEdit::Add {
+            style: None,
             asset_version_id,
             anchor: FeedbackAnchor::Asset,
         }],
@@ -63,6 +64,7 @@ fn save_arrow(asset_version_id: AssetVersionId) -> ReviewWorkspaceCommand {
         feedback_id: None,
         text: "沿箭头方向调整".into(),
         targets: vec![TargetEdit::Add {
+            style: None,
             asset_version_id,
             anchor: FeedbackAnchor::ImageArrow(
                 NormalizedArrow::new(

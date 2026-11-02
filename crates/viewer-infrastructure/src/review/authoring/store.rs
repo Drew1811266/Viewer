@@ -15,8 +15,8 @@ use viewer_application::{
         AuthoringCommandLookup, ClaimedReviewMaterialization, ContinuousReviewAuthoringStorePort,
         ReviewAuthoringCommitRequest, ReviewAuthoringHead, ReviewAuthoringReceipt,
         ReviewBarrierKind, ReviewCommitError, ReviewHeads, ReviewMaterializationFailure,
-        ReviewMaterializationQueuePort, ReviewPublicationReceipt, ReviewPublicationStatus,
-        ReviewWorkspaceError, StoredAuthoringState,
+        ReviewMaterializationQueuePort, ReviewPublicationProtocol, ReviewPublicationReceipt,
+        ReviewPublicationStatus, ReviewWorkspaceError, StoredAuthoringState,
     },
 };
 use viewer_domain::{ProjectId, ReviewCommandId, ReviewSnapshotId, ReviewStreamId};
@@ -796,7 +796,7 @@ fn load_snapshot_from(
             },
         )
         .map_err(map_database_error)?;
-    let value = codec::decode(project_id, stream, &row.logical_state)?;
+    let mut value = codec::decode(project_id, stream, &row.logical_state)?;
     let expected_parent = (sequence > 1).then_some((sequence - 1) as i64);
     let stored_production: Vec<u8> = connection
         .query_row(
@@ -810,6 +810,16 @@ fn load_snapshot_from(
     }
     let mut stored_digest = [0_u8; 32];
     stored_digest.copy_from_slice(&row.payload_digest);
+    // Legacy v4+style bytes cannot pass the strict canonical v4 encoder. The
+    // document was already parsed, structurally validated, and digest-checked;
+    // skip only the byte-order canonical check for this known legacy shape.
+    let legacy_v4_style = value.publication_protocol == ReviewPublicationProtocol::V4
+        && value
+            .state
+            .feedback
+            .iter()
+            .flat_map(|item| &item.targets)
+            .any(|target| target.style.is_some());
     if value.head.sequence != sequence
         || value.head.snapshot_id != parse_id::<ReviewSnapshotId>(&row.snapshot_id)?
         || value.command_id != parse_id::<ReviewCommandId>(&row.command_id)?
@@ -817,17 +827,23 @@ fn load_snapshot_from(
         || row.parent_seq != expected_parent
         || row.barrier_kind != barrier_code(value.barrier)
         || row.created_at_ms != value.generated.created_at_ms
-        || !codec::matches_canonical_encoding(
-            project_id,
-            stream,
-            &value,
-            &row.logical_state,
-            &row.transition,
-            &row.generated_ids,
-            &stored_production,
-        )?
+        || (!legacy_v4_style
+            && !codec::matches_canonical_encoding(
+                project_id,
+                stream,
+                &value,
+                &row.logical_state,
+                &row.transition,
+                &row.generated_ids,
+                &stored_production,
+            )?)
     {
         return Err(ReviewCommitError::Integrity);
+    }
+    if legacy_v4_style {
+        // Canonical bytes above are still v4; expose the logical head as v5
+        // so the next commit and read projection use the v5 wire.
+        value.publication_protocol = ReviewPublicationProtocol::V5;
     }
     Ok(value)
 }

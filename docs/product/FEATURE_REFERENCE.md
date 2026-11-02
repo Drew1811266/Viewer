@@ -1,13 +1,30 @@
-# Viewer 0.2.5 详细功能参考
+# Viewer 0.3.0 详细功能参考
 
 > Status: Current
 >
-> 当前开发版本：`0.2.5`
+> 当前开发版本：`0.3.0`
 
-本文按功能域记录 Viewer 0.2.5 的实际行为、边界和维护证据。这里的“当前可用”表示代码
+本文按功能域记录 Viewer 0.3.0 的实际行为、边界和维护证据；0.2.5 延续的行为保持不变。这里的“当前可用”表示代码
 和自动化测试已经覆盖主要流程；“部分可用”表示核心流程存在，但结果还受本地文件内容、
 权限、原生环境或操作种类限制。使用步骤见[用户指南](USER_GUIDE.md)，格式识别规则见
 [支持格式与限制](SUPPORTED_FORMATS.md)。
+
+## 0.3.0 增量（开发中）
+
+0.3.0 在 0.2.5 基线上增加以下能力；完整行为与限制见
+[0.3.0-DELTA.md](0.3.0-DELTA.md)。
+
+| 功能域 | 当前状态 | 证据 |
+| --- | --- | --- |
+| 10 种标注工具 + 浏览 | 已实现 | `ui/src/app/review/annotationToolRegistry.ts`、`AnnotationCanvas`/native 测试 |
+| 样式条（8 色/3 线宽/透明度/虚线/字号） | 已实现 | `AnnotationStyleBar.tsx`、`annotation_style.rs` |
+| 标注视觉 v2（白描边/10% 填充/20px 徽章/圆角） | 已实现 | `annotationScene.ts`、`annotation_mesh.rs`、pen 35–37 |
+| 原生 wgpu/Metal 渲染 | 已实现（开发中验证） | `viewer-render-wgpu`、`image_render_runtime` |
+| 证据 PNG 使用 target style | 已实现 | `review_annotation.rs` |
+| 意见听写（系统 Speech，本地） | 已实现 | `speech.rs`、`useSpeechDictation.ts` |
+| M3 视觉迁移 | 0.3.0 开发基线；147 状态双尺寸截图已生成 | `docs/design/0.3.0/`、`tokens.css` |
+
+0.3.0 不改变 0.2.5 的项目/扫描/文件操作模型；协议兼容边界见 ADR 0009。
 
 ## 1. 项目与会话生命周期
 

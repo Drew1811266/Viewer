@@ -1,4 +1,5 @@
-import type { ReviewAnchor } from '../../api/types'
+import type { ReviewAnchor, ReviewAnnotationStyle } from '../../api/types'
+import { defaultAnnotationStyle, withAnnotationTool } from './annotationStyle'
 import type { AnnotationTool, MarkupTool } from './annotationToolRegistry'
 
 export type { AnnotationTool } from './annotationToolRegistry'
@@ -7,10 +8,16 @@ type AnnotationOperation = 'text' | 'geometry'
 
 export type AnnotationEditorPhase =
   | { status: 'idle' }
-  | { status: 'drawing'; draftAnchor: ReviewAnchor; sourceItemId?: string }
+  | {
+      status: 'drawing'
+      draftAnchor: ReviewAnchor
+      style?: ReviewAnnotationStyle
+      sourceItemId?: string
+    }
   | {
       status: 'editing'
       draftAnchor: ReviewAnchor
+      style?: ReviewAnnotationStyle
       text: string
       sourceItemId: string | null
       operation?: AnnotationOperation
@@ -18,6 +25,7 @@ export type AnnotationEditorPhase =
   | {
       status: 'saving'
       draftAnchor: ReviewAnchor
+      style?: ReviewAnnotationStyle
       text: string
       sourceItemId: string | null
       operation?: AnnotationOperation
@@ -25,6 +33,7 @@ export type AnnotationEditorPhase =
   | {
       status: 'save_error'
       draftAnchor: ReviewAnchor
+      style?: ReviewAnnotationStyle
       text: string
       sourceItemId: string | null
       operation?: AnnotationOperation
@@ -33,6 +42,9 @@ export type AnnotationEditorPhase =
 
 export interface AnnotationInteractionState {
   activeTool: AnnotationTool
+  style?: ReviewAnnotationStyle
+  /** Last style used for each markup tool in this review session. */
+  stylesByTool?: Partial<Record<MarkupTool, ReviewAnnotationStyle>>
   temporarilyPanning: boolean
   selectedItemId: string | null
   phase: AnnotationEditorPhase
@@ -42,17 +54,28 @@ export type AnnotationEditorState = AnnotationInteractionState
 
 export type AnnotationEditorAction =
   | { type: 'set_tool'; tool: AnnotationTool }
+  | { type: 'set_style'; style: ReviewAnnotationStyle }
   | { type: 'temporary_pan_start' }
   | { type: 'temporary_pan_end' }
-  | { type: 'begin_drawing'; anchor: ReviewAnchor; itemId?: string }
+  | {
+      type: 'begin_drawing'
+      anchor: ReviewAnchor
+      itemId?: string
+      style?: ReviewAnnotationStyle
+    }
   | { type: 'update_draft_anchor'; anchor: ReviewAnchor }
   | { type: 'complete_drawing' }
-  | { type: 'begin_annotation'; anchor: ReviewAnchor }
+  | {
+      type: 'begin_annotation'
+      anchor: ReviewAnchor
+      style?: ReviewAnnotationStyle
+    }
   | {
       type: 'begin_edit'
       itemId: string
       anchor: ReviewAnchor
       text: string
+      style?: ReviewAnnotationStyle
       operation?: AnnotationOperation
     }
   | { type: 'update_text'; text: string }
@@ -66,10 +89,20 @@ export type AnnotationEditorAction =
 export function initialAnnotationEditorState(): AnnotationInteractionState {
   return {
     activeTool: 'browse',
+    style: withAnnotationTool({ ...emptyStyle }, 'rectangle'),
+    stylesByTool: {},
     temporarilyPanning: false,
     selectedItemId: null,
     phase: idlePhase(),
   }
+}
+
+const emptyStyle: ReviewAnnotationStyle = {
+  tool: 'rectangle',
+  color: 'red',
+  width: 'medium',
+  opacityPercent: 100,
+  dashed: false,
 }
 
 export function annotationEditorReducer(
@@ -77,10 +110,32 @@ export function annotationEditorReducer(
   action: AnnotationEditorAction,
 ): AnnotationInteractionState {
   switch (action.type) {
-    case 'set_tool':
-      return state.phase.status === 'idle'
-        ? { ...state, activeTool: action.tool, temporarilyPanning: false }
-        : state
+    case 'set_tool': {
+      if (state.phase.status !== 'idle') return state
+      if (action.tool === 'browse') {
+        return { ...state, activeTool: 'browse', temporarilyPanning: false }
+      }
+      const style = withAnnotationTool(
+        state.stylesByTool?.[action.tool] ?? state.style ?? defaultAnnotationStyle(action.tool),
+        action.tool,
+      )
+      return {
+        ...state,
+        activeTool: action.tool,
+        style,
+        stylesByTool: { ...state.stylesByTool, [action.tool]: style },
+        temporarilyPanning: false,
+      }
+    }
+    case 'set_style':
+      if (state.phase.status === 'saving') return state
+      return {
+        ...state,
+        style: action.style,
+        stylesByTool: { ...state.stylesByTool, [action.style.tool]: action.style },
+        phase:
+          state.phase.status === 'idle' ? state.phase : { ...state.phase, style: action.style },
+      }
     case 'temporary_pan_start':
       return { ...state, temporarilyPanning: true }
     case 'temporary_pan_end':
@@ -99,6 +154,12 @@ export function annotationEditorReducer(
         phase: {
           status: 'drawing',
           draftAnchor: action.anchor,
+          style:
+            action.style ??
+            withAnnotationTool(
+              state.style ?? defaultAnnotationStyle(state.activeTool),
+              state.activeTool,
+            ),
           sourceItemId: action.itemId,
         },
       }
@@ -116,6 +177,7 @@ export function annotationEditorReducer(
           ? {
               status: 'editing',
               draftAnchor: state.phase.draftAnchor,
+              style: state.phase.style,
               text: '',
               sourceItemId: null,
             }
@@ -129,6 +191,7 @@ export function annotationEditorReducer(
         phase: {
           status: 'editing',
           draftAnchor: action.anchor,
+          style: action.style ?? state.style,
           text: '',
           sourceItemId: null,
         },
@@ -148,6 +211,7 @@ export function annotationEditorReducer(
         phase: {
           status: 'editing',
           draftAnchor: action.anchor,
+          style: action.style ?? state.style,
           text: action.text,
           sourceItemId: action.itemId,
           operation: action.operation,
@@ -240,6 +304,22 @@ export function isValidAnnotationAnchor(anchor: ReviewAnchor): boolean {
       }
       return maximumX > minimumX && maximumY > minimumY
     }
+    case 'image_text':
+      return finiteNormalized(anchor.x) && finiteNormalized(anchor.y)
+    case 'image_line':
+      return (
+        finiteNormalized(anchor.tail.x) &&
+        finiteNormalized(anchor.tail.y) &&
+        finiteNormalized(anchor.head.x) &&
+        finiteNormalized(anchor.head.y) &&
+        (anchor.tail.x !== anchor.head.x || anchor.tail.y !== anchor.head.y)
+      )
+    case 'image_polygon': {
+      if (anchor.points.length < 3 || anchor.points.length > 64) return false
+      if (anchor.points.some((point) => !finiteNormalized(point.x) || !finiteNormalized(point.y)))
+        return false
+      return Math.abs(polygonArea(anchor.points)) > 1e-12
+    }
     case 'video_point':
       return Number.isSafeInteger(anchor.positionUs) && anchor.positionUs >= 0
     case 'video_range':
@@ -265,12 +345,30 @@ function toolOwnsAnchor(tool: MarkupTool, anchor: ReviewAnchor): boolean {
     case 'arrow':
       return anchor.kind === 'image_arrow'
     case 'brush':
+    case 'highlighter':
       return anchor.kind === 'image_stroke'
     case 'rectangle':
       return anchor.kind === 'image_rect'
     case 'ellipse':
       return anchor.kind === 'image_ellipse'
+    case 'text':
+      return anchor.kind === 'image_text'
+    case 'line':
+    case 'ruler':
+      return anchor.kind === 'image_line'
+    case 'polygon':
+      return anchor.kind === 'image_polygon'
   }
+}
+
+function polygonArea(points: ReadonlyArray<{ x: number; y: number }>): number {
+  let area = 0
+  for (let index = 0; index < points.length; index += 1) {
+    const left = points[index] as { x: number; y: number }
+    const right = points[(index + 1) % points.length] as { x: number; y: number }
+    area += left.x * right.y - right.x * left.y
+  }
+  return area / 2
 }
 
 function finiteNormalized(value: number): boolean {

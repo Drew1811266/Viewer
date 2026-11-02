@@ -65,12 +65,13 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     closeProject: vi.fn().mockResolvedValue('closed'),
     projectSnapshot: vi.fn().mockResolvedValue(null),
     getViewerSettings: vi.fn().mockResolvedValue({
-      schemaVersion: 4,
+      schemaVersion: 5,
       thumbnailDensity: 'standard',
       magnifier: { shape: 'circle', magnification: 2, area: 'small' },
+      speech: { inputMode: 'click', locale: 'simplified_chinese', autoPunctuation: true },
     }),
     updateViewerSettings: vi.fn().mockImplementation(async (settings) => ({
-      schemaVersion: 4,
+      schemaVersion: 5,
       ...settings,
     })),
     folderTree: vi.fn().mockResolvedValue([]),
@@ -167,6 +168,22 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDropEvents: vi.fn().mockResolvedValue(() => undefined),
+    speechStatus: vi.fn().mockResolvedValue({
+      available: false,
+      speechAuthorized: false,
+      microphoneAuthorized: false,
+      onDevice: false,
+      localeSupported: false,
+      locale: 'zh-CN',
+    }),
+    requestSpeechPermissions: vi.fn().mockResolvedValue({
+      speechAuthorized: false,
+      microphoneAuthorized: false,
+    }),
+    startSpeechCapture: vi.fn(),
+    stopSpeechCapture: vi.fn(),
+    cancelSpeechCapture: vi.fn(),
+    openSpeechSettings: vi.fn().mockResolvedValue(undefined),
   }
 }
 

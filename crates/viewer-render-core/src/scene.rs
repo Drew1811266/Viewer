@@ -30,6 +30,18 @@ pub struct AnnotationStyle {
     pub color: [f32; 4],
     pub line_width_px: f32,
     pub dashed: bool,
+    /// Draw the 1.5px white outline under the colored stroke. Highlighter
+    /// strokes disable it deliberately: their multiply blend must not gain a
+    /// white fringe.
+    pub halo: bool,
+    /// Rounded-corner radii in normalized image units (x, y). The UI derives
+    /// them from a 4 screen-pixel radius at the image's authored size, so the
+    /// corner keeps its shape as the image scales while the stroke stays
+    /// screen-constant.
+    pub corner_radius: [f32; 2],
+    /// Render with the multiply blend pipeline (highlighter). The shader still
+    /// emits premultiplied color; the pipeline selects src*Dst + Dst*(1-A).
+    pub multiply: bool,
 }
 
 /// Coral red #E8644D as authored in sRGB. Colors handed to the annotation
@@ -61,6 +73,9 @@ impl Default for AnnotationStyle {
             color: linear_from_srgb(ANNOTATION_CORAL_SRGB),
             line_width_px: 2.4,
             dashed: false,
+            halo: true,
+            corner_radius: [0.0, 0.0],
+            multiply: false,
         }
     }
 }

@@ -6,8 +6,9 @@ use std::{
     sync::Mutex,
 };
 use viewer_application::{
-    MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape, ThumbnailDensity,
-    VIEWER_SETTINGS_SCHEMA_VERSION, ViewerSettings, ViewerSettingsError, ViewerSettingsPort,
+    MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape, SpeechInputMode,
+    SpeechLocale, SpeechPreferences, ThumbnailDensity, VIEWER_SETTINGS_SCHEMA_VERSION,
+    ViewerSettings, ViewerSettingsError, ViewerSettingsPort,
 };
 
 #[derive(Deserialize, Serialize)]
@@ -65,6 +66,31 @@ struct StoredMagnifierPreferencesV4 {
     area: MagnifierArea,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredViewerSettingsV5 {
+    schema_version: u32,
+    thumbnail_density: ThumbnailDensity,
+    magnifier: StoredMagnifierPreferencesV5,
+    speech: StoredSpeechPreferencesV5,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredMagnifierPreferencesV5 {
+    shape: MagnifierShape,
+    magnification: f64,
+    area: MagnifierArea,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredSpeechPreferencesV5 {
+    input_mode: SpeechInputMode,
+    locale: SpeechLocale,
+    auto_punctuation: bool,
+}
+
 pub struct JsonViewerSettingsStore {
     directory: PathBuf,
     write_lock: Mutex<()>,
@@ -94,13 +120,18 @@ impl ViewerSettingsPort for JsonViewerSettingsStore {
             .map_err(|_| ViewerSettingsError::Unavailable)?;
         fs::create_dir_all(&self.directory).map_err(|_| ViewerSettingsError::Unavailable)?;
 
-        let serialized = serde_json::to_vec(&StoredViewerSettingsV4 {
+        let serialized = serde_json::to_vec(&StoredViewerSettingsV5 {
             schema_version: VIEWER_SETTINGS_SCHEMA_VERSION,
             thumbnail_density: settings.thumbnail_density,
-            magnifier: StoredMagnifierPreferencesV4 {
+            magnifier: StoredMagnifierPreferencesV5 {
                 shape: settings.magnifier.shape,
                 magnification: f64::from(settings.magnifier.magnification),
                 area: settings.magnifier.area,
+            },
+            speech: StoredSpeechPreferencesV5 {
+                input_mode: settings.speech.input_mode,
+                locale: settings.speech.locale,
+                auto_punctuation: settings.speech.auto_punctuation,
             },
         })
         .map_err(|_| ViewerSettingsError::Unavailable)?;
@@ -126,6 +157,7 @@ fn parse_stored_settings(json: &str) -> Option<ViewerSettings> {
         2 => parse_v2_density_only(value),
         3 => parse_v3(value),
         4 => parse_v4(value),
+        5 => parse_v5(value),
         _ => None,
     }
 }
@@ -135,6 +167,7 @@ fn parse_v1(value: serde_json::Value) -> Option<ViewerSettings> {
     (stored.schema_version == 1).then_some(ViewerSettings {
         thumbnail_density: stored.thumbnail_density,
         magnifier: MagnifierPreferences::default(),
+        speech: SpeechPreferences::default(),
     })
 }
 
@@ -147,6 +180,7 @@ fn parse_v2_density_only(value: serde_json::Value) -> Option<ViewerSettings> {
     Some(ViewerSettings {
         thumbnail_density: stored.thumbnail_density,
         magnifier: MagnifierPreferences::default(),
+        speech: SpeechPreferences::default(),
     })
 }
 
@@ -164,11 +198,26 @@ fn parse_v3(value: serde_json::Value) -> Option<ViewerSettings> {
             magnification,
             area: stored.magnifier.area,
         },
+        speech: SpeechPreferences::default(),
     })
 }
 
 fn parse_v4(value: serde_json::Value) -> Option<ViewerSettings> {
     let stored = serde_json::from_value::<StoredViewerSettingsV4>(value).ok()?;
+    let magnification = MagnifierMagnification::try_from(stored.magnifier.magnification).ok()?;
+    (stored.schema_version == 4).then_some(ViewerSettings {
+        thumbnail_density: stored.thumbnail_density,
+        magnifier: MagnifierPreferences {
+            shape: stored.magnifier.shape,
+            magnification,
+            area: stored.magnifier.area,
+        },
+        speech: SpeechPreferences::default(),
+    })
+}
+
+fn parse_v5(value: serde_json::Value) -> Option<ViewerSettings> {
+    let stored = serde_json::from_value::<StoredViewerSettingsV5>(value).ok()?;
     let magnification = MagnifierMagnification::try_from(stored.magnifier.magnification).ok()?;
     (stored.schema_version == VIEWER_SETTINGS_SCHEMA_VERSION).then_some(ViewerSettings {
         thumbnail_density: stored.thumbnail_density,
@@ -176,6 +225,11 @@ fn parse_v4(value: serde_json::Value) -> Option<ViewerSettings> {
             shape: stored.magnifier.shape,
             magnification,
             area: stored.magnifier.area,
+        },
+        speech: SpeechPreferences {
+            input_mode: stored.speech.input_mode,
+            locale: stored.speech.locale,
+            auto_punctuation: stored.speech.auto_punctuation,
         },
     })
 }
@@ -185,7 +239,8 @@ mod tests {
     use super::JsonViewerSettingsStore;
     use viewer_application::{
         MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape,
-        ThumbnailDensity, ViewerSettings, ViewerSettingsError, ViewerSettingsPort,
+        SpeechPreferences, ThumbnailDensity, ViewerSettings, ViewerSettingsError,
+        ViewerSettingsPort,
     };
 
     #[test]
@@ -208,6 +263,7 @@ mod tests {
                     magnification: MagnifierMagnification::Two,
                     area: MagnifierArea::Medium,
                 },
+                speech: SpeechPreferences::default(),
             })
             .unwrap();
 
@@ -215,12 +271,17 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&json).unwrap(),
             serde_json::json!({
-                "schemaVersion": 4,
+                "schemaVersion": 5,
                 "thumbnailDensity": "large",
                 "magnifier": {
                     "shape": "rounded_rectangle",
                     "magnification": 2.0,
                     "area": "medium"
+                },
+                "speech": {
+                    "inputMode": "click",
+                    "locale": "simplified_chinese",
+                    "autoPunctuation": true
                 }
             })
         );
@@ -233,6 +294,7 @@ mod tests {
                     magnification: MagnifierMagnification::Two,
                     area: MagnifierArea::Medium,
                 },
+                speech: SpeechPreferences::default(),
             }
         );
     }
@@ -286,6 +348,7 @@ mod tests {
                 ViewerSettings {
                     thumbnail_density: ThumbnailDensity::Maximum,
                     magnifier: MagnifierPreferences::default(),
+                    speech: SpeechPreferences::default(),
                 }
             );
         }
@@ -324,13 +387,14 @@ mod tests {
                         magnification: expected,
                         area: MagnifierArea::Large,
                     },
+                    speech: SpeechPreferences::default(),
                 }
             );
         }
     }
 
     #[test]
-    fn version_four_loads_every_public_magnification() {
+    fn version_four_loads_every_public_magnification_with_speech_defaults() {
         for (public_value, expected) in [
             (2.0, MagnifierMagnification::Two),
             (3.0, MagnifierMagnification::Three),
@@ -362,11 +426,53 @@ mod tests {
                         magnification: expected,
                         area: MagnifierArea::Large,
                     },
+                    speech: SpeechPreferences::default(),
                 }
             );
         }
     }
 
+    #[test]
+    fn version_five_loads_speech_preferences() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("settings.json"),
+            serde_json::json!({
+                "schemaVersion": 5,
+                "thumbnailDensity": "maximum",
+                "magnifier": {
+                    "shape": "circle",
+                    "magnification": 4.0,
+                    "area": "small"
+                },
+                "speech": {
+                    "inputMode": "hold",
+                    "locale": "english",
+                    "autoPunctuation": false
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let store = JsonViewerSettingsStore::new(directory.path().to_path_buf());
+
+        assert_eq!(
+            store.load(),
+            ViewerSettings {
+                thumbnail_density: ThumbnailDensity::Maximum,
+                magnifier: MagnifierPreferences {
+                    shape: MagnifierShape::Circle,
+                    magnification: MagnifierMagnification::Four,
+                    area: MagnifierArea::Small,
+                },
+                speech: SpeechPreferences {
+                    input_mode: viewer_application::SpeechInputMode::Hold,
+                    locale: viewer_application::SpeechLocale::English,
+                    auto_punctuation: false,
+                },
+            }
+        );
+    }
     #[test]
     fn version_four_rejects_deprecated_magnification() {
         let directory = tempfile::tempdir().unwrap();
@@ -590,6 +696,7 @@ mod tests {
             store.save(ViewerSettings {
                 thumbnail_density: ThumbnailDensity::Large,
                 magnifier: MagnifierPreferences::default(),
+                speech: SpeechPreferences::default(),
             }),
             Err(ViewerSettingsError::Unavailable)
         );

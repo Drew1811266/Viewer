@@ -682,6 +682,9 @@ fn annotation_node(
         color: dto.style.color,
         line_width_px: dto.style.line_width_px,
         dashed: dto.style.dashed,
+        halo: dto.style.halo,
+        corner_radius: dto.style.corner_radius,
+        multiply: dto.style.multiply,
     };
     node.selected = dto.selected;
     node.draft = dto.draft;

@@ -1,6 +1,8 @@
 import type { FocusEvent, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { VideoFile } from '../api/types'
+import { fileExtensionLabel } from '../fileKinds'
+import InfoOverlay from './InfoOverlay'
 import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 import ViewerToolbar from './ui/ViewerToolbar'
@@ -49,6 +51,7 @@ export default function VideoPreview({
   const [seeking, setSeeking] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
   const [focusedWithin, setFocusedWithin] = useState(false)
+  const [fileInfoOpen, setFileInfoOpen] = useState(false)
   const [posterUrl, setPosterUrl] = useState(file.videoMetadata.coverUrl)
   const reducedMotion = useReducedMotionPreference()
   const retryKey = retryRequest.entityId === file.entityId ? retryRequest.key : 0
@@ -148,17 +151,20 @@ export default function VideoPreview({
         </ViewerButton>
       )}
       <ViewerButton
-        tone="quiet"
-        className="preview-complete-action"
-        aria-label="完成"
-        onClick={onClose}
+        active={fileInfoOpen}
+        className="preview-file-info-action"
+        onClick={() => setFileInfoOpen((current) => !current)}
       >
-        完成
+        文件信息
+      </ViewerButton>
+      <ViewerButton className="preview-complete-action" aria-label="返回网格" onClick={onClose}>
+        返回网格
       </ViewerButton>
     </>
   )
 
   const durationLabel = formatVideoTime(file.videoMetadata.durationUs ?? state.durationUs ?? 0)
+  const videoFormat = fileExtensionLabel(file.name).replace(/^\./, '')
   const navigation = (
     <nav className="preview-navigation-float video-preview-top-navigation" aria-label="视频导航">
       <ViewerIconButton
@@ -194,30 +200,42 @@ export default function VideoPreview({
       onPointerMove={controls.reveal}
     >
       <div
+        onFocusCapture={() => {
+          controls.reveal()
+          setFocusedWithin(true)
+        }}
+        onBlurCapture={chromeFocusLeft}
+      >
+        <ViewerToolbar
+          label="视频预览工具"
+          className="video-preview-topbar"
+          leading={
+            <>
+              <ViewerIconButton
+                icon="arrow-left"
+                label="返回"
+                title="返回网格"
+                tone="quiet"
+                className="preview-back-action"
+                onClick={onClose}
+              />
+              <span className="preview-identity video-preview-title">
+                <strong>{file.name}</strong>
+                <span>
+                  {videoFormat} · {durationLabel}
+                </span>
+              </span>
+            </>
+          }
+          center={navigation}
+          actions={actions}
+        />
+      </div>
+      <div
         className="video-preview-stage"
         data-testid="video-preview-stage"
         data-surface-visible={state.surfaceVisible}
       >
-        <div
-          onFocusCapture={() => {
-            controls.reveal()
-            setFocusedWithin(true)
-          }}
-          onBlurCapture={chromeFocusLeft}
-        >
-          <ViewerToolbar
-            label="视频预览工具"
-            className="video-preview-topbar"
-            leading={
-              <span className="video-preview-title">
-                <strong>{file.name}</strong>
-                <span>{durationLabel}</span>
-              </span>
-            }
-            center={navigation}
-            actions={actions}
-          />
-        </div>
         {state.phase === 'ended' && posterUrl !== null && (
           <div className="video-preview-ended-poster">
             <img src={posterUrl} alt={`${file.name} 的视频封面`} draggable={false} />
@@ -256,6 +274,9 @@ export default function VideoPreview({
           )}
         </div>
       </div>
+      {fileInfoOpen && (
+        <InfoOverlay files={[file]} dimensions={{}} onClose={() => setFileInfoOpen(false)} />
+      )}
     </section>
   )
 }

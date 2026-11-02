@@ -50,7 +50,7 @@ test('v3 golden documents validate, while unknown fields and wrong roles are rej
   assert.equal(await validateFixture({ ...value, role: 'history' }, definition), false)
 })
 
-test('v4 adds the complete image markup anchor set without weakening v3', async () => {
+test('v4 adds the extended anchors known to 0.2.5 without weakening v3', async () => {
   const [stateV3, stateV4] = await Promise.all([
     schema('viewer-review-state-v3.schema.json'),
     schema('viewer-review-state-v4.schema.json'),

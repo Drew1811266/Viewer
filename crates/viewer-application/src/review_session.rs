@@ -1571,6 +1571,7 @@ impl ReviewSessionService {
                         ordinal: u32::try_from(index + 1).unwrap_or(u32::MAX),
                         feedback_id,
                         anchor,
+                        style: None,
                     },
                 )
                 .collect::<Vec<_>>();

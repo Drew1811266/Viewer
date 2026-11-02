@@ -5,6 +5,7 @@ import type { AspectRect, ImageDimensions } from '../../layout/aspectLayout'
 import AspectThumbnail from '../AspectThumbnail'
 import ReviewFeedbackCountBadge from '../review/ReviewFeedbackCountBadge'
 import UnsupportedFileState from '../UnsupportedFileState'
+import ViewerIcon from '../ui/ViewerIcon'
 import { OrganizationDragHandle } from './OrganizationDragHandle'
 
 export function ImageCell({
@@ -92,11 +93,29 @@ export function ImageCell({
           </div>
         </div>
         <div className="image-cell-meta">
-          <span className="image-cell-name">{file.name}</span>
-          <ReviewFeedbackCountBadge count={feedbackCount} />
-          {markerLabel && <span className="file-marker">{markerLabel}</span>}
+          <span className="image-cell-meta-line">
+            <span className="image-cell-name">{file.name}</span>
+            <ReviewFeedbackCountBadge count={feedbackCount} />
+          </span>
+          <span className="image-cell-submeta">
+            {fileTypeLabel(file)} · {formatFileSize(file.size)}
+          </span>
         </div>
       </div>
+      {markerLabel && (
+        <span
+          className="image-cell-marker"
+          data-review={file.marker.reviewState ?? undefined}
+          data-favorite={file.marker.favorite || undefined}
+        >
+          {markerLabel}
+        </span>
+      )}
+      {selected && (
+        <span className="image-cell-selected-check" aria-hidden="true">
+          <ViewerIcon name="check" />
+        </span>
+      )}
       <OrganizationDragHandle
         file={file}
         disabled={organizationDragDisabled}
@@ -108,4 +127,30 @@ export function ImageCell({
       />
     </div>
   )
+}
+
+function fileTypeLabel(file: BrowserFile): string {
+  const extension = file.name.includes('.') ? file.name.split('.').pop() : null
+  if (extension !== null && extension !== undefined && extension.length > 0) {
+    return extension.toUpperCase()
+  }
+  if (file.kind === 'markdown') return 'MARKDOWN'
+  if (file.kind === 'text') return 'TXT'
+  if (file.kind === 'video') return 'VIDEO'
+  if (file.kind === 'image' || file.kind === 'jpeg' || file.kind === 'png') return 'IMAGE'
+  return 'FILE'
+}
+
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—'
+  if (bytes < 1_024) return `${bytes} B`
+  const units = ['KiB', 'MiB', 'GiB']
+  let value = bytes / 1_024
+  let unit = 0
+  while (value >= 1_024 && unit < units.length - 1) {
+    value /= 1_024
+    unit += 1
+  }
+  const rounded = value >= 100 ? Math.round(value) : Math.round(value * 10) / 10
+  return `${rounded} ${units[unit]}`
 }

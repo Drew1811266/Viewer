@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use super::{ContinuousReviewError, ContinuousReviewState, TargetVersionKey, VersionedFeedback};
-use crate::review::{FeedbackAnchor, MAX_FEEDBACK_TEXT_BYTES};
+use crate::review::{AnnotationStyle, FeedbackAnchor, MAX_FEEDBACK_TEXT_BYTES};
 use crate::{
     ReviewArchiveId, ReviewSnapshotId, ReviewTargetId, ReviewTargetRevisionId, ReviewTextRevisionId,
 };
@@ -36,13 +36,28 @@ pub fn replace_target(
     revision_id: ReviewTargetRevisionId,
     anchor: FeedbackAnchor,
 ) -> Result<VersionedFeedback, ContinuousReviewError> {
+    let style = feedback
+        .targets
+        .iter()
+        .find(|target| target.id == target_id)
+        .and_then(|target| target.style);
+    replace_target_with_style(feedback, target_id, revision_id, anchor, style)
+}
+
+pub fn replace_target_with_style(
+    feedback: &VersionedFeedback,
+    target_id: ReviewTargetId,
+    revision_id: ReviewTargetRevisionId,
+    anchor: FeedbackAnchor,
+    style: Option<AnnotationStyle>,
+) -> Result<VersionedFeedback, ContinuousReviewError> {
     feedback.validate()?;
     let target = feedback
         .targets
         .iter()
         .find(|target| target.id == target_id)
         .ok_or(ContinuousReviewError::MissingReference)?;
-    if target.anchor == anchor {
+    if target.anchor == anchor && target.style == style {
         return Ok(feedback.clone());
     }
     if feedback
@@ -60,6 +75,7 @@ pub fn replace_target(
         .expect("validated target");
     target.revision_id = revision_id;
     target.anchor = anchor;
+    target.style = style;
     next.validate()?;
     Ok(next)
 }

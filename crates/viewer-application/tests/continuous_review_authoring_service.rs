@@ -5,7 +5,10 @@ use continuous_review::Fixture;
 use viewer_application::{ReviewTaskCancellation, review_workspace::*};
 use viewer_domain::{
     EntityId, ReviewCommandId,
-    review::{FeedbackAnchor, NormalizedPoint, NormalizedRect},
+    review::{
+        AnnotationColor, AnnotationStyle, AnnotationTool, AnnotationWidth, FeedbackAnchor,
+        NormalizedPoint, NormalizedRect,
+    },
 };
 
 fn save(asset_version_id: viewer_domain::AssetVersionId, text: &str) -> ReviewWorkspaceCommand {
@@ -23,6 +26,7 @@ fn save_anchor(
         targets: vec![TargetEdit::Add {
             asset_version_id,
             anchor,
+            style: None,
         }],
     }
 }
@@ -126,6 +130,170 @@ async fn extended_anchor_promotes_publication_to_v4_without_later_downgrade() {
 }
 
 #[tokio::test]
+async fn stored_style_promotes_publication_to_v5() {
+    let fixture = Fixture::new();
+    let service = fixture.authoring_service();
+    let asset = prepared_asset(&service).await;
+    let style = AnnotationStyle::new(
+        AnnotationTool::Rectangle,
+        AnnotationColor::Blue,
+        AnnotationWidth::Thick,
+        100,
+        false,
+        None,
+    )
+    .unwrap();
+    let first = service
+        .apply_authoring_with_cancellation(
+            service
+                .prepare(
+                    ReviewCommandId::from_u128(73),
+                    None,
+                    ReviewWorkspaceCommand::SaveFeedback {
+                        feedback_id: None,
+                        text: "蓝色粗框".to_owned(),
+                        targets: vec![TargetEdit::Add {
+                            asset_version_id: asset,
+                            anchor: FeedbackAnchor::ImageRect(
+                                NormalizedRect::new(0.2, 0.2, 0.3, 0.2).unwrap(),
+                            ),
+                            style: Some(style),
+                        }],
+                    },
+                )
+                .await
+                .unwrap(),
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let view = first.patch.apply(None).unwrap();
+    assert_eq!(
+        view.authoring.publication_protocol,
+        ReviewPublicationProtocol::V5
+    );
+}
+
+#[tokio::test]
+async fn style_only_redraw_persists_and_keeps_v5() {
+    let fixture = Fixture::new();
+    let service = fixture.authoring_service();
+    let asset = prepared_asset(&service).await;
+    let anchor = FeedbackAnchor::ImageRect(NormalizedRect::new(0.2, 0.2, 0.3, 0.2).unwrap());
+    let red = AnnotationStyle::new(
+        AnnotationTool::Rectangle,
+        AnnotationColor::Red,
+        AnnotationWidth::Medium,
+        100,
+        false,
+        None,
+    )
+    .unwrap();
+    let first = service
+        .apply_authoring_with_cancellation(
+            service
+                .prepare(
+                    ReviewCommandId::from_u128(74),
+                    None,
+                    ReviewWorkspaceCommand::SaveFeedback {
+                        feedback_id: None,
+                        text: "样式意见".to_owned(),
+                        targets: vec![TargetEdit::Add {
+                            asset_version_id: asset,
+                            anchor: anchor.clone(),
+                            style: Some(red),
+                        }],
+                    },
+                )
+                .await
+                .unwrap(),
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let first_view = first.patch.apply(None).unwrap();
+    let feedback = &first_view.authoring.state.feedback[0];
+    let target = &feedback.targets[0];
+    let key = viewer_domain::review::continuous::TargetVersionKey {
+        feedback_id: feedback.id,
+        text_revision_id: feedback.text_revision_id,
+        target_id: target.id,
+        target_revision_id: target.revision_id,
+    };
+    let blue = AnnotationStyle::new(
+        AnnotationTool::Rectangle,
+        AnnotationColor::Blue,
+        AnnotationWidth::Thick,
+        100,
+        false,
+        None,
+    )
+    .unwrap();
+    let second = service
+        .apply_authoring_with_cancellation(
+            service
+                .prepare(
+                    ReviewCommandId::from_u128(75),
+                    Some(first_view.authoring.head.snapshot_id),
+                    ReviewWorkspaceCommand::SaveFeedback {
+                        feedback_id: Some(feedback.id),
+                        text: feedback.text.clone(),
+                        targets: vec![TargetEdit::Redraw {
+                            key,
+                            asset_version_id: asset,
+                            anchor,
+                            style: Some(blue),
+                        }],
+                    },
+                )
+                .await
+                .unwrap(),
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let second_view = second.patch.apply(Some(first_view)).unwrap();
+    assert_eq!(
+        second_view.authoring.publication_protocol,
+        ReviewPublicationProtocol::V5
+    );
+    assert_eq!(
+        second_view.authoring.state.feedback[0].targets[0].style,
+        Some(blue)
+    );
+}
+
+#[tokio::test]
+async fn text_anchor_promotes_publication_to_v5() {
+    let fixture = Fixture::new();
+    let service = fixture.authoring_service();
+    let asset = prepared_asset(&service).await;
+    let first = service
+        .apply_authoring_with_cancellation(
+            service
+                .prepare(
+                    ReviewCommandId::from_u128(74),
+                    None,
+                    save_anchor(
+                        asset,
+                        "文字意见",
+                        FeedbackAnchor::ImageText(NormalizedPoint::new(0.3, 0.4).unwrap()),
+                    ),
+                )
+                .await
+                .unwrap(),
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let view = first.patch.apply(None).unwrap();
+    assert_eq!(
+        view.authoring.publication_protocol,
+        ReviewPublicationProtocol::V5
+    );
+}
+
+#[tokio::test]
 async fn authoring_apply_does_not_touch_evidence_or_reload_the_view() {
     let fixture = Fixture::new();
     fixture.evidence.fail_if_called();
@@ -223,6 +391,7 @@ async fn foreground_region_and_text_only_saves_keep_slow_ports_out_of_the_path()
                     anchor: FeedbackAnchor::ImageRect(
                         NormalizedRect::new(0.1, 0.2, 0.3, 0.25).unwrap(),
                     ),
+                    style: None,
                 }],
             },
         )
@@ -305,6 +474,7 @@ async fn redraw_and_withdraw_patches_match_the_authoring_projection() {
                     anchor: FeedbackAnchor::ImageRect(
                         NormalizedRect::new(0.2, 0.25, 0.2, 0.2).unwrap(),
                     ),
+                    style: None,
                 }],
             },
         )

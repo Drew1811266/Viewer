@@ -34,6 +34,7 @@ fn envelope() -> ReviewCommandEnvelope {
             targets: vec![TargetEdit::Add {
                 asset_version_id: AssetVersionId::from_u128(10),
                 anchor: FeedbackAnchor::Asset,
+                style: None,
             }],
         },
     }

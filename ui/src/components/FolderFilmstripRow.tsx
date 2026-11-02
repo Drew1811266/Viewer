@@ -14,6 +14,7 @@ import AspectThumbnail from './AspectThumbnail'
 import ReviewFeedbackCountBadge from './review/ReviewFeedbackCountBadge'
 import UnsupportedFileState from './UnsupportedFileState'
 import ViewerButton from './ui/ViewerButton'
+import ViewerIcon from './ui/ViewerIcon'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
 const THUMBNAIL_GAP = 8
@@ -41,7 +42,7 @@ const ROW_ROOT_MARGIN = '600px 0px'
  * 重挂载的解码位图复用由 ADR 0007 的内存缓存承担（private, max-age=60）。
  */
 const ROW_NEAR_MARGIN = '1500px 0px'
-const SCROLLBAR_INLINE_INSET = 4
+const SCROLLBAR_INLINE_INSET = 12
 const SCROLLBAR_MIN_THUMB_WIDTH = 36
 /**
  * 2026-09-15 滚动采样：视口外行的布局（LocalFrameViewLayoutContext）与图层
@@ -326,62 +327,54 @@ export default function FolderFilmstripRow({
       ref={row}
       className="folder-filmstrip-row"
       style={{
-        minHeight: `${imageHeight + 24}px`,
+        minHeight: `${imageHeight + 26}px`,
         // 与 CSS 的 content-visibility: auto 配套：按密度给出占位高度，
         // 首次渲染后 WebKit 用 `auto` 记住的真实高度覆盖该估计值。
-        containIntrinsicSize: `auto ${imageHeight + 24}px`,
+        containIntrinsicSize: `auto ${imageHeight + 26}px`,
       }}
     >
       <button
         type="button"
         className="folder-filmstrip-identity"
         aria-label={`打开 ${folder.name}`}
+        title={folder.relativePath}
         onClick={() => onSelect(folder.entityId)}
       >
-        <span className="folder-filmstrip-title">
-          <strong>{folder.name}</strong>
-          <span className="folder-filmstrip-path" title={folder.relativePath}>
-            {folder.relativePath}
+        <span className="folder-filmstrip-identity-top">
+          <span className="folder-filmstrip-title">
+            <strong>{folder.name}</strong>
+            <ViewerIcon name="chevron-right" size={16} />
+          </span>
+          <span className="folder-filmstrip-counts" title={folderSummary(folder)}>
+            {folderSummary(folder)}
           </span>
         </span>
-        <span className="folder-filmstrip-counts">
-          <strong>{folder.imageCount}</strong> 张图片
-          {folder.otherFileCount > 0 && (
-            <>
-              {' '}
-              <span className="folder-filmstrip-extra">
-                {`· ${folder.otherFileCount} 个其它文件`}
+        <span className="folder-filmstrip-identity-bottom">
+          <span
+            className="folder-filmstrip-marker"
+            data-marker={folder.marker.reviewState ?? 'unmarked'}
+          >
+            {markerLabel(folder.marker)}
+            {folder.reviewProgress.reject > 0 && (
+              <span
+                className="folder-filmstrip-reject"
+                title={`淘汰 ${folder.reviewProgress.reject} 张`}
+              >
+                {`· 淘汰 ${folder.reviewProgress.reject}`}
               </span>
-            </>
-          )}
-        </span>
-        <span className="folder-filmstrip-divider" aria-hidden="true" />
-        <span
-          className="folder-filmstrip-marker"
-          data-marker={folder.marker.reviewState ?? 'unmarked'}
-        >
-          <span className="folder-filmstrip-marker-dot" aria-hidden="true" />
-          {markerLabel(folder.marker)}
-          {folder.reviewProgress.reject > 0 && (
-            <span
-              className="folder-filmstrip-reject"
-              title={`淘汰 ${folder.reviewProgress.reject} 张`}
-            >
-              {folder.reviewProgress.reject}
-            </span>
-          )}
-        </span>
-        <span className="folder-filmstrip-progress">
-          <span className="folder-filmstrip-bar" aria-hidden="true">
-            <i
-              style={{ width: `${reviewedPercent}%` }}
-              data-reject={folder.reviewProgress.reject > 0 || undefined}
-            />
+            )}
           </span>
-          <span className="folder-filmstrip-reviewed">
-            <span>已审阅</span>
-            <span className="folder-filmstrip-reviewed-num">
-              {`${reviewed} / ${folder.reviewProgress.total}`}
+          <span className="folder-filmstrip-progress">
+            <span className="folder-filmstrip-bar" aria-hidden="true">
+              <i
+                style={{ width: `${reviewedPercent}%` }}
+                data-reject={folder.reviewProgress.reject > 0 || undefined}
+              />
+            </span>
+            <span className="folder-filmstrip-reviewed">
+              {folder.reviewProgress.total > 0
+                ? `已审阅 ${reviewed} / ${folder.reviewProgress.total}`
+                : '暂无审阅'}
             </span>
           </span>
         </span>
@@ -429,7 +422,15 @@ export default function FolderFilmstripRow({
               </ViewerLocalFeedback>
             </div>
           )}
-          {state.status === 'ready' && state.images.length === 0 && <p>无图片</p>}
+          {state.status === 'ready' && state.images.length === 0 && (
+            <div className="folder-filmstrip-empty">
+              <ViewerIcon name="folder" size={24} />
+              <span className="folder-filmstrip-empty-text">
+                <strong>暂无图片</strong>
+                <span>把图片放进这个文件夹后会显示在这里</span>
+              </span>
+            </div>
+          )}
           {state.status === 'ready' && imageWindow !== null && state.images.length > 0 && (
             <div
               className="folder-filmstrip-track"
@@ -596,6 +597,15 @@ function getMountedImageIndexes(
   if (focusedImageIndex < imageWindow.start) indexes.unshift(focusedImageIndex)
   else indexes.push(focusedImageIndex)
   return indexes
+}
+
+function folderSummary(folder: ContentFolderCard): string {
+  if (folder.imageCount + folder.videoCount + folder.otherFileCount === 0) return '0 个文件'
+  const parts: string[] = []
+  if (folder.imageCount > 0) parts.push(`${folder.imageCount} 张图片`)
+  if (folder.videoCount > 0) parts.push(`${folder.videoCount} 个视频`)
+  if (folder.otherFileCount > 0) parts.push(`${folder.otherFileCount} 个其它文件`)
+  return parts.join(' · ')
 }
 
 function markerLabel(marker: ContentFolderCard['marker']): string {

@@ -22,6 +22,7 @@ fn add(
             revision_id: selection.target_revision_id,
             asset_version_id: selection.asset_version_id,
             anchor: anchor.clone(),
+            style: None,
             availability: ReviewAvailability::Ready,
         });
     }

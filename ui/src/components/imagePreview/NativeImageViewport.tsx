@@ -57,6 +57,8 @@ export default function NativeImageViewport({
   ariaLabel,
   toolbarLabel = '图片预览工具',
   onEscape,
+  fileInfoOpen = false,
+  onFileInfoToggle,
   slots,
   nativeBinding,
 }: NativeImageViewportProps) {
@@ -426,9 +428,11 @@ export default function NativeImageViewport({
         toggleMagnifier()
         return
       }
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && onEscape !== undefined) {
+        // A host without its own escape handling (for example the review
+        // workbench) owns Escape at the window level; do not swallow it here.
         event.preventDefault()
-        onEscape?.()
+        onEscape()
       }
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
@@ -443,53 +447,56 @@ export default function NativeImageViewport({
   )
 
   const displayControls: ReactNode = (
-    <ViewerSegmentedControl label="图片显示控制">
-      <ViewerButton
-        active={camera.mode === 'fit'}
-        disabled={transformsDisabled}
-        onClick={() => sendCamera({ ...camera, mode: 'fit', zoom: 1, offset: { x: 0, y: 0 } })}
-      >
-        适应窗口
-      </ViewerButton>
-      <ViewerIconButton
-        icon="minus"
-        label="缩小"
-        disabled={transformsDisabled}
-        onClick={() =>
-          sendCamera(
-            zoomAtAnchor(camera, geometry, 0.8, {
-              x: geometry.stage.width / 2,
-              y: geometry.stage.height / 2,
-            }),
-          )
-        }
-      />
-      <span className="preview-scale-label">{scalePercent}%</span>
-      <span className="visually-hidden" data-testid="preview-scale-announcement" aria-live="polite">
-        缩放比例 {announcedScalePercent}%
-      </span>
-      <ViewerIconButton
-        icon="plus"
-        label="放大"
-        disabled={transformsDisabled}
-        onClick={() =>
-          sendCamera(
-            zoomAtAnchor(camera, geometry, 1.25, {
-              x: geometry.stage.width / 2,
-              y: geometry.stage.height / 2,
-            }),
-          )
-        }
-      />
-    </ViewerSegmentedControl>
-  )
-  const previewActions: ReactNode = (
     <>
+      <ViewerSegmentedControl label="图片显示控制">
+        <ViewerButton
+          active={camera.mode === 'fit'}
+          disabled={transformsDisabled}
+          onClick={() => sendCamera({ ...camera, mode: 'fit', zoom: 1, offset: { x: 0, y: 0 } })}
+        >
+          适应窗口
+        </ViewerButton>
+        <ViewerIconButton
+          icon="minus"
+          label="缩小"
+          disabled={transformsDisabled}
+          onClick={() =>
+            sendCamera(
+              zoomAtAnchor(camera, geometry, 0.8, {
+                x: geometry.stage.width / 2,
+                y: geometry.stage.height / 2,
+              }),
+            )
+          }
+        />
+        <span className="preview-scale-label">{scalePercent}%</span>
+        <span
+          className="visually-hidden"
+          data-testid="preview-scale-announcement"
+          aria-live="polite"
+        >
+          缩放比例 {announcedScalePercent}%
+        </span>
+        <ViewerIconButton
+          icon="plus"
+          label="放大"
+          disabled={transformsDisabled}
+          onClick={() =>
+            sendCamera(
+              zoomAtAnchor(camera, geometry, 1.25, {
+                x: geometry.stage.width / 2,
+                y: geometry.stage.height / 2,
+              }),
+            )
+          }
+        />
+      </ViewerSegmentedControl>
       <ViewerIconButton
         icon="zoom-in"
         label="放大镜"
         title="放大镜（Q）"
         tone="quiet"
+        className="preview-tool-action"
         active={magnifierEnabled}
         aria-keyshortcuts="Q"
         disabled={transformsDisabled}
@@ -499,6 +506,7 @@ export default function NativeImageViewport({
         icon="rotate-cw"
         label="顺时针旋转"
         tone="quiet"
+        className="preview-tool-action"
         disabled={transformsDisabled}
         onClick={() => {
           const rotation = ((camera.rotation + 90) % 360) as PreviewRotation
@@ -506,6 +514,19 @@ export default function NativeImageViewport({
           sendCamera({ ...next, offset: clampOffset(next.offset, panBounds(next, geometry)) })
         }}
       />
+    </>
+  )
+  const previewActions: ReactNode = (
+    <>
+      {onFileInfoToggle !== undefined && (
+        <ViewerButton
+          active={fileInfoOpen}
+          className="preview-file-info-action"
+          onClick={onFileInfoToggle}
+        >
+          文件信息
+        </ViewerButton>
+      )}
       {slots?.toolbarActions}
     </>
   )
@@ -599,6 +620,7 @@ export default function NativeImageViewport({
       toolbarLeading={slots?.toolbarLeading}
       toolbarCenter={displayControls}
       toolbarActions={previewActions}
+      banner={slots?.banner}
       stage={previewStage}
       sidePanel={slots?.sidePanel}
       navigation={navigation}

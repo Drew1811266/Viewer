@@ -49,6 +49,7 @@ fn feedback(text: &str, text_revision: u128, asset: AssetVersionId) -> Versioned
             revision_id: ReviewTargetRevisionId::from_u128(text_revision),
             asset_version_id: asset,
             anchor: FeedbackAnchor::Asset,
+            style: None,
             availability: ReviewAvailability::Ready,
         }],
         history_ref: None,

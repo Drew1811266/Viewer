@@ -82,6 +82,8 @@ describe('review acceptance scenes', () => {
       'RVW-35',
       'RVW-36',
       'RVW-37',
+      'RVW-39',
+      'RVW-40',
     ])
     for (const [id, recipe] of Object.entries(REVIEW_WORKBENCH_SCENES)) {
       expect(REVIEW_SCENES[id]).toBeDefined()
@@ -201,7 +203,10 @@ describe('review acceptance scenes', () => {
     const catalogIds = ACCEPTANCE_STATE_DEFINITIONS.filter(
       ({ sceneGroup, id }) =>
         sceneGroup === 'review' &&
-        (Number(id.slice(4)) <= 24 || (Number(id.slice(4)) >= 33 && Number(id.slice(4)) <= 37)),
+        (Number(id.slice(4)) <= 24 ||
+          (Number(id.slice(4)) >= 33 && Number(id.slice(4)) <= 37) ||
+          id === 'RVW-39' ||
+          id === 'RVW-40'),
     ).map(({ id }) => id)
 
     expect(REVIEW_ACCEPTANCE_SCENE_IDS).toEqual(catalogIds)

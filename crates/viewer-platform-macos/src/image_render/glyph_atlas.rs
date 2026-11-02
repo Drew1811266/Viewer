@@ -15,7 +15,7 @@ use super::SurfaceError;
 const GLYPHS: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const CELL_WIDTH: u32 = 16;
 const ATLAS_HEIGHT: u32 = 20;
-const FONT_SIZE: f64 = 14.0;
+const FONT_SIZE: f64 = 10.0;
 const HORIZONTAL_PADDING: f64 = 2.0;
 /// Fallback rasterization ratio for callers without a concrete surface scale.
 /// 2x matches Retina; 1x displays minify harmlessly through the linear

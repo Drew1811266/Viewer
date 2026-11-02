@@ -152,6 +152,7 @@ async fn measure(
                     feedback_id: None,
                     text: format!("real corpus {} save {sample}", scenario.name()),
                     targets: vec![TargetEdit::Add {
+                        style: None,
                         asset_version_id: asset.id,
                         anchor: scenario.anchor()?,
                     }],

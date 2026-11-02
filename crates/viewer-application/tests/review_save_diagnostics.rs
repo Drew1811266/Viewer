@@ -29,6 +29,7 @@ fn save(asset_version_id: AssetVersionId, text: &str) -> ReviewWorkspaceCommand 
         targets: vec![TargetEdit::Add {
             asset_version_id,
             anchor: FeedbackAnchor::Asset,
+            style: None,
         }],
     }
 }

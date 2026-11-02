@@ -2,6 +2,7 @@ import type { ReviewTargetVersionKey } from '../../api/reviewWorkspaceTypes'
 import type {
   ProjectAccess,
   ReviewAnchor,
+  ReviewAnnotationStyle,
   ReviewCompletionProposal,
   ReviewConflictSnapshot,
   ReviewEditorState,
@@ -40,6 +41,7 @@ export interface SavedImageFeedback {
   createdAtMs: number
   ordinal: number | null
   anchor: ReviewAnchor
+  style?: ReviewAnnotationStyle | null
 }
 
 export type ImageReviewReadOnlyReason =
@@ -140,6 +142,7 @@ export function imageFeedbackForEntity(
           createdAtMs: feedback.createdAtMs,
           ordinal,
           anchor: target.anchor,
+          style: null,
         },
       ]
     })

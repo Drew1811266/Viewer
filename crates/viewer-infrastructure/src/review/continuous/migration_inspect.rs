@@ -56,6 +56,9 @@ pub(super) fn scan_index(
             v3::decode_index_v3(&bytes).map_err(protocol_error)?;
             return Ok(None);
         }
+        Ok(protocol::ContinuousReviewProtocol::V5) => {
+            protocol::v5::decode_index_v5(&bytes).map_err(protocol_error)?;
+        }
         Ok(protocol::ContinuousReviewProtocol::V4) => {
             protocol::v4::decode_index_v4(&bytes).map_err(protocol_error)?;
             return Ok(None);

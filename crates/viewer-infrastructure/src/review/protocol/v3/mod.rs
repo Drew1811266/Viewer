@@ -54,6 +54,57 @@ pub(in crate::review::protocol) fn decode_state_for(
     Ok(record)
 }
 
+/// Read-only compatibility for early 0.3.0 development states that wrote an
+/// optional `style` into a document still stamped `viewer.review/4`. The v4
+/// writer remains strict; this decoder only exists so those local files can be
+/// opened and promoted to v5 on the next save.
+pub(in crate::review::protocol) fn decode_state_v4_with_style(
+    bytes: &[u8],
+) -> Result<ReviewStateRecord, ReviewProtocolError> {
+    let wire: wire::State = decode_document(
+        bytes,
+        MAX_REVIEW_DOCUMENT_BYTES,
+        ContinuousReviewProtocol::V4.as_str(),
+    )?;
+    let record = wire.into_record();
+    validate::state(&record)?;
+    if record
+        .state
+        .feedback
+        .iter()
+        .flat_map(|item| &item.targets)
+        .any(|target| !ContinuousReviewProtocol::V4.supports_anchor(&target.anchor))
+    {
+        return Err(ReviewProtocolError::InvalidData);
+    }
+    Ok(record)
+}
+
+/// Read-only companion to `decode_state_v4_with_style` for the private
+/// authoring state stored in SQLite. It accepts the same early-0.3.0 v4+style
+/// combination; callers must promote the stored publication protocol to v5.
+pub(in crate::review) fn decode_authoring_state_v4_with_style(
+    bytes: &[u8],
+) -> Result<ReviewStateRecord, ReviewProtocolError> {
+    let wire: wire::State = decode_document(
+        bytes,
+        MAX_REVIEW_DOCUMENT_BYTES,
+        ContinuousReviewProtocol::V4.as_str(),
+    )?;
+    let record = wire.into_record();
+    validate::authoring_state(&record)?;
+    if record
+        .state
+        .feedback
+        .iter()
+        .flat_map(|item| &item.targets)
+        .any(|target| !ContinuousReviewProtocol::V4.supports_anchor(&target.anchor))
+    {
+        return Err(ReviewProtocolError::InvalidData);
+    }
+    Ok(record)
+}
+
 /// Canonical logical-state transport used only by the private authoring control plane.
 /// Unlike a published v3 state it deliberately has no evidence bindings.
 pub(in crate::review) fn encode_authoring_state(

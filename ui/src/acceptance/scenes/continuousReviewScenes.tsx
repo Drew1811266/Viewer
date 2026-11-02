@@ -14,6 +14,7 @@ export const CONTINUOUS_REVIEW_ACCEPTANCE_SCENE_IDS = [
   'RVW-30',
   'RVW-31',
   'RVW-32',
+  'RVW-38',
 ] as const
 
 export const CONTINUOUS_REVIEW_SCENES: AcceptanceSceneRegistry = Object.fromEntries(
@@ -52,22 +53,12 @@ function historySelectorFor(id: string): ReviewHistorySelector | undefined {
 
 export function continuousSceneReady(id: string): boolean {
   if (document.querySelector('.viewer-shell') === null) return false
-  if (id === 'RVW-25') {
-    if (document.querySelector('.image-preview .review-feedback-rail') !== null) {
+  if (id === 'RVW-25' || id === 'RVW-38') {
+    if (!openContinuousWorkbench()) return false
+    if (id === 'RVW-25') {
       return document.body.textContent?.includes('袖口收紧，保留褶皱；新图继续独立评审。') === true
     }
-    const a01 = document.querySelector<HTMLElement>('[role="treeitem"][aria-label="衣服/A01"]')
-    if (a01 !== null && a01.dataset.acceptanceAction !== 'open-a01') {
-      a01.dataset.acceptanceAction = 'open-a01'
-      a01.click()
-      return false
-    }
-    const image = document.querySelector<HTMLElement>('.image-cell')
-    if (image !== null && image.dataset.acceptanceAction !== 'open-continuous-workbench') {
-      image.dataset.acceptanceAction = 'open-continuous-workbench'
-      image.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
-    }
-    return false
+    return annotationStyleBarReady()
   }
   if (id === 'RVW-26' || id === 'RVW-27' || id === 'RVW-30') {
     if (
@@ -108,6 +99,45 @@ export function continuousSceneReady(id: string): boolean {
     'RVW-31': '迁移旧评审记录',
   }[id]
   return expected !== undefined && document.body.textContent?.includes(expected) === true
+}
+
+function openContinuousWorkbench(): boolean {
+  if (document.querySelector('.image-preview .review-feedback-rail') !== null) return true
+  const a01 = document.querySelector<HTMLElement>('[role="treeitem"][aria-label="衣服/A01"]')
+  if (a01 !== null && a01.dataset.acceptanceAction !== 'open-a01') {
+    a01.dataset.acceptanceAction = 'open-a01'
+    a01.click()
+    return false
+  }
+  const image = document.querySelector<HTMLElement>('.image-cell')
+  if (image !== null && image.dataset.acceptanceAction !== 'open-continuous-workbench') {
+    image.dataset.acceptanceAction = 'open-continuous-workbench'
+    image.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+  }
+  return false
+}
+
+function annotationStyleBarReady(): boolean {
+  const styleBar = document.querySelector('.annotation-style-bar')
+  if (styleBar !== null) {
+    return (
+      styleBar.querySelectorAll('.annotation-style-bar__color').length === 8 &&
+      document.querySelector('.annotation-canvas-layer')?.getAttribute('data-tool') === 'rectangle'
+    )
+  }
+  const menu = document.querySelector('[role="menu"][aria-label="标记工具"]')
+  if (menu !== null) {
+    const rectangle = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(
+      (item) => item.textContent?.includes('矩形'),
+    )
+    if (rectangle !== undefined && !rectangle.disabled) rectangle.click()
+    return false
+  }
+  const trigger = [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.textContent?.trim() === '标记',
+  )
+  if (trigger !== undefined && !trigger.disabled) trigger.click()
+  return false
 }
 
 function clickOnce(label: string, marker: string): boolean {

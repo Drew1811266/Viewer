@@ -77,9 +77,9 @@ pub use review_session::{
 };
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
 pub use settings::{
-    MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape, ThumbnailDensity,
-    VIEWER_SETTINGS_SCHEMA_VERSION, ViewerSettings, ViewerSettingsError, ViewerSettingsPort,
-    ViewerSettingsService,
+    MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape, SpeechInputMode,
+    SpeechLocale, SpeechPreferences, ThumbnailDensity, VIEWER_SETTINGS_SCHEMA_VERSION,
+    ViewerSettings, ViewerSettingsError, ViewerSettingsPort, ViewerSettingsService,
 };
 pub use text::{
     MAX_TEXT_PREVIEW_BYTES, TextEncoding, TextNewlineStyle, TextPreview, TextPreviewError,

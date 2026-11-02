@@ -7,9 +7,10 @@ import type {
   MagnifierPreferences,
 } from '../api/types'
 import type { ImageRendererPort } from '../rendering/imageRendererTypes'
+import InfoOverlay from './InfoOverlay'
 import ImagePreviewSurface from './imagePreview/ImagePreviewSurface'
 import type { Point } from './imagePreview/imageGeometry'
-import ViewerButton from './ui/ViewerButton'
+import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
 
 interface ImagePreviewProps {
   file: BrowserFile
@@ -40,6 +41,7 @@ export default function ImagePreview({
   onDimensions,
   renderer,
 }: ImagePreviewProps) {
+  const [fileInfoOpen, setFileInfoOpen] = useState(false)
   const [resolvedDimensions, setResolvedDimensions] = useState<{
     entityId: string
     width: number
@@ -79,23 +81,46 @@ export default function ImagePreview({
       renderer={renderer}
       ariaLabel={`图片预览 ${file.name}`}
       onEscape={onClose}
+      fileInfoOpen={fileInfoOpen}
+      onFileInfoToggle={() => setFileInfoOpen((current) => !current)}
       slots={{
         toolbarLeading: (
           <>
-            <strong>{file.name}</strong>
-            <span>{previewMetadata}</span>
+            <ViewerIconButton
+              icon="arrow-left"
+              label="返回"
+              title="返回网格"
+              tone="quiet"
+              className="preview-back-action"
+              onClick={onClose}
+            />
+            <div className="preview-identity">
+              <strong>{file.name}</strong>
+              <span>{previewMetadata}</span>
+            </div>
           </>
         ),
         toolbarActions: (
-          <ViewerButton
-            tone="quiet"
-            className="preview-complete-action"
-            aria-label="返回网格"
-            onClick={onClose}
-          >
+          <ViewerButton className="preview-complete-action" aria-label="返回网格" onClick={onClose}>
             返回网格
           </ViewerButton>
         ),
+        sidePanel: fileInfoOpen ? (
+          <InfoOverlay
+            files={[file]}
+            dimensions={
+              previewDimensions
+                ? {
+                    [file.entityId]: {
+                      width: previewDimensions.width,
+                      height: previewDimensions.height,
+                    },
+                  }
+                : {}
+            }
+            onClose={() => setFileInfoOpen(false)}
+          />
+        ) : undefined,
       }}
     />
   )

@@ -260,6 +260,7 @@ pub fn prepare_migration_state(
                 revision_id,
                 asset_version_id: asset_id,
                 anchor,
+                style: None,
                 availability,
             });
             provenance.push(key);

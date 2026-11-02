@@ -24,10 +24,10 @@ describe('ImageMagnifier', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it.each([
-    ['circle', 'small', 200, 200],
+    ['circle', 'small', 180, 180],
     ['circle', 'medium', 280, 280],
     ['circle', 'large', 380, 380],
-    ['rounded_rectangle', 'small', 230, 150],
+    ['rounded_rectangle', 'small', 220, 145],
     ['rounded_rectangle', 'medium', 300, 200],
     ['rounded_rectangle', 'large', 420, 280],
   ] as const)('renders %s %s with the approved fixed area', (shape, area, width, height) => {
@@ -173,8 +173,8 @@ describe('ImageMagnifier imperative placement', () => {
     })
 
     const overlay = screen.getByTestId('image-magnifier-overlay')
-    expect(overlay).toHaveAttribute('width', '400')
-    expect(overlay).toHaveAttribute('height', '400')
+    expect(overlay).toHaveAttribute('width', '360')
+    expect(overlay).toHaveAttribute('height', '360')
     expect(overlay).toHaveAttribute('data-has-content', 'true')
     expect(painter).toHaveBeenCalledWith(
       context.value,
@@ -289,16 +289,16 @@ describe('ImageMagnifier imperative placement', () => {
     act(() => frames.shift()?.(0))
     expect(screen.getByTestId('image-magnifier')).toHaveAttribute('data-visible', 'true')
     expect(screen.getByTestId('image-magnifier')).toHaveStyle({
-      '--magnifier-x': '318px',
-      '--magnifier-y': '268px',
+      '--magnifier-x': '308px',
+      '--magnifier-y': '258px',
       '--magnifier-shell-origin-x': '0px',
       '--magnifier-shell-origin-y': '0px',
       '--magnifier-scale': '0.5',
       '--magnifier-rotation': '90deg',
     })
     expect(screen.getByTestId('image-magnifier-source')).toHaveStyle({
-      '--magnifier-source-left': '-1500px',
-      '--magnifier-source-top': '-1040px',
+      '--magnifier-source-left': '-1510px',
+      '--magnifier-source-top': '-1050px',
     })
 
     act(() => {
@@ -309,14 +309,14 @@ describe('ImageMagnifier imperative placement', () => {
       frames.shift()?.(16)
     })
     expect(screen.getByTestId('image-magnifier')).toHaveStyle({
-      '--magnifier-x': '482px',
-      '--magnifier-y': '322px',
-      '--magnifier-shell-origin-x': '200px',
-      '--magnifier-shell-origin-y': '200px',
+      '--magnifier-x': '492px',
+      '--magnifier-y': '332px',
+      '--magnifier-shell-origin-x': '180px',
+      '--magnifier-shell-origin-y': '180px',
     })
     expect(screen.getByTestId('image-magnifier-source')).toHaveStyle({
-      '--magnifier-source-left': '-1500px',
-      '--magnifier-source-top': '-1040px',
+      '--magnifier-source-left': '-1510px',
+      '--magnifier-source-top': '-1050px',
     })
   })
 

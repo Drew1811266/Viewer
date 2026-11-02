@@ -6,6 +6,7 @@ pub mod v1;
 pub mod v2;
 pub mod v3;
 pub mod v4;
+pub mod v5;
 
 pub const PRODUCTION_PROTOCOL_V1: &str = "viewer.production/1";
 pub const REVIEW_PROTOCOL_V1: &str = "viewer.review/1";
@@ -39,6 +40,7 @@ pub fn detect_continuous_review_protocol(
     )? {
         v3::REVIEW_PROTOCOL_V3 => Ok(ContinuousReviewProtocol::V3),
         v4::REVIEW_PROTOCOL_V4 => Ok(ContinuousReviewProtocol::V4),
+        v5::REVIEW_PROTOCOL_V5 => Ok(ContinuousReviewProtocol::V5),
         _ => Err(ReviewProtocolError::UnsupportedVersion),
     }
 }

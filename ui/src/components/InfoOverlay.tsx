@@ -95,7 +95,7 @@ function SingleFileInfo({
             <>
               <dt>尺寸</dt>
               <dd>
-                {size.width} × {size.height}
+                {size.width} × {size.height} px
               </dd>
             </>
           )}
@@ -248,7 +248,12 @@ function formatModifiedNs(value: string): string {
   try {
     const milliseconds = Number(BigInt(value) / 1_000_000n)
     if (!Number.isFinite(milliseconds)) return '未知'
-    return new Date(milliseconds).toLocaleString()
+    const date = new Date(milliseconds)
+    if (Number.isNaN(date.getTime())) return '未知'
+    const pad = (part: number) => String(part).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
+      date.getHours(),
+    )}:${pad(date.getMinutes())}`
   } catch {
     return '未知'
   }

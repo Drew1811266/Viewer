@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Viewer 只在本地录制你的语音意见，音频不会离开这台 Mac。</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Viewer 使用 macOS 内置的本地语音识别把意见转写为文字。</string>
+</dict>
+</plist>

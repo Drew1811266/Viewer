@@ -82,7 +82,7 @@ describe('ReviewMigrationDialog', () => {
     const dialog = screen.getByRole('dialog', { name: '迁移旧评审记录' })
     expect(within(dialog).getByText('活动草稿意见')).toBeVisible()
     expect(within(dialog).queryByRole('checkbox', { name: /活动草稿意见/ })).toBeNull()
-    expect(within(dialog).getByText('确认迁移时，活动草稿中的全部意见都会迁入。')).toBeVisible()
+    expect(within(dialog).getByText(/确认迁移时，活动草稿中的全部意见都会迁入/)).toBeVisible()
     expect(within(dialog).getByRole('heading', { name: '已完成的历史记录（可选）' })).toBeVisible()
     expect(within(dialog).getByRole('checkbox', { name: /历史完成意见/ })).not.toBeChecked()
     expect(within(dialog).getByText('源素材缺失，需要重新确认')).toBeVisible()
@@ -114,7 +114,7 @@ describe('ReviewMigrationDialog', () => {
       inspectionDigest: '34'.repeat(32),
       choice: { kind: 'keep_history_only' },
     })
-    expect(screen.getByText('活动草稿会成为当前持续评审意见。')).toBeVisible()
+    expect(screen.getByText(/活动草稿会成为当前持续评审意见/)).toBeVisible()
     expect(screen.queryByText('已修复')).not.toBeInTheDocument()
 
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })

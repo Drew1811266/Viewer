@@ -58,7 +58,7 @@ it('shows the exact B/C archive difference without pulling the shared second ima
   expect(screen.getByText('交接版本未确认')).toBeVisible()
   expect(screen.getByText('保留后补意见')).toBeVisible()
   expect(screen.getByRole('button', { name: '确认存档' })).toBeEnabled()
-  expect(screen.getByRole('heading', { name: '将移入历史' }).parentElement).toHaveTextContent(
+  expect(screen.getByRole('heading', { name: /将移入历史/ }).parentElement).toHaveTextContent(
     'image-1-target',
   )
   expect(screen.getByRole('heading', { name: '未选素材' }).parentElement).toHaveTextContent(
@@ -155,7 +155,7 @@ it('describes each retention disposition without calling removed or absent targe
   expect(screen.getByRole('heading', { name: '保留后补意见' }).parentElement).not.toHaveTextContent(
     'image-2-target',
   )
-  expect(screen.getByRole('heading', { name: '将移入历史' }).parentElement).toHaveTextContent(
+  expect(screen.getByRole('heading', { name: /将移入历史/ }).parentElement).toHaveTextContent(
     'image-2-target',
   )
   expect(screen.getByRole('heading', { name: '当前已不存在' }).parentElement).toHaveTextContent(
@@ -192,7 +192,8 @@ it('marks a declared handoff as verified without claiming that any agent read or
 
   expect(screen.getByText('已核对交接版本')).toBeVisible()
   expect(screen.getByText(/不.*表示意见已被执行或修复/)).toBeVisible()
-  expect(screen.queryByText(/Agent.*已读|Agent.*已执行|已修复/)).toBeNull()
+  expect(screen.getByText('存档不证明 Agent 已读取、执行或修复，也不证明验收通过。')).toBeVisible()
+  expect(screen.queryByText(/已验收通过/)).toBeNull()
 })
 
 it('keeps a failed archive visible for retry and cancels only when not busy', () => {

@@ -78,25 +78,21 @@ describe('SearchResults', () => {
       />,
     )
     const region = screen.getByRole('region', { name: '搜索结果区域' })
-    expect(within(region).getByText('“shoe” · 128 个结果')).toBeVisible()
+    expect(within(region).getByRole('heading', { name: '搜索结果' })).toBeVisible()
+    expect(within(region).getByText('128 个结果 · 按文件夹分组')).toBeVisible()
     expect(within(region).getByRole('group', { name: '衣服 / A01' })).toBeVisible()
     expect(within(region).getByRole('navigation', { name: '搜索结果分页' })).toBeVisible()
-    expect(within(region).getByText('文件名与路径匹配')).toHaveClass('search-result-context')
     const indexing = screen.getByRole('status')
     expect(indexing).toHaveClass('search-indexing-banner')
     expect(indexing).toHaveTextContent('图片 8/10 · 文本 1/2')
     expect(screen.getByText('shoe', { selector: 'mark' })).toBeVisible()
     const result = screen.getByRole('option', { name: 'shoe.jpg 衣服 / A01 / shoe.jpg' })
-    expect(result.closest('.search-result-row')).toHaveStyle({ height: '48px' })
-    expect(
-      screen.getByRole('group', { name: '衣服 / A01' }).closest('.search-result-row'),
-    ).toHaveStyle({ height: '28px' })
     expect(result).not.toHaveAttribute('tabindex')
-    expect(result).toHaveClass('search-result-item')
+    expect(result).toHaveClass('search-result-card')
     expect(within(result).getByText('JPG')).toHaveClass('viewer-status-tag')
-    expect(within(result).getByText('1200 × 800 · 10 B')).toHaveClass('search-result-metadata')
+    expect(within(result).getByText('JPG · 10 B')).toHaveClass('search-result-card-submeta')
     expect(within(result).getByText('未标记 · 收藏')).toHaveClass('viewer-status-tag')
-    expect(within(result).getByText('返工 · 2 条')).toHaveClass('viewer-status-tag')
+    expect(within(result).getByText('返工 · 2')).toHaveClass('viewer-status-tag')
     expect(screen.getAllByText(/返工/)).toHaveLength(1)
     expect(screen.getByTestId('search-snippet-2')).toHaveTextContent('片'.repeat(160))
     expect(screen.getByTestId('search-snippet-2')).not.toHaveTextContent('片'.repeat(161))
@@ -120,10 +116,8 @@ describe('SearchResults', () => {
       />,
     )
 
-    expect(screen.getByRole('listbox', { name: '搜索结果' })).toHaveClass(
-      'search-result-list',
-      'search-result-list-flat',
-    )
+    expect(screen.getByRole('listbox', { name: '搜索结果' })).toHaveClass('search-result-groups')
+    expect(screen.queryByRole('heading', { name: /衣服 \/ A01/ })).not.toBeInTheDocument()
   })
 
   it('allows explicit search-result selection without treating the whole query as a scope', () => {
@@ -193,9 +187,8 @@ describe('SearchResults', () => {
     expect(screen.queryByRole('group', { name: '衣服 / A01' })).not.toBeInTheDocument()
     expect(screen.getAllByRole('option')).toHaveLength(2)
     for (const result of screen.getAllByRole('option')) {
-      expect(result).toHaveClass('search-result-item')
-      expect(result.querySelector('.search-result-path')).not.toBeNull()
-      expect(result.querySelector('.search-result-metadata')).not.toBeNull()
+      expect(result).toHaveClass('search-result-card')
+      expect(result.querySelector('.search-result-card-submeta')).not.toBeNull()
       expect(result.querySelector('.viewer-status-tag')).not.toBeNull()
     }
   })
@@ -242,10 +235,10 @@ describe('SearchResults', () => {
         searching={false}
       />,
     )
-    expect(screen.getAllByText(/shoe/)).toHaveLength(2)
+    expect(screen.getAllByText(/shoe/)).toHaveLength(1)
     expect(screen.getByText(/当前目录及其后代/)).toBeVisible()
     expect(screen.getByText(/1 个筛选条件/)).toBeVisible()
-    expect(screen.getByText('“shoe” · 0 个结果')).toBeVisible()
+    expect(screen.getByText('0 个结果 · 按文件夹分组')).toBeVisible()
     expect(screen.getByRole('heading', { name: '没有找到结果' }).closest('section')).toHaveClass(
       'viewer-empty-state',
     )

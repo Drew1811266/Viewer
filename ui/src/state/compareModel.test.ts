@@ -99,6 +99,21 @@ describe('compareModel', () => {
     expect(state.shared).toEqual({ scale: 1, centerX: 0.5, centerY: 0.5 })
   })
 
+  it('zooms at a normalized anchor so the image point under the cursor stays put', () => {
+    let state = stateWithMetrics()
+    state = reduceCompare(state, {
+      type: 'zoom_at',
+      entityId: 'a',
+      factor: 2,
+      anchorX: 0.25,
+      anchorY: 0.5,
+    })
+
+    expect(state.shared.scale).toBe(2)
+    expect(state.shared.centerX).toBeCloseTo(0.375)
+    expect(state.shared.centerY).toBeCloseTo(0.5)
+    expect(state.transforms.a).toMatchObject({ centerX: 0.375, centerY: 0.5 })
+  })
   it('propagates normalized pan in synchronized mode with per-pane clamping', () => {
     let state = stateWithMetrics()
     state = reduceCompare(state, { type: 'zoom', entityId: 'a', factor: 2 })

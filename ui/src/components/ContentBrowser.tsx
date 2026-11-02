@@ -672,6 +672,8 @@ export default function ContentBrowser({
             <AspectVirtualGrid
               items={workspace.images}
               imageHeight={THUMBNAIL_HEIGHT[density]}
+              captionHeight={56}
+              gap={16}
               viewportHeight={imageSlot.height}
               getKey={imageEntityId}
               getDimensions={dimensionsForImage}

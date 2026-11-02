@@ -10,10 +10,15 @@ export const MAGNIFIER_MAGNIFICATIONS: readonly MagnifierMagnification[] = [2, 3
 export const MAGNIFIER_AREAS: readonly MagnifierArea[] = ['small', 'medium', 'large']
 
 export const DEFAULT_VIEWER_SETTINGS_UPDATE: ViewerSettingsUpdate = {
-  thumbnailDensity: 'standard',
+  thumbnailDensity: 'large',
   magnifier: {
     shape: 'circle',
     magnification: 2,
     area: 'small',
+  },
+  speech: {
+    inputMode: 'click',
+    locale: 'simplified_chinese',
+    autoPunctuation: true,
   },
 }

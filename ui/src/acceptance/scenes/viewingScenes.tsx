@@ -73,6 +73,7 @@ export const VIEWING_SCENES: AcceptanceSceneRegistry = {
   'DOC-07': () => (
     <UnsupportedFilePreview file={ACCEPTANCE_UNSUPPORTED_FILE} unavailable onClose={noOp} />
   ),
+  'DOC-08': () => <TextScene state="edit-split" />,
   'INF-01': () => <InfoScene aggregate={false} />,
   'INF-02': () => <InfoScene aggregate />,
 }
@@ -347,8 +348,8 @@ function magnifierSceneReady(
   return (
     lens.dataset.visible === 'true' &&
     lens.dataset.shape === 'circle' &&
-    lens.style.width === '200px' &&
-    lens.style.height === '200px' &&
+    lens.style.width === '180px' &&
+    lens.style.height === '180px' &&
     Number.isFinite(magnifierScale) &&
     magnifierScale > 0 &&
     lens.style.getPropertyValue('--magnifier-x') !== `${pointer.x}px` &&
@@ -371,9 +372,56 @@ function CompareScene({ count }: { count: number }) {
   )
 }
 
-type TextState = 'markdown' | 'plain' | 'encoding' | 'truncated' | 'dual'
+type TextState = 'markdown' | 'plain' | 'encoding' | 'truncated' | 'dual' | 'edit-split'
+
+function TextEditSplitScene() {
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+    let attempts = 0
+    const openEditor = () => {
+      if (cancelled) return
+      if (document.querySelector('.markdown-editor-body--editing') !== null) {
+        setReady(true)
+        return
+      }
+      const edit = [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+        (button) => button.textContent?.trim() === '编辑',
+      )
+      edit?.click()
+      if (attempts < 80) {
+        attempts += 1
+        timer = window.setTimeout(openEditor, 16)
+      }
+    }
+    openEditor()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [])
+
+  return (
+    <div data-acceptance-scene-ready={ready ? 'true' : 'false'}>
+      <TextPreview
+        files={[MARKDOWN_FILE]}
+        requestPreview={requestMarkdown}
+        saveText={acceptanceSaveText}
+        renderMarkdown={acceptanceRenderMarkdown}
+        projectReadOnly={false}
+        openExternalLink={openExternalLink}
+        onClose={noOp}
+      />
+    </div>
+  )
+}
 
 function TextScene({ state }: { state: TextState }) {
+  if (state === 'edit-split') {
+    return <TextEditSplitScene />
+  }
   if (state === 'markdown') {
     return (
       <TextPreview
@@ -467,7 +515,8 @@ async function requestMarkdown(file: BrowserFile): Promise<TextPreviewDto> {
   return {
     entityId: file.entityId,
     format: 'markdown',
-    plainText: null,
+    plainText:
+      '# Viewer 视觉验收\n\n这是经过净化的 Markdown 内容。\n\n[外部链接](https://example.com)',
     markdownHtml:
       '<h1>Viewer 视觉验收</h1><p>这是经过净化的 Markdown 内容。</p><p><a href="https://example.com">外部链接</a></p>',
     encoding: 'utf8',

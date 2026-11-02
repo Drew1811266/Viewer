@@ -51,7 +51,7 @@ describe('InfoOverlay', () => {
     expect(within(inspector).getByRole('group', { name: '技术信息' })).toBeVisible()
     expect(inspector).not.toHaveAttribute('aria-modal')
     expect(within(inspector).getByText('catalog/id-1/front.jpg')).toBeVisible()
-    expect(within(inspector).getByText('1200 × 800')).toBeVisible()
+    expect(within(inspector).getByText('1200 × 800 px')).toBeVisible()
     expect(within(inspector).getByText('1 KiB')).toBeVisible()
   })
 

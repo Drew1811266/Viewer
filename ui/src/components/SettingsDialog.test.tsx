@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { MagnifierPreferences, VideoCacheStats } from '../api/types'
+import type { MagnifierPreferences, SpeechPreferences, VideoCacheStats } from '../api/types'
 import type { ViewerBridge } from '../api/viewer'
+import { SpeechServiceProvider } from '../speech/SpeechServiceContext'
 import SettingsDialog from './SettingsDialog'
 
 const DEFAULT_MAGNIFIER: MagnifierPreferences = {
@@ -97,8 +98,9 @@ describe('SettingsDialog', () => {
     const dialog = screen.getByRole('dialog', { name: '软件设置' })
     expect(within(dialog).getByRole('heading', { name: '显示与外观' })).toBeVisible()
     const navigation = within(dialog).getByRole('navigation', { name: '设置分类' })
-    expect(within(navigation).getAllByRole('button')).toHaveLength(1)
+    expect(within(navigation).getAllByRole('button')).toHaveLength(2)
     expect(within(navigation).getByRole('button', { name: '显示与外观' })).toBeVisible()
+    expect(within(navigation).getByRole('button', { name: '语音与转写' })).toBeVisible()
     for (const absent of ['浏览', '文件操作', '快捷键']) {
       expect(within(navigation).queryByRole('button', { name: absent })).not.toBeInTheDocument()
     }
@@ -153,6 +155,65 @@ describe('SettingsDialog', () => {
     expect(props.onMagnifierShapeChange).toHaveBeenCalledWith('rounded_rectangle')
     expect(props.onMagnifierMagnificationChange).toHaveBeenCalledWith(4)
     expect(props.onMagnifierAreaChange).toHaveBeenCalledWith('large')
+  })
+
+  it('shows the local speech category with model status and reports typed changes', async () => {
+    const onSpeechInputModeChange = vi.fn()
+    const onSpeechLocaleChange = vi.fn()
+    const onSpeechAutoPunctuationChange = vi.fn()
+    const speech: SpeechPreferences = {
+      inputMode: 'click',
+      locale: 'simplified_chinese',
+      autoPunctuation: true,
+    }
+    const speechPort = {
+      speechStatus: vi.fn().mockResolvedValue({
+        available: true,
+        speechAuthorized: true,
+        microphoneAuthorized: true,
+        onDevice: true,
+        localeSupported: true,
+        locale: 'zh-CN',
+      }),
+      requestSpeechPermissions: vi.fn(),
+      startSpeechCapture: vi.fn(),
+      stopSpeechCapture: vi.fn(),
+      cancelSpeechCapture: vi.fn(),
+      openSpeechSettings: vi.fn().mockResolvedValue(undefined),
+    }
+    render(
+      <SpeechServiceProvider port={speechPort} preferences={speech}>
+        <SettingsDialog
+          {...settingsProps()}
+          speech={speech}
+          onSpeechInputModeChange={onSpeechInputModeChange}
+          onSpeechLocaleChange={onSpeechLocaleChange}
+          onSpeechAutoPunctuationChange={onSpeechAutoPunctuationChange}
+        />
+      </SpeechServiceProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '语音与转写' }))
+
+    expect(screen.getByRole('heading', { name: '语音与转写' })).toBeVisible()
+    expect(await screen.findByText('已就绪')).toBeVisible()
+    expect(screen.getByText('内置 · 简体中文（离线）')).toBeVisible()
+    expect(screen.getByText('自动添加')).toBeVisible()
+    expect(screen.getByRole('radio', { name: '点击开始' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: '按住说话' })).not.toBeChecked()
+    expect(screen.getByText('语音只在本机处理')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('radio', { name: '按住说话' }))
+    fireEvent.change(screen.getByLabelText('识别语言'), { target: { value: 'english' } })
+    fireEvent.click(screen.getByLabelText('自动标点'))
+
+    expect(onSpeechInputModeChange).toHaveBeenCalledWith('hold')
+    expect(onSpeechLocaleChange).toHaveBeenCalledWith('english')
+    expect(onSpeechAutoPunctuationChange).toHaveBeenCalledWith(false)
+    expect(speechPort.speechStatus).toHaveBeenCalledWith({
+      locale: 'simplified_chinese',
+      autoPunctuation: true,
+    })
   })
 
   it('shows the latest save error', () => {

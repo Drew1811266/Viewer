@@ -7,9 +7,10 @@ import type {
   TextEncoding,
   TextPreview as TextPreviewDto,
 } from '../api/types'
+import InfoOverlay from './InfoOverlay'
 import type { TaskFeedback } from './TaskBar'
 import TextPreviewPane, { type TextPaneStatus } from './TextPreviewPane'
-import ViewerButton from './ui/ViewerButton'
+import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
 import ViewerToolbar from './ui/ViewerToolbar'
 
 export type TextPreviewFiles = readonly [BrowserFile] | readonly [BrowserFile, BrowserFile]
@@ -42,6 +43,7 @@ export default function TextPreview({
   onTaskChange,
 }: TextPreviewProps) {
   const dialogRef = useRef<HTMLElement>(null)
+  const [fileInfoOpen, setFileInfoOpen] = useState(false)
   const [paneStatuses, setPaneStatuses] = useState<Record<string, TextPaneStatus>>({})
   const taskId = `text-preview-${files.map((file) => file.entityId).join('-')}`
   const statuses = files.map((file) => paneStatuses[file.entityId] ?? 'running')
@@ -70,7 +72,7 @@ export default function TextPreview({
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus()
+    dialogRef.current?.focus()
     return () => {
       if (previous?.isConnected) previous.focus()
     }
@@ -132,20 +134,38 @@ export default function TextPreview({
       <ViewerToolbar
         label="文本预览工具"
         leading={
-          <div className="text-preview-identity">
-            <strong>{files.map((file) => file.name).join(' · ')}</strong>
-            <span>{files.map((file) => textFormatLabel(file.kind)).join(' · ')}</span>
-          </div>
+          <>
+            <ViewerIconButton
+              icon="arrow-left"
+              label="返回"
+              title="返回网格"
+              tone="quiet"
+              className="preview-back-action"
+              onClick={onClose}
+            />
+            <div className="preview-identity">
+              <strong>{files.map((file) => file.name).join(' · ')}</strong>
+              <span>{files.map((file) => textMetaLabel(file)).join(' · ')}</span>
+            </div>
+          </>
         }
         actions={
-          <ViewerButton
-            tone="quiet"
-            className="preview-complete-action"
-            aria-label="关闭预览"
-            onClick={onClose}
-          >
-            完成
-          </ViewerButton>
+          <>
+            <ViewerButton
+              active={fileInfoOpen}
+              className="preview-file-info-action"
+              onClick={() => setFileInfoOpen((current) => !current)}
+            >
+              文件信息
+            </ViewerButton>
+            <ViewerButton
+              className="preview-complete-action"
+              aria-label="返回网格"
+              onClick={onClose}
+            >
+              返回网格
+            </ViewerButton>
+          </>
         }
       />
       <div className="text-preview-stage">
@@ -153,10 +173,28 @@ export default function TextPreview({
           {paneNodes}
         </div>
       </div>
+      {fileInfoOpen && (
+        <InfoOverlay files={[...files]} dimensions={{}} onClose={() => setFileInfoOpen(false)} />
+      )}
     </section>
   )
 }
 
 function textFormatLabel(kind: BrowserFile['kind']): string {
   return kind === 'markdown' ? 'Markdown' : '纯文本'
+}
+
+function textMetaLabel(file: BrowserFile): string {
+  return `${textFormatLabel(file.kind)} · ${formatBytes(file.size)}`
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1_024) return `${bytes} B`
+  if (bytes < 1_024 ** 2) return `${formatUnit(bytes / 1_024)} KiB`
+  if (bytes < 1_024 ** 3) return `${formatUnit(bytes / 1_024 ** 2)} MiB`
+  return `${formatUnit(bytes / 1_024 ** 3)} GiB`
+}
+
+function formatUnit(value: number): string {
+  return value >= 10 ? value.toFixed(0) : value.toFixed(1).replace(/\.0$/, '')
 }

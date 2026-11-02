@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { ViewerIconButton } from '../ui/ViewerButton'
+import ViewerIcon from '../ui/ViewerIcon'
 import ViewerPopover from '../ui/ViewerPopover'
 import type {
   VideoControlCommands,
@@ -47,15 +48,20 @@ export default function VideoControlsMoreMenu({
 
   return (
     <div className="video-controls-more">
-      <ViewerIconButton
+      <button
         ref={triggerRef}
-        icon="sliders-horizontal"
-        label="更多播放控制"
+        type="button"
+        className="viewer-button video-controls__more-trigger"
+        aria-label="更多播放控制"
         aria-expanded={open}
         disabled={disabled}
-        active={open}
+        data-tone="quiet"
+        data-active={open || undefined}
         onClick={() => setOpen(!open)}
-      />
+      >
+        <ViewerIcon name="rotate-cw" size={14} />
+        <span>{view.rate}×</span>
+      </button>
       <ViewerPopover
         className="video-controls-more__popover"
         open={open}

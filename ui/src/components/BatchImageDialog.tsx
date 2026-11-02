@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   BatchImageExecution,
   BatchImagePlanRow,
@@ -6,9 +6,11 @@ import type {
 } from '../api/types'
 import { safeUserMessage } from '../api/viewer'
 import ViewerButton from './ui/ViewerButton'
+import ViewerChoiceChip from './ui/ViewerChoiceChip'
 import ViewerDialog from './ui/ViewerDialog'
 import ViewerField from './ui/ViewerField'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
+import ViewerSegmentedControl from './ui/ViewerSegmentedControl'
 
 export interface BatchImageDialogProps {
   entityIds: readonly string[]
@@ -56,6 +58,7 @@ export default function BatchImageDialog({
   const [error, setError] = useState<string | null>(null)
   const [executing, setExecuting] = useState(false)
   const [execution, setExecution] = useState<BatchImageExecution | null>(null)
+  const formatRef = useRef<HTMLSelectElement>(null)
 
   const settings = useMemo<BatchImageSettingsRequest>(
     () => ({
@@ -132,26 +135,25 @@ export default function BatchImageDialog({
       title="批量处理图片"
       description={`已选择 ${entityIds.length} 个文件；转换产生新文件，不提供撤销。`}
       onCancel={onCancel}
-      size="medium"
+      size="large"
+      initialFocusRef={formatRef}
       footer={
-        execution ? (
-          <ViewerButton tone="primary" onClick={onCancel}>
-            完成
-          </ViewerButton>
-        ) : (
-          <>
-            <ViewerButton tone="quiet" onClick={onCancel} disabled={executing}>
+        <div className="batch-image-footer">
+          {execution ? (
+            <span />
+          ) : (
+            <ViewerButton tone="secondary" onClick={onCancel} disabled={executing}>
               取消
             </ViewerButton>
-            <ViewerButton
-              tone="primary"
-              onClick={confirm}
-              disabled={busy || executing || plan === null || convertCount === 0}
-            >
-              {executing ? '处理中…' : `转换 ${convertCount} 个文件`}
-            </ViewerButton>
-          </>
-        )
+          )}
+          <ViewerButton
+            tone="primary"
+            onClick={execution ? onCancel : confirm}
+            disabled={!execution && (busy || executing || plan === null || convertCount === 0)}
+          >
+            {execution ? '完成' : executing ? '处理中…' : `转换 ${convertCount} 个文件`}
+          </ViewerButton>
+        </div>
       }
     >
       {execution ? (
@@ -164,8 +166,9 @@ export default function BatchImageDialog({
       ) : (
         <>
           <div className="batch-image-form">
-            <ViewerField label="目标格式" inline>
+            <ViewerField label="目标格式">
               <select
+                ref={formatRef}
                 aria-label="目标格式"
                 value={format}
                 onChange={(event) => setFormat(event.currentTarget.value as typeof format)}
@@ -177,7 +180,7 @@ export default function BatchImageDialog({
                 ))}
               </select>
             </ViewerField>
-            <ViewerField label="质量（有损格式）" inline>
+            <ViewerField label="质量（有损格式）">
               <div className="batch-image-quality">
                 <input
                   type="range"
@@ -186,12 +189,13 @@ export default function BatchImageDialog({
                   step={5}
                   value={qualityPercent}
                   aria-label="压缩质量"
+                  style={{ '--batch-quality': `${qualityPercent}%` } as CSSProperties}
                   onChange={(event) => setQualityPercent(Number(event.currentTarget.value))}
                 />
                 <span>{qualityPercent}%</span>
               </div>
             </ViewerField>
-            <ViewerField label="尺寸修改" inline>
+            <ViewerField label="尺寸修改">
               <div className="batch-image-resize">
                 <select
                   aria-label="尺寸修改方式"
@@ -250,7 +254,7 @@ export default function BatchImageDialog({
                 ) : null}
               </div>
             </ViewerField>
-            <ViewerField label="输出位置" inline>
+            <ViewerField label="输出位置">
               <div className="batch-image-output-choice">
                 <label>
                   <input
@@ -284,16 +288,26 @@ export default function BatchImageDialog({
                 />
               </div>
             </ViewerField>
-            <ViewerField label="目标已存在时" inline>
-              <select
-                aria-label="冲突策略"
-                value={conflict}
-                onChange={(event) => setConflict(event.currentTarget.value as typeof conflict)}
-              >
-                <option value="skip">跳过</option>
-                <option value="suffix">追加序号</option>
-                <option value="overwrite">覆盖（原件进废纸篓）</option>
-              </select>
+            <ViewerField label="目标已存在时" className="batch-image-conflict-field">
+              <ViewerSegmentedControl label="冲突策略" className="settings-segmented">
+                {(
+                  [
+                    ['skip', '跳过'],
+                    ['suffix', '追加序号'],
+                    ['overwrite', '覆盖'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <ViewerChoiceChip
+                    key={value}
+                    type="radio"
+                    name="batch-image-conflict"
+                    checked={conflict === value}
+                    onCheckedChange={(checked) => checked && setConflict(value)}
+                  >
+                    {label}
+                  </ViewerChoiceChip>
+                ))}
+              </ViewerSegmentedControl>
             </ViewerField>
           </div>
           {error && (
@@ -303,20 +317,30 @@ export default function BatchImageDialog({
           )}
           {plan && (
             <div className="batch-image-plan" data-testid="batch-image-plan">
-              <p>
-                将转换 {convertCount} 个文件；跳过已存在 {skipCount} 个。
-              </p>
+              <h3>转换预览 · {plan.length} 个文件</h3>
               <ul>
-                {plan.slice(0, 8).map((row) => (
+                {plan.map((row) => (
                   <li key={row.entityId}>
-                    {row.relativePath} → {destinationLabel(row.disposition)}
-                    {row.targetWidth > 0
-                      ? ` · ${row.targetWidth}×${row.targetHeight} · ${formatBytes(row.sourceSizeBytes)} → 约 ${formatBytes(row.estimatedSizeBytes)}`
-                      : null}
+                    <span>{row.relativePath}</span>
+                    <span className="batch-image-plan__arrow" aria-hidden="true">
+                      →
+                    </span>
+                    <span>
+                      {destinationLabel(row.disposition)}
+                      {row.targetWidth > 0 && (
+                        <small>
+                          {row.targetWidth}×{row.targetHeight} · {formatBytes(row.sourceSizeBytes)}{' '}
+                          → 约 {formatBytes(row.estimatedSizeBytes)}
+                        </small>
+                      )}
+                    </span>
                   </li>
                 ))}
-                {plan.length > 8 && <li>…共 {plan.length} 项</li>}
               </ul>
+              <p>
+                预计转换 {convertCount} 个，跳过 {skipCount}{' '}
+                个；输出始终为新文件，覆盖只作用于同名目标。
+              </p>
             </div>
           )}
         </>

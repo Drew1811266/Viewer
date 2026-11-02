@@ -19,9 +19,9 @@ body:has(.task-bar) .acceptance-local-feedback-stage {
 }
 
 .acceptance-video-native-frame {
-  background: #080a0f;
-  height: 100vh;
-  inset: 0;
+  background: #fbfbfb;
+  height: calc(100vh - 52px);
+  inset: 52px 0 0;
   object-fit: contain;
   position: fixed;
   width: 100vw;

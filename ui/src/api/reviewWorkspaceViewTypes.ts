@@ -8,7 +8,7 @@ import type {
   ReviewSnapshotRef,
   ReviewTargetVersionKey,
 } from './reviewWorkspaceTypes'
-import type { ReviewAnchor } from './types'
+import type { ReviewAnchor, ReviewAnnotationStyle } from './types'
 
 export interface ReviewAssetVersion {
   id: string
@@ -39,6 +39,7 @@ export interface ReviewVersionedTarget {
   revisionId: string
   assetVersionId: string
   anchor: ReviewAnchor
+  style?: ReviewAnnotationStyle | null
   availability: { kind: 'ready' } | { kind: 'needs_confirmation'; reasons: ReviewPendingReason[] }
 }
 export interface ReviewVersionedFeedback {

@@ -1,4 +1,4 @@
-import type { ReviewAnchor } from '../../api/types'
+import type { ReviewAnchor, ReviewAnnotationStyle } from '../../api/types'
 import type {
   ImageRendererAnnotation,
   ImageRendererAnnotationGeometry,
@@ -6,11 +6,13 @@ import type {
   ImageRendererScene,
 } from '../../rendering/imageRendererTypes'
 import type { AnnotationEditorAction, AnnotationInteractionState } from './annotationModel'
+import {
+  annotationColorHex,
+  annotationLineWidthCss,
+  defaultAnnotationStyle,
+  styleForAnchor,
+} from './annotationStyle'
 import type { ImageReviewWorkbenchFeedback } from './imageReviewWorkbenchAdapter'
-
-// Coral red shared with the canvas overlay (`--viewer-annotation`) and the
-// review rail badges: white disc + coral ring + coral digits on the image.
-const REVIEW_COLOR_SRGB: [number, number, number, number] = [0.91, 0.39, 0.3, 1]
 
 // The native renderer targets a Bgra8UnormSrgb surface, so vertex colors must
 // be linear-encoded; an sRGB value written as-is gets gamma-encoded a second
@@ -18,18 +20,12 @@ const REVIEW_COLOR_SRGB: [number, number, number, number] = [0.91, 0.39, 0.3, 1]
 const srgbChannelToLinear = (channel: number): number =>
   channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
 
-const REVIEW_COLOR: [number, number, number, number] = [
-  srgbChannelToLinear(REVIEW_COLOR_SRGB[0]),
-  srgbChannelToLinear(REVIEW_COLOR_SRGB[1]),
-  srgbChannelToLinear(REVIEW_COLOR_SRGB[2]),
-  REVIEW_COLOR_SRGB[3],
-]
-const REVIEW_LINE_WIDTH_PX = 2.4
-
 export interface NativeReviewSceneVersion {
   revision: number
   clientMutationId: string | null
   annotationsEditable?: boolean
+  /** Authored image size, used to keep a 4px corner round in image space. */
+  imageSize?: { width: number; height: number }
 }
 
 export function toNativeScene(
@@ -55,6 +51,11 @@ export function toNativeScene(
           selected: editor.selectedItemId === item.itemId,
           draft: replacingGeometry,
           dashed: replacingGeometry && phase.status !== 'saving',
+          style:
+            replacingGeometry && phase.status !== 'saving'
+              ? phase.style
+              : (styleForAnchor(item.anchor, item.style) ?? undefined),
+          cornerRadius: cornerRadiusFor(geometry, version.imageSize),
         }),
       ]
     })
@@ -71,6 +72,8 @@ export function toNativeScene(
           selected: true,
           draft: true,
           dashed: false,
+          style: phase.style,
+          cornerRadius: cornerRadiusFor(geometry, version.imageSize),
         }),
       )
     }
@@ -97,6 +100,8 @@ export function toNativeScene(
             selected: false,
             draft: true,
             dashed: phase.status !== 'saving',
+            style: phase.status === 'idle' ? undefined : phase.style,
+            cornerRadius: cornerRadiusFor(draftGeometry, version.imageSize),
           }),
   }
 }
@@ -106,6 +111,7 @@ export function reviewAnchorToNativeGeometry(
 ): ImageRendererAnnotationGeometry | null {
   switch (anchor.kind) {
     case 'image_point':
+    case 'image_text':
       return { type: 'point', position: { x: anchor.x, y: anchor.y } }
     case 'image_arrow':
       return { type: 'arrow', tail: { ...anchor.tail }, head: { ...anchor.head } }
@@ -121,6 +127,18 @@ export function reviewAnchorToNativeGeometry(
       }
     case 'image_stroke':
       return { type: 'stroke', points: anchor.points.map((point) => ({ ...point })) }
+    case 'image_line':
+      return {
+        type: 'stroke',
+        points: [anchor.tail, anchor.head].map((point) => ({ ...point })),
+      }
+    case 'image_polygon':
+      return {
+        type: 'stroke',
+        points: [...anchor.points, anchor.points[0] as (typeof anchor.points)[number]].map(
+          (point) => ({ ...point }),
+        ),
+      }
     case 'asset':
     case 'video_point':
     case 'video_range':
@@ -172,6 +190,15 @@ export function toAnnotationAction(event: ImageRendererEvent): AnnotationEditorA
   }
 }
 
+function cornerRadiusFor(
+  geometry: ImageRendererAnnotationGeometry,
+  imageSize: { width: number; height: number } | undefined,
+): [number, number] | undefined {
+  if (geometry.type !== 'rectangle' || imageSize === undefined) return undefined
+  if (imageSize.width <= 0 || imageSize.height <= 0) return undefined
+  return [4 / imageSize.width, 4 / imageSize.height]
+}
+
 function annotationNode(input: {
   id: string
   ordinal: number
@@ -179,16 +206,36 @@ function annotationNode(input: {
   selected: boolean
   draft: boolean
   dashed: boolean
+  style?: ReviewAnnotationStyle
+  cornerRadius?: [number, number]
 }): ImageRendererAnnotation {
+  const style = input.style ?? defaultAnnotationStyle('brush')
   return {
     id: input.id,
     ordinal: input.ordinal,
     geometry: input.geometry,
-    style: { color: REVIEW_COLOR, lineWidthPx: REVIEW_LINE_WIDTH_PX, dashed: input.dashed },
+    style: {
+      color: nativeStyleColor(style),
+      lineWidthPx: annotationLineWidthCss(style),
+      dashed: input.dashed || style.dashed,
+      ...(style.tool === 'highlighter' ? { halo: false, multiply: true } : {}),
+      ...(input.cornerRadius === undefined ? {} : { cornerRadius: input.cornerRadius }),
+    },
     selected: input.selected,
     draft: input.draft,
     visible: true,
   }
+}
+
+function nativeStyleColor(style: ReviewAnnotationStyle): [number, number, number, number] {
+  const hex = annotationColorHex(style.color)
+  const alpha = Math.max(0.2, Math.min(1, style.opacityPercent / 100))
+  return [
+    srgbChannelToLinear(Number.parseInt(hex.slice(1, 3), 16) / 255),
+    srgbChannelToLinear(Number.parseInt(hex.slice(3, 5), 16) / 255),
+    srgbChannelToLinear(Number.parseInt(hex.slice(5, 7), 16) / 255),
+    alpha,
+  ]
 }
 
 function nextOrdinal(annotations: ReadonlyArray<ImageRendererAnnotation>): number {

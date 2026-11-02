@@ -3,10 +3,13 @@ import type {
   ReviewArchiveBasis,
   ReviewArchivePlan,
   ReviewArchiveSelection,
+  ReviewContinuousState,
   ReviewTargetVersionKey,
 } from '../../api/reviewWorkspaceTypes'
+import { reviewAnchorLabel } from '../../app/review/reviewAnchorLabel'
 import ModalSheet from '../ModalSheet'
 import ViewerButton from '../ui/ViewerButton'
+import ViewerIcon from '../ui/ViewerIcon'
 
 export type ArchivePlanDto = ReviewArchivePlan
 export type ArchiveSelectionDto = ReviewArchiveSelection
@@ -14,6 +17,7 @@ export type ArchiveSelectionDto = ReviewArchiveSelection
 export interface ReviewArchiveDialogProps {
   preview: ArchivePlanDto
   selection: ArchiveSelectionDto
+  state?: ReviewContinuousState | null
   busy: boolean
   error: string | null
   onSelectionChange(selection: ArchiveSelectionDto): void
@@ -24,6 +28,7 @@ export interface ReviewArchiveDialogProps {
 export default function ReviewArchiveDialog({
   preview,
   selection,
+  state,
   busy,
   error,
   onSelectionChange,
@@ -75,25 +80,28 @@ export default function ReviewArchiveDialog({
   return (
     <ModalSheet
       title="确认存档范围"
+      description="存档会将下列精确意见版本移入历史，不会表示意见已被执行或修复。"
       size="large"
+      showClose={false}
       onCancel={() => {
         if (!busy) onCancel()
       }}
       initialFocusRef={cancelRef}
       footer={
-        <>
+        <div className="review-archive-footer">
           <ViewerButton ref={cancelRef} disabled={busy} onClick={onCancel}>
             返回检查
           </ViewerButton>
           <ViewerButton tone="primary" loading={busy} disabled={!archiveable} onClick={onConfirm}>
             确认存档
           </ViewerButton>
-        </>
+        </div>
       }
     >
-      <p>存档会将下列精确意见版本移入历史，不会表示意见已被执行或修复。历史中的内容可撤销。</p>
       <p className="review-archive-dialog__snapshot">
-        当前预览绑定的意见版本：<code>{preview.expectedSnapshotId}</code>
+        <ViewerIcon name="info" />
+        <span>当前预览绑定版本</span>
+        <code title={preview.expectedSnapshotId}>最近一次保存</code>
       </p>
       {allSelectedCovered && <p role="status">没有新的可存档内容</p>}
       {error !== null && (
@@ -116,7 +124,7 @@ export default function ReviewArchiveDialog({
                         checked={selected.has(keyId)}
                         onChange={(event) => toggle(group.basis, key, event.currentTarget.checked)}
                       />
-                      {formatTarget(key)}
+                      <span>{formatTarget(key, state)}</span>
                     </label>
                   </li>
                 )
@@ -126,10 +134,18 @@ export default function ReviewArchiveDialog({
         ))}
       </section>
       <ArchiveKeyList
-        title="将移入历史"
+        title={
+          movedFromCurrent.length > 0 ? `将移入历史 · ${movedFromCurrent.length} 条` : '将移入历史'
+        }
+        description="这些意见会保留原文、素材版本和标注位置；不会改写已存档历史。"
         keys={movedFromCurrent}
         empty="当前选择没有会移入历史的意见。"
+        state={state}
       />
+      <div className="review-archive-warning">
+        <ViewerIcon name="info" />
+        <span>存档不证明 Agent 已读取、执行或修复，也不证明验收通过。</span>
+      </div>
       <section className="review-archive-dialog__section" aria-labelledby="archive-retained-title">
         <h3 id="archive-retained-title">保留后补意见</h3>
         {retainedLaterEdits.length === 0 ? (
@@ -138,9 +154,9 @@ export default function ReviewArchiveDialog({
           <ul>
             {retainedLaterEdits.map((retention) => (
               <li key={`${targetKey(retention.basis)}:${retention.disposition}`}>
-                <span>{formatTarget(retention.basis)}</span>
+                <span>{formatTarget(retention.basis, state)}</span>
                 {retention.current !== null && (
-                  <span>保留当前版本：{formatTarget(retention.current)}</span>
+                  <span>保留当前版本：{formatTarget(retention.current, state)}</span>
                 )}
               </li>
             ))}
@@ -154,21 +170,24 @@ export default function ReviewArchiveDialog({
           <ul>
             {alreadyAbsent.map((retention) => (
               <li key={`${targetKey(retention.basis)}:${retention.disposition}`}>
-                {formatTarget(retention.basis)}
+                {formatTarget(retention.basis, state)}
               </li>
             ))}
           </ul>
         </section>
       )}
-      <ArchiveKeyList
-        title="未选素材"
-        keys={groups
-          .flatMap((group) => group.targets)
-          .filter((key) => !selected.has(targetKey(key)))}
-        empty="没有未选素材。"
-      />
+      {groups.flatMap((group) => group.targets).some((key) => !selected.has(targetKey(key))) && (
+        <ArchiveKeyList
+          title="未选素材"
+          keys={groups
+            .flatMap((group) => group.targets)
+            .filter((key) => !selected.has(targetKey(key)))}
+          empty="没有未选素材。"
+          state={state}
+        />
+      )}
       {preview.alreadyCovered.length > 0 && (
-        <ArchiveKeyList title="已有效覆盖" keys={preview.alreadyCovered} empty="" />
+        <ArchiveKeyList title="已有效覆盖" keys={preview.alreadyCovered} empty="" state={state} />
       )}
     </ModalSheet>
   )
@@ -176,23 +195,28 @@ export default function ReviewArchiveDialog({
 
 function ArchiveKeyList({
   title,
+  description,
   keys,
   empty,
+  state,
 }: {
   title: string
+  description?: string
   keys: ReviewTargetVersionKey[]
   empty: string
+  state?: ReviewContinuousState | null
 }) {
   const id = `archive-${title}`
   return (
     <section className="review-archive-dialog__section" aria-labelledby={id}>
       <h3 id={id}>{title}</h3>
+      {description !== undefined && keys.length > 0 && <p>{description}</p>}
       {keys.length === 0 ? (
         <p>{empty}</p>
       ) : (
         <ul>
           {keys.map((key) => (
-            <li key={targetKey(key)}>{formatTarget(key)}</li>
+            <li key={targetKey(key)}>{formatTarget(key, state)}</li>
           ))}
         </ul>
       )}
@@ -246,6 +270,18 @@ function targetKey(key: ReviewTargetVersionKey) {
   return `${key.feedbackId}\u0000${key.textRevisionId}\u0000${key.targetId}\u0000${key.targetRevisionId}`
 }
 
-function formatTarget(key: ReviewTargetVersionKey) {
-  return `Feedback ID ${key.feedbackId} · Text revision ${key.textRevisionId} · Target ID ${key.targetId} · Target revision ${key.targetRevisionId}`
+function formatTarget(key: ReviewTargetVersionKey, state?: ReviewContinuousState | null) {
+  if (state === null || state === undefined) {
+    return `Feedback ID ${key.feedbackId} · Text revision ${key.textRevisionId} · Target ID ${key.targetId} · Target revision ${key.targetRevisionId}`
+  }
+  const feedback = state.feedback.find((entry) => entry.id === key.feedbackId)
+  if (feedback === undefined) return '历史版本素材 · 当前意见中不可见'
+  const ordinal = state === null || state === undefined ? 0 : state.feedback.indexOf(feedback) + 1
+  const target = feedback.targets.find(
+    (entry) => entry.id === key.targetId && entry.revisionId === key.targetRevisionId,
+  )
+  const asset = state?.assets.find((entry) => entry.id === target?.assetVersionId)
+  const name = asset?.relativePath.split('/').at(-1) ?? '未知素材'
+  const version = feedback.textRevisionId === key.textRevisionId ? '' : '（旧文字版本）'
+  return `${name} · ${reviewAnchorLabel(target?.anchor.kind)} · 意见 ${ordinal}${version}`
 }

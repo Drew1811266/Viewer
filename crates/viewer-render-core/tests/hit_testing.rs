@@ -80,7 +80,7 @@ fn offset_ordinals_are_hittable_without_stealing_unselected_corner_handles() {
         SceneSnapshot::new(SceneRevision(1), vec![point("point", 1, 0.5, 0.5)], None).unwrap();
     let index = HitIndex::rebuild(&scene);
     let hit = index.hit_test_part(
-        LogicalPoint::new(520.0, 480.0).unwrap(),
+        LogicalPoint::new(500.0, 500.0).unwrap(),
         8.0,
         &transform(1.0),
     );
@@ -203,7 +203,7 @@ fn the_visible_ordinal_badge_is_clickable_outside_outline_tolerance() {
     let scene =
         SceneSnapshot::new(SceneRevision(1), vec![point("point", 1, 0.5, 0.5)], None).unwrap();
     let hit = HitIndex::rebuild(&scene).hit_test_part(
-        LogicalPoint::new(532.0, 480.0).unwrap(),
+        LogicalPoint::new(500.0, 500.0).unwrap(),
         8.0,
         &transform(1.0),
     );
@@ -214,10 +214,10 @@ fn the_visible_ordinal_badge_is_clickable_outside_outline_tolerance() {
 fn rotated_ordinal_layout_and_screen_constant_handles_agree_with_hit_testing() {
     use viewer_render_core::annotation_ordinal_position;
     for (rotation, expected) in [
-        (Rotation::Deg0, (624.0, 276.0)),
-        (Rotation::Deg90, (724.0, 176.0)),
-        (Rotation::Deg180, (824.0, 476.0)),
-        (Rotation::Deg270, (524.0, 376.0)),
+        (Rotation::Deg0, (620.0, 400.0)),
+        (Rotation::Deg90, (720.0, 400.0)),
+        (Rotation::Deg180, (820.0, 600.0)),
+        (Rotation::Deg270, (520.0, 600.0)),
     ] {
         let transform = TransformSnapshot::new(
             SourceSize::new(1000, 1000).unwrap(),
@@ -268,7 +268,7 @@ fn rotated_ordinal_layout_and_screen_constant_handles_agree_with_hit_testing() {
         )
         .unwrap();
         let hit = HitIndex::rebuild(&scene)
-            .hit_test_part(LogicalPoint { x: 532.0, y: 480.0 }, 8.0, &transform(zoom))
+            .hit_test_part(LogicalPoint { x: 500.0, y: 500.0 }, 8.0, &transform(zoom))
             .unwrap();
         assert_eq!(hit.annotation_id.as_str(), "upper");
         assert_eq!(hit.part, AnnotationHitPart::Ordinal);

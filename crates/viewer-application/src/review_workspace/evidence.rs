@@ -138,6 +138,7 @@ async fn prepare_inner(
                         target_revision_id: target.revision_id,
                     },
                     anchor: target.anchor.clone(),
+                    style: target.style,
                 });
             }
         }

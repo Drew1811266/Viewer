@@ -9,8 +9,9 @@ import {
 describe('viewer settings defaults', () => {
   it('uses the approved bounded magnifier defaults and choices', () => {
     expect(DEFAULT_VIEWER_SETTINGS_UPDATE).toEqual({
-      thumbnailDensity: 'standard',
+      thumbnailDensity: 'large',
       magnifier: { shape: 'circle', magnification: 2, area: 'small' },
+      speech: { inputMode: 'click', locale: 'simplified_chinese', autoPunctuation: true },
     })
     expect(MAGNIFIER_SHAPES).toEqual(['circle', 'rounded_rectangle'])
     expect(MAGNIFIER_MAGNIFICATIONS).toEqual([2, 3, 4])

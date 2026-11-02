@@ -24,8 +24,11 @@
 | --- | --- | --- |
 | [milestones/viewer-0.3x-target-requirements.md](milestones/viewer-0.3x-target-requirements.md) | Active planning | — |
 | [milestones/viewer-0.3x-development-plan.md](milestones/viewer-0.3x-development-plan.md) | Active planning | — |
-| [design/0.3.0/README.md](design/0.3.0/README.md) | Corrected draft for review | — |
+| [design/0.3.0/README.md](design/0.3.0/README.md) | Confirmed; implementation in progress | — |
+| [acceptance/0.3.0-acceptance-catalog.md](acceptance/0.3.0-acceptance-catalog.md) | Active (development) | — |
+| [product/0.3.0-DELTA.md](product/0.3.0-DELTA.md) | Development | — |
 | [design/0.3.0/AUDIT-2026-10-29.md](design/0.3.0/AUDIT-2026-10-29.md) | Correction audit | — |
+| [design/0.3.0/AUDIT-2026-11-01.md](design/0.3.0/AUDIT-2026-11-01.md) | Frame-by-frame audit; 4 decisions open | — |
 | [design/0.3.0/pen/overview.png](design/0.3.0/pen/overview.png) | Visual overview | — |
 | [quality/2026-10-28-asr-model-research.md](quality/2026-10-28-asr-model-research.md) | Research draft | — |
 | [quality/2026-10-28-annotation-tools-research.md](quality/2026-10-28-annotation-tools-research.md) | Research draft | — |
@@ -67,6 +70,9 @@
 | [adr/0006-continuous-review-snapshot-and-archive-protocol.md](adr/0006-continuous-review-snapshot-and-archive-protocol.md) | Active | — |
 | [adr/0007-image-protocol-memory-only-caching.md](adr/0007-image-protocol-memory-only-caching.md) | Active | — |
 | [adr/0008-viewer-0.2x-format-and-batch-contracts.md](adr/0008-viewer-0.2x-format-and-batch-contracts.md) | Active | — |
+| [adr/0009-annotation-style-and-review-protocol-v5.md](adr/0009-annotation-style-and-review-protocol-v5.md) | Active | — |
+| [adr/0010-offline-speech-recognition.md](adr/0010-offline-speech-recognition.md) | Active | — |
+| [adr/0011-material-design-3-design-system.md](adr/0011-material-design-3-design-system.md) | Active | — |
 
 AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状态为 `Implemented`，实施计划
 内部状态为 `Complete`。两份文档继续以 Active 治理资料保留，用于约束未来阶段的依赖边界。

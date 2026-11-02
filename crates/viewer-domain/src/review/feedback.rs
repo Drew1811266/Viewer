@@ -1,5 +1,6 @@
 use super::{
-    MAX_FEEDBACK_TEXT_BYTES, MAX_IMAGE_STROKE_POINTS, MAX_TARGETS_PER_FEEDBACK, ReviewValueError,
+    MAX_FEEDBACK_TEXT_BYTES, MAX_IMAGE_POLYGON_POINTS, MAX_IMAGE_STROKE_POINTS,
+    MAX_TARGETS_PER_FEEDBACK, ReviewValueError,
 };
 use crate::{AssetVersionId, FeedbackId};
 
@@ -139,6 +140,40 @@ fn normalized_bounds(points: &[NormalizedPoint]) -> (f64, f64, f64, f64) {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct ImagePolygon {
+    points: Vec<NormalizedPoint>,
+}
+
+impl ImagePolygon {
+    pub fn new(points: Vec<NormalizedPoint>) -> Result<Self, ReviewValueError> {
+        if points.len() > MAX_IMAGE_POLYGON_POINTS {
+            return Err(ReviewValueError::LimitExceeded);
+        }
+        if points.len() < 3 {
+            return Err(ReviewValueError::InvalidNumber);
+        }
+        let area = polygon_area(&points);
+        if !area.is_finite() || area.abs() <= f64::EPSILON {
+            return Err(ReviewValueError::InvalidNumber);
+        }
+        Ok(Self { points })
+    }
+
+    pub fn points(&self) -> &[NormalizedPoint] {
+        &self.points
+    }
+}
+
+fn polygon_area(points: &[NormalizedPoint]) -> f64 {
+    points
+        .iter()
+        .zip(points.iter().cycle().skip(1))
+        .map(|(left, right)| left.x() * right.y() - right.x() * left.y())
+        .sum::<f64>()
+        / 2.0
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum FeedbackAnchor {
     Asset,
     ImagePoint(NormalizedPoint),
@@ -146,6 +181,9 @@ pub enum FeedbackAnchor {
     ImageStroke(ImageStroke),
     ImageRect(NormalizedRect),
     ImageEllipse(NormalizedRect),
+    ImageText(NormalizedPoint),
+    ImageLine(NormalizedArrow),
+    ImagePolygon(ImagePolygon),
     VideoPoint { position_us: u64 },
     VideoRange { start_us: u64, end_us: u64 },
 }
@@ -159,6 +197,9 @@ impl FeedbackAnchor {
             Self::ImageStroke(_) => "imageStroke",
             Self::ImageRect(_) => "imageRect",
             Self::ImageEllipse(_) => "imageEllipse",
+            Self::ImageText(_) => "imageText",
+            Self::ImageLine(_) => "imageLine",
+            Self::ImagePolygon(_) => "imagePolygon",
             Self::VideoPoint { .. } => "videoPoint",
             Self::VideoRange { .. } => "videoRange",
         }
@@ -320,6 +361,178 @@ mod tests {
             ),
             Err(ReviewValueError::LimitExceeded)
         );
+    }
+
+    #[test]
+    fn annotation_style_tracks_tool_geometry_and_tool_specific_controls() {
+        use crate::review::{
+            AnnotationColor, AnnotationStyle, AnnotationTextSize, AnnotationTool, AnnotationWidth,
+        };
+
+        let point = FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.2, 0.3).unwrap());
+        let point_style = AnnotationStyle::new(
+            AnnotationTool::Point,
+            AnnotationColor::Red,
+            AnnotationWidth::Medium,
+            100,
+            false,
+            None,
+        )
+        .unwrap();
+        assert!(point_style.accepts(&point));
+        assert!(!point_style.accepts(&FeedbackAnchor::Asset));
+        assert!(
+            AnnotationStyle::new(
+                AnnotationTool::Point,
+                AnnotationColor::Red,
+                AnnotationWidth::Medium,
+                100,
+                true,
+                None,
+            )
+            .is_err()
+        );
+
+        let text = FeedbackAnchor::ImageText(NormalizedPoint::new(0.4, 0.5).unwrap());
+        assert!(
+            AnnotationStyle::new(
+                AnnotationTool::Text,
+                AnnotationColor::Yellow,
+                AnnotationWidth::Medium,
+                100,
+                false,
+                None,
+            )
+            .is_err()
+        );
+        let text_style = AnnotationStyle::new(
+            AnnotationTool::Text,
+            AnnotationColor::Yellow,
+            AnnotationWidth::Medium,
+            100,
+            false,
+            Some(AnnotationTextSize::Medium),
+        )
+        .unwrap();
+        assert!(text_style.accepts(&text));
+        assert!(!text_style.accepts(&point));
+
+        let rect = FeedbackAnchor::ImageRect(NormalizedRect::new(0.1, 0.1, 0.4, 0.4).unwrap());
+        assert!(
+            AnnotationStyle::new(
+                AnnotationTool::Rectangle,
+                AnnotationColor::Blue,
+                AnnotationWidth::Thick,
+                60,
+                true,
+                None,
+            )
+            .unwrap()
+            .accepts(&rect)
+        );
+
+        assert!(
+            AnnotationStyle::new(
+                AnnotationTool::Highlighter,
+                AnnotationColor::Yellow,
+                AnnotationWidth::Thick,
+                35,
+                false,
+                None,
+            )
+            .is_ok()
+        );
+        assert!(
+            AnnotationStyle::new(
+                AnnotationTool::Highlighter,
+                AnnotationColor::Yellow,
+                AnnotationWidth::Thick,
+                100,
+                false,
+                None,
+            )
+            .is_err()
+        );
+        assert!(
+            AnnotationStyle::new(
+                AnnotationTool::Brush,
+                AnnotationColor::Red,
+                AnnotationWidth::Medium,
+                100,
+                true,
+                None,
+            )
+            .is_err()
+        );
+        assert!(
+            AnnotationStyle::new(
+                AnnotationTool::Ruler,
+                AnnotationColor::Red,
+                AnnotationWidth::Thin,
+                100,
+                true,
+                None,
+            )
+            .is_err()
+        );
+        assert!(
+            AnnotationStyle::new(
+                AnnotationTool::Ruler,
+                AnnotationColor::Red,
+                AnnotationWidth::Thin,
+                100,
+                false,
+                None,
+            )
+            .unwrap()
+            .accepts(&FeedbackAnchor::ImageLine(
+                NormalizedArrow::new(
+                    NormalizedPoint::new(0.1, 0.2).unwrap(),
+                    NormalizedPoint::new(0.8, 0.2).unwrap(),
+                )
+                .unwrap()
+            ))
+        );
+        assert!(
+            AnnotationStyle::new(
+                AnnotationTool::Point,
+                AnnotationColor::Red,
+                AnnotationWidth::Medium,
+                19,
+                false,
+                None,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn polygon_requires_three_bounded_vertices_with_area() {
+        let point = |x, y| NormalizedPoint::new(x, y).unwrap();
+        assert!(ImagePolygon::new(vec![point(0.1, 0.1), point(0.5, 0.1), point(0.3, 0.6)]).is_ok());
+        assert!(ImagePolygon::new(vec![point(0.1, 0.1), point(0.5, 0.1)]).is_err());
+        assert!(
+            ImagePolygon::new(vec![point(0.1, 0.1), point(0.2, 0.2), point(0.3, 0.3)]).is_err()
+        );
+        assert!(
+            ImagePolygon::new(vec![
+                point(0.1, 0.1);
+                crate::review::MAX_IMAGE_POLYGON_POINTS + 1
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn image_text_and_line_anchors_use_existing_normalized_geometry() {
+        let text = FeedbackAnchor::ImageText(NormalizedPoint::new(0.25, 0.75).unwrap());
+        assert_eq!(text.kind_name(), "imageText");
+        let line = NormalizedArrow::new(
+            NormalizedPoint::new(0.1, 0.1).unwrap(),
+            NormalizedPoint::new(0.9, 0.9).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(FeedbackAnchor::ImageLine(line).kind_name(), "imageLine");
     }
 
     #[test]

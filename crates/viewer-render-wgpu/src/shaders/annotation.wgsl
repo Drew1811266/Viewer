@@ -137,8 +137,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         let signed_d = select(d, -d, inside);
         coverage = clamp(0.5 - signed_d / (2.0 * AA_FEATHER), 0.0, 1.0);
     }
-    // Colors arrive opaque/premultiplied; scale both terms so the premultiplied
-    // blend sees a coverage-weighted fragment.
+    // The mesh stores straight (non-premultiplied) colors. Both blend
+    // pipelines expect premultiplied fragments: RGB = Cs * A, A = A.
     let alpha = input.color.a * coverage;
-    return vec4<f32>(input.color.rgb * coverage, alpha);
+    return vec4<f32>(input.color.rgb * alpha, alpha);
 }

@@ -1,18 +1,17 @@
 import type { RefObject } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { reviewAnchorLabel } from '../../app/review/reviewAnchorLabel'
 import type { ImageReviewWorkbenchController } from '../../app/review/useImageReviewWorkbench'
 import ViewerButton, { ViewerIconButton } from '../ui/ViewerButton'
+import ViewerIcon from '../ui/ViewerIcon'
+import FeedbackTextInput from './FeedbackTextInput'
 import InlineFeedbackEditor from './InlineFeedbackEditor'
 
 interface ReviewFeedbackRailProps {
   controller: ImageReviewWorkbenchController
-  nativeGeometryEditing?: boolean
 }
 
-export default function ReviewFeedbackRail({
-  controller,
-  nativeGeometryEditing = false,
-}: ReviewFeedbackRailProps) {
+export default function ReviewFeedbackRail({ controller }: ReviewFeedbackRailProps) {
   const input = useRef<HTMLTextAreaElement>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
   const readOnly = controller.readOnlyReason !== null
@@ -54,9 +53,10 @@ export default function ReviewFeedbackRail({
   return (
     <aside className="review-feedback-rail" aria-label="评审意见">
       <header>
-        <div>
+        <div className="review-feedback-rail__heading">
+          <ViewerIcon name="message-square" />
           <strong>评审意见</strong>
-          <span>{controller.feedback.length} 条</span>
+          <span className="review-feedback-rail__count">{controller.feedback.length}</span>
         </div>
         <ViewerIconButton
           icon="panel-right"
@@ -79,9 +79,9 @@ export default function ReviewFeedbackRail({
         editingText={editingText}
         saving={saving}
         readOnly={readOnly}
+        statusMessage={statusMessage}
         clearError={() => setOperationError(null)}
         runMutation={runMutation}
-        nativeGeometryEditing={nativeGeometryEditing}
       />
     </aside>
   )
@@ -173,6 +173,58 @@ function AssetFeedbackEditor({ controller }: ReviewFeedbackRailProps) {
   return <InlineFeedbackEditor controller={controller} anchor={phase.draftAnchor} embedded />
 }
 
+function RailTextEditor({
+  controller,
+  input,
+  label,
+  editingText,
+  saving,
+  clearError,
+}: {
+  controller: ImageReviewWorkbenchController
+  input: RefObject<HTMLTextAreaElement | null>
+  label: string
+  editingText: string
+  saving: boolean
+  clearError(): void
+}) {
+  return (
+    <div className="review-feedback-rail__text-editor">
+      <FeedbackTextInput
+        value={editingText}
+        onChange={controller.updateDraftText}
+        onSave={() => void controller.saveDraft()}
+        ariaLabel={`意见 ${label} 文字`}
+        disabled={saving}
+        rows={3}
+        inputRef={input}
+        className="review-feedback-rail__text-input"
+        micClassName="review-feedback-rail__mic"
+      />
+      <div className="review-feedback-rail__text-actions">
+        <ViewerButton
+          aria-label={`保存意见 ${label} 文字`}
+          loading={saving}
+          disabled={editingText.trim().length === 0}
+          onClick={() => void controller.saveDraft()}
+        >
+          保存
+        </ViewerButton>
+        <ViewerButton
+          tone="quiet"
+          disabled={saving}
+          onClick={() => {
+            controller.cancelDraft()
+            clearError()
+          }}
+        >
+          取消
+        </ViewerButton>
+      </div>
+    </div>
+  )
+}
+
 function FeedbackList({
   controller,
   input,
@@ -180,9 +232,9 @@ function FeedbackList({
   editingText,
   saving,
   readOnly,
+  statusMessage,
   clearError,
   runMutation,
-  nativeGeometryEditing,
 }: {
   controller: ImageReviewWorkbenchController
   input: RefObject<HTMLTextAreaElement | null>
@@ -190,13 +242,21 @@ function FeedbackList({
   editingText: string
   saving: boolean
   readOnly: boolean
+  statusMessage: string | null
   clearError(): void
   runMutation(operation: () => Promise<void>): Promise<void>
-  nativeGeometryEditing: boolean
 }) {
+  const list = useRef<HTMLOListElement>(null)
+  useEffect(() => {
+    const selected = list.current?.querySelector<HTMLElement>('li[data-selected="true"]')
+    // Non-browser DOM hosts (jsdom, older WebKit) may not implement
+    // scrollIntoView; scrolling is a convenience, never a requirement.
+    selected?.scrollIntoView?.({ block: 'nearest' })
+  }, [controller.feedback.length, controller.selectedItemId])
+
   return (
     <>
-      <ol className="review-feedback-rail__list" aria-label="本图意见">
+      <ol ref={list} className="review-feedback-rail__list" aria-label="本图意见">
         {controller.feedback.map((feedback) => {
           const label = feedback.ordinal === null ? '整图' : String(feedback.ordinal)
           const editing = editingItemId === feedback.itemId
@@ -219,7 +279,7 @@ function FeedbackList({
                 <span className="review-feedback-rail__summary">
                   <strong>{feedback.text}</strong>
                   <span className="review-feedback-rail__meta">
-                    <em>{anchorLabel(feedback.anchor.kind)}</em>
+                    <em>{reviewAnchorLabel(feedback.anchor.kind)}</em>
                     <time dateTime={new Date(feedback.createdAtMs).toISOString()}>
                       {formatFeedbackTime(feedback.createdAtMs)}
                     </time>
@@ -227,40 +287,14 @@ function FeedbackList({
                 </span>
               </button>
               {editing ? (
-                <div className="review-feedback-rail__text-editor">
-                  <textarea
-                    ref={input}
-                    aria-label={`意见 ${label} 文字`}
-                    value={editingText}
-                    disabled={saving}
-                    onChange={(event) => controller.updateDraftText(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.nativeEvent.isComposing) return
-                      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                        event.preventDefault()
-                        if (editingText.trim().length > 0) void controller.saveDraft()
-                      }
-                    }}
-                  />
-                  <ViewerButton
-                    aria-label={`保存意见 ${label} 文字`}
-                    loading={saving}
-                    disabled={editingText.trim().length === 0}
-                    onClick={() => void controller.saveDraft()}
-                  >
-                    保存
-                  </ViewerButton>
-                  <ViewerButton
-                    tone="quiet"
-                    disabled={saving}
-                    onClick={() => {
-                      controller.cancelDraft()
-                      clearError()
-                    }}
-                  >
-                    取消
-                  </ViewerButton>
-                </div>
+                <RailTextEditor
+                  controller={controller}
+                  input={input}
+                  label={label}
+                  editingText={editingText}
+                  saving={saving}
+                  clearError={clearError}
+                />
               ) : (
                 <div className="review-feedback-rail__item-actions">
                   <ViewerButton
@@ -274,17 +308,17 @@ function FeedbackList({
                   >
                     编辑文字
                   </ViewerButton>
-                  {feedback.anchor.kind === 'image_rect' && (
+                  {canAdjustAnchor(feedback.anchor.kind) && (
                     <ViewerButton
                       tone="quiet"
-                      aria-label={`调整意见 ${label} 区域`}
+                      aria-label={`调整意见 ${label} 标注`}
                       disabled={readOnly || controller.dirty}
                       onClick={() => {
                         controller.selectFeedback(feedback.itemId)
-                        controller.setTool(nativeGeometryEditing ? 'browse' : 'rectangle')
+                        controller.setTool('browse')
                       }}
                     >
-                      调整区域
+                      调整标注
                     </ViewerButton>
                   )}
                   {feedback.anchor.kind === 'image_stroke' && (
@@ -313,69 +347,80 @@ function FeedbackList({
           )
         })}
       </ol>
-      <FeedbackNavigator controller={controller} />
+      <FeedbackNavigator controller={controller} statusMessage={statusMessage} />
     </>
   )
 }
 
-function FeedbackNavigator({ controller }: { controller: ImageReviewWorkbenchController }) {
+function FeedbackNavigator({
+  controller,
+  statusMessage,
+}: {
+  controller: ImageReviewWorkbenchController
+  statusMessage: string | null
+}) {
   const total = controller.feedback.length
-  if (total < 2) return null
   const selectedIndex = controller.feedback.findIndex(
     (feedback) => feedback.itemId === controller.selectedItemId,
   )
   const previous =
-    selectedIndex <= 0 ? controller.feedback.at(-1) : controller.feedback[selectedIndex - 1]
+    total < 2
+      ? undefined
+      : selectedIndex <= 0
+        ? controller.feedback.at(-1)
+        : controller.feedback[selectedIndex - 1]
   const next =
-    selectedIndex === -1 || selectedIndex === total - 1
-      ? controller.feedback[0]
-      : controller.feedback[selectedIndex + 1]
+    total < 2
+      ? undefined
+      : selectedIndex === -1 || selectedIndex === total - 1
+        ? controller.feedback[0]
+        : controller.feedback[selectedIndex + 1]
+  const detail =
+    statusMessage ??
+    (controller.readOnlyReason !== null
+      ? '只读 · 不可修改'
+      : controller.dirty
+        ? '未保存'
+        : '已保存，可供外部读取')
   return (
     <footer className="review-feedback-rail__nav">
-      <span className="review-feedback-rail__nav-position">
-        {selectedIndex === -1 ? '–' : selectedIndex + 1} / {total}
+      <span className="review-feedback-rail__nav-summary">
+        {total} 条意见 · {detail}
       </span>
-      <ViewerIconButton
-        icon="chevron-up"
-        label="上一条意见"
-        tone="quiet"
-        disabled={previous === undefined}
-        onClick={() => {
-          if (previous !== undefined) controller.selectFeedback(previous.itemId)
-        }}
-      />
-      <ViewerIconButton
-        icon="chevron-down"
-        label="下一条意见"
-        tone="quiet"
-        disabled={next === undefined}
-        onClick={() => {
-          if (next !== undefined) controller.selectFeedback(next.itemId)
-        }}
-      />
+      <div className="review-feedback-rail__nav-actions">
+        <ViewerIconButton
+          icon="chevron-up"
+          label="上一条意见"
+          tone="quiet"
+          disabled={previous === undefined}
+          onClick={() => {
+            if (previous !== undefined) controller.selectFeedback(previous.itemId)
+          }}
+        />
+        <ViewerIconButton
+          icon="chevron-down"
+          label="下一条意见"
+          tone="quiet"
+          disabled={next === undefined}
+          onClick={() => {
+            if (next !== undefined) controller.selectFeedback(next.itemId)
+          }}
+        />
+      </div>
     </footer>
   )
 }
 
-function anchorLabel(kind: ImageReviewWorkbenchController['feedback'][number]['anchor']['kind']) {
-  switch (kind) {
-    case 'image_rect':
-      return '矩形区域'
-    case 'image_ellipse':
-      return '椭圆区域'
-    case 'image_stroke':
-      return '手绘区域'
-    case 'image_arrow':
-      return '箭头指向'
-    case 'image_point':
-      return '点位'
-    case 'asset':
-      return '整图意见'
-    case 'video_point':
-      return '视频点位'
-    case 'video_range':
-      return '视频片段'
-  }
+function canAdjustAnchor(
+  kind: ImageReviewWorkbenchController['feedback'][number]['anchor']['kind'],
+) {
+  return (
+    kind === 'image_rect' ||
+    kind === 'image_ellipse' ||
+    kind === 'image_arrow' ||
+    kind === 'image_line' ||
+    kind === 'image_polygon'
+  )
 }
 
 function formatFeedbackTime(createdAtMs: number) {

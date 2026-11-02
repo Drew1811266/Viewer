@@ -671,7 +671,10 @@ fn stored_feedback(feedback: &Feedback) -> Result<StoredFeedback, ReviewProtocol
                     FeedbackAnchor::ImagePoint(_)
                     | FeedbackAnchor::ImageArrow(_)
                     | FeedbackAnchor::ImageStroke(_)
-                    | FeedbackAnchor::ImageEllipse(_) => {
+                    | FeedbackAnchor::ImageEllipse(_)
+                    | FeedbackAnchor::ImageText(_)
+                    | FeedbackAnchor::ImageLine(_)
+                    | FeedbackAnchor::ImagePolygon(_) => {
                         return Err(ReviewProtocolError::InvalidData);
                     }
                     FeedbackAnchor::VideoPoint { position_us } => StoredAnchor::VideoPoint {

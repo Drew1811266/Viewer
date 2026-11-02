@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use viewer_domain::review::{
-    AssetVersion, FeedbackAnchor, MAX_FEEDBACK_ITEMS_PER_ROUND, MAX_IMAGE_STROKE_POINTS_PER_ROUND,
-    ReviewSnapshot,
+    AnnotationStyle, AssetVersion, FeedbackAnchor, MAX_FEEDBACK_ITEMS_PER_ROUND,
+    MAX_IMAGE_STROKE_POINTS_PER_ROUND, ReviewSnapshot,
 };
 use viewer_domain::{AssetVersionId, FeedbackId};
 
@@ -18,6 +18,7 @@ pub struct NumberedImageAnnotation {
     pub ordinal: u32,
     pub feedback_id: FeedbackId,
     pub anchor: FeedbackAnchor,
+    pub style: Option<AnnotationStyle>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -41,6 +42,9 @@ impl ReviewArtifactRenderRequest {
                             | FeedbackAnchor::ImageStroke(_)
                             | FeedbackAnchor::ImageRect(_)
                             | FeedbackAnchor::ImageEllipse(_)
+                            | FeedbackAnchor::ImageText(_)
+                            | FeedbackAnchor::ImageLine(_)
+                            | FeedbackAnchor::ImagePolygon(_)
                     )
             })
         {
@@ -150,6 +154,7 @@ mod tests {
             },
             cancellation: ReviewTaskCancellation::default(),
             annotations: vec![NumberedImageAnnotation {
+                style: None,
                 ordinal: 1,
                 feedback_id: FeedbackId::from_u128(2),
                 anchor,

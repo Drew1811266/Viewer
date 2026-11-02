@@ -600,10 +600,13 @@ function cloneReviewAnchor(anchor: ReviewAnchor): ReviewAnchor {
     case 'asset':
       return { kind: 'asset' }
     case 'image_point':
+    case 'image_text':
       return { ...anchor }
     case 'image_arrow':
+    case 'image_line':
       return { kind: anchor.kind, tail: { ...anchor.tail }, head: { ...anchor.head } }
     case 'image_stroke':
+    case 'image_polygon':
       return { kind: anchor.kind, points: anchor.points.map((point) => ({ ...point })) }
     case 'image_rect':
     case 'image_ellipse':

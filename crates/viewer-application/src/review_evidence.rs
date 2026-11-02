@@ -9,7 +9,7 @@ use std::{collections::HashSet, sync::Arc};
 use viewer_domain::{
     ReviewArchiveId, ReviewRoundId,
     review::{
-        AssetVersion, FeedbackAnchor, MAX_FEEDBACK_ITEMS_PER_ROUND,
+        AnnotationStyle, AssetVersion, FeedbackAnchor, MAX_FEEDBACK_ITEMS_PER_ROUND,
         MAX_IMAGE_STROKE_POINTS_PER_ROUND, ReviewMedia,
         continuous::{SnapshotRef, TargetVersionKey},
     },
@@ -128,6 +128,7 @@ pub struct NumberedTargetAnnotation {
     pub ordinal: u32,
     pub key: TargetVersionKey,
     pub anchor: FeedbackAnchor,
+    pub style: Option<AnnotationStyle>,
 }
 #[derive(Clone, Debug)]
 pub struct ReviewEvidenceRequest {

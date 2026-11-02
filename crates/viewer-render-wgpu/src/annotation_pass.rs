@@ -1,3 +1,4 @@
+use crate::annotation_mesh::AnnotationMesh;
 use crate::gpu_memory::{BufferWrite, GpuBuffer, GpuMemory, GpuTexture};
 use std::{cell::Cell, mem};
 use viewer_render_core::{AllocationClass, AssetGeneration, MemoryAdmissionError};
@@ -164,6 +165,7 @@ pub struct AnnotationPass {
     pending_scene_upload: Option<PendingSceneUpload>,
     pending_draft_upload: bool,
     pipeline: wgpu::RenderPipeline,
+    multiply_pipeline: wgpu::RenderPipeline,
     glyph_pipeline: wgpu::RenderPipeline,
     glyph_layout: wgpu::BindGroupLayout,
     camera_buffer: GpuBuffer,
@@ -245,31 +247,22 @@ impl AnnotationPass {
             bind_group_layouts: &[Some(&camera_layout)],
             immediate_size: 0,
         });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Viewer annotation pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[Some(annotation_vertex_layout())],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: target_format,
-                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let pipeline = create_annotation_pipeline(
+            device,
+            "Viewer annotation pipeline",
+            &pipeline_layout,
+            &shader,
+            target_format,
+            wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING,
+        );
+        let multiply_pipeline = create_annotation_pipeline(
+            device,
+            "Viewer annotation multiply pipeline",
+            &pipeline_layout,
+            &shader,
+            target_format,
+            multiply_blend(),
+        );
         let glyph_shader =
             device.create_shader_module(wgpu::include_wgsl!("shaders/ordinal_glyph.wgsl"));
         let glyph_pipeline_layout =
@@ -310,6 +303,7 @@ impl AnnotationPass {
             pending_scene_upload: None,
             pending_draft_upload: false,
             pipeline,
+            multiply_pipeline,
             glyph_pipeline,
             glyph_layout,
             camera_buffer,
@@ -865,18 +859,44 @@ impl AnnotationPass {
 
     pub fn encode<'pass>(&'pass self, render_pass: &mut wgpu::RenderPass<'pass>) {
         if let Some(retained) = &self.retained {
-            render_pass.set_pipeline(&self.pipeline);
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, retained.vertices.slice(..));
-            render_pass.set_index_buffer(retained.indices.slice(..), wgpu::IndexFormat::Uint32);
-            render_pass.draw_indexed(0..retained.index_count, 0, 0..1);
+            if let Some(mesh) = self.mesh_layers.authoritative().mesh() {
+                encode_mesh(
+                    render_pass,
+                    &self.pipeline,
+                    &self.multiply_pipeline,
+                    &self.camera_bind_group,
+                    retained,
+                    mesh,
+                );
+            } else {
+                // Defensive fallback: scene data normally accompanies its
+                // buffers, but never drop a resident frame if it does not.
+                render_pass.set_pipeline(&self.pipeline);
+                render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, retained.vertices.slice(..));
+                render_pass.set_index_buffer(retained.indices.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass.draw_indexed(0..retained.index_count, 0, 0..1);
+            }
         }
-        encode_annotation_buffers(
-            render_pass,
-            &self.pipeline,
-            &self.camera_bind_group,
-            self.draft.as_ref(),
-        );
+        if let Some(draft) = &self.draft {
+            if let Some(mesh) = self.mesh_layers.draft().mesh() {
+                encode_mesh(
+                    render_pass,
+                    &self.pipeline,
+                    &self.multiply_pipeline,
+                    &self.camera_bind_group,
+                    draft,
+                    mesh,
+                );
+            } else {
+                encode_annotation_buffers(
+                    render_pass,
+                    &self.pipeline,
+                    &self.camera_bind_group,
+                    Some(draft),
+                );
+            }
+        }
         if let (Some(glyph_texture), Some(glyph_buffer)) = (&self.glyph_texture, &self.glyph_buffer)
         {
             render_pass.set_pipeline(&self.glyph_pipeline);
@@ -938,6 +958,7 @@ impl AnnotationPass {
         &'pass self,
         render_pass: &mut wgpu::RenderPass<'pass>,
         annotation_pipeline: &'pass wgpu::RenderPipeline,
+        multiply_pipeline: &'pass wgpu::RenderPipeline,
         glyph_pipeline: &'pass wgpu::RenderPipeline,
         camera_bind_group: &'pass wgpu::BindGroup,
     ) {
@@ -954,13 +975,14 @@ impl AnnotationPass {
             if retained.index_count == 0 {
                 continue;
             }
-            render_pass.set_pipeline(annotation_pipeline);
-            render_pass.set_bind_group(0, camera_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, retained.vertices.slice(..));
-            render_pass.set_index_buffer(retained.indices.slice(..), wgpu::IndexFormat::Uint32);
-            for range in mesh.geometry_index_ranges() {
-                render_pass.draw_indexed(range.clone(), 0, 0..1);
-            }
+            encode_geometry_ranges(
+                render_pass,
+                annotation_pipeline,
+                multiply_pipeline,
+                camera_bind_group,
+                retained,
+                mesh,
+            );
         }
         encode_annotation_buffers(
             render_pass,
@@ -1180,6 +1202,146 @@ fn upload_mesh_buffers(
     Ok(())
 }
 
+pub(crate) fn multiply_blend() -> wgpu::BlendState {
+    // Fragment output is premultiplied (Cs * A, A). Multiply over an opaque
+    // destination: Cs*A*Cd + Cd*(1-A). Destination alpha is preserved.
+    wgpu::BlendState {
+        color: wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::Dst,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+        },
+        alpha: wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::Zero,
+            dst_factor: wgpu::BlendFactor::One,
+            operation: wgpu::BlendOperation::Add,
+        },
+    }
+}
+
+fn create_annotation_pipeline(
+    device: &wgpu::Device,
+    label: &str,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    target_format: wgpu::TextureFormat,
+    blend: wgpu::BlendState,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(label),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs_main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            buffers: &[Some(annotation_vertex_layout())],
+        },
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some("fs_main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: target_format,
+                blend: Some(blend),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
+/// Split geometry ranges into draw runs at multiply boundaries, preserving the
+/// original index order. Geometry ranges exclude multiply bodies, so both
+/// lists are merged and re-sorted; a multiply body may also sit after its halo
+/// as a separate range.
+fn geometry_blend_runs(
+    normal: &[std::ops::Range<u32>],
+    multiply: &[std::ops::Range<u32>],
+) -> Vec<(std::ops::Range<u32>, bool)> {
+    let mut all = normal.to_vec();
+    for range in multiply {
+        if !normal
+            .iter()
+            .any(|outer| outer.start <= range.start && range.end <= outer.end)
+        {
+            all.push(range.clone());
+        }
+    }
+    all.sort_by_key(|range| range.start);
+    let mut runs = Vec::new();
+    for geometry in all {
+        let overlaps: Vec<_> = multiply
+            .iter()
+            .filter(|range| range.start >= geometry.start && range.end <= geometry.end)
+            .collect();
+        let mut cursor = geometry.start;
+        for range in overlaps {
+            if cursor < range.start {
+                runs.push((cursor..range.start, false));
+            }
+            runs.push((range.clone(), true));
+            cursor = range.end;
+        }
+        if cursor < geometry.end {
+            runs.push((cursor..geometry.end, false));
+        }
+    }
+    runs
+}
+
+fn encode_geometry_ranges<'pass>(
+    render_pass: &mut wgpu::RenderPass<'pass>,
+    pipeline: &'pass wgpu::RenderPipeline,
+    multiply_pipeline: &'pass wgpu::RenderPipeline,
+    camera_bind_group: &'pass wgpu::BindGroup,
+    buffers: &'pass RetainedBuffers,
+    mesh: &'pass AnnotationMesh,
+) {
+    render_pass.set_bind_group(0, camera_bind_group, &[]);
+    render_pass.set_vertex_buffer(0, buffers.vertices.slice(..));
+    render_pass.set_index_buffer(buffers.indices.slice(..), wgpu::IndexFormat::Uint32);
+    for (range, multiply) in geometry_blend_runs(
+        mesh.geometry_index_ranges(),
+        mesh.multiply_geometry_index_ranges(),
+    ) {
+        render_pass.set_pipeline(if multiply {
+            multiply_pipeline
+        } else {
+            pipeline
+        });
+        render_pass.draw_indexed(range, 0, 0..1);
+    }
+}
+
+fn encode_mesh<'pass>(
+    render_pass: &mut wgpu::RenderPass<'pass>,
+    pipeline: &'pass wgpu::RenderPipeline,
+    multiply_pipeline: &'pass wgpu::RenderPipeline,
+    camera_bind_group: &'pass wgpu::BindGroup,
+    buffers: &'pass RetainedBuffers,
+    mesh: &'pass AnnotationMesh,
+) {
+    render_pass.set_bind_group(0, camera_bind_group, &[]);
+    render_pass.set_vertex_buffer(0, buffers.vertices.slice(..));
+    render_pass.set_index_buffer(buffers.indices.slice(..), wgpu::IndexFormat::Uint32);
+    let full = 0..buffers.index_count;
+    for (range, multiply) in geometry_blend_runs(
+        std::slice::from_ref(&full),
+        mesh.multiply_geometry_index_ranges(),
+    ) {
+        render_pass.set_pipeline(if multiply {
+            multiply_pipeline
+        } else {
+            pipeline
+        });
+        render_pass.draw_indexed(range, 0, 0..1);
+    }
+}
+
 fn encode_annotation_buffers<'pass>(
     render_pass: &mut wgpu::RenderPass<'pass>,
     pipeline: &'pass wgpu::RenderPipeline,
@@ -1226,4 +1388,44 @@ fn to_clip(
 
 fn aligned_row_bytes(width: u32) -> u32 {
     width.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT
+}
+
+#[cfg(test)]
+mod tests {
+    use super::geometry_blend_runs;
+
+    #[test]
+    fn blend_runs_keep_highlighter_only_ranges() {
+        let multiply = 10..20;
+        assert_eq!(
+            geometry_blend_runs(&[], std::slice::from_ref(&multiply)),
+            vec![(10..20, true)]
+        );
+    }
+
+    #[test]
+    fn blend_runs_split_normal_geometry_at_multiply_boundaries() {
+        let normal = 0..30;
+        let multiply = 10..20;
+        assert_eq!(
+            geometry_blend_runs(
+                std::slice::from_ref(&normal),
+                std::slice::from_ref(&multiply)
+            ),
+            vec![(0..10, false), (10..20, true), (20..30, false)]
+        );
+    }
+
+    #[test]
+    fn blend_runs_keep_halo_and_multiply_as_separate_runs() {
+        let normal = 0..10;
+        let multiply = 10..20;
+        assert_eq!(
+            geometry_blend_runs(
+                std::slice::from_ref(&normal),
+                std::slice::from_ref(&multiply)
+            ),
+            vec![(0..10, false), (10..20, true)]
+        );
+    }
 }

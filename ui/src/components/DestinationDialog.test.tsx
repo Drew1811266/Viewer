@@ -81,7 +81,7 @@ describe('DestinationDialog', () => {
       target: { value: 'keep_both' },
     })
     fireEvent.click(screen.getByRole('checkbox', { name: '应用到剩余冲突 one.jpg' }))
-    const executeButton = screen.getByRole('button', { name: '开始复制' })
+    const executeButton = screen.getByRole('button', { name: '复制 2 项' })
     expect(executeButton.closest('.viewer-dialog__footer')).not.toBeNull()
     expect(executeButton).toHaveAttribute('data-tone', 'primary')
     expect(screen.getAllByText('需要处理')).toHaveLength(2)
@@ -125,7 +125,7 @@ describe('DestinationDialog', () => {
     fireEvent.click(screen.getByRole('radio', { name: /A/ }))
     fireEvent.click(screen.getByRole('button', { name: '检查冲突' }))
     expect(await screen.findByText('invalid_target')).toBeVisible()
-    expect(screen.getByRole('button', { name: '开始移动' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '移动 1 项' })).toBeDisabled()
   })
 
   it('discards a preflight response when the destination changes in flight', async () => {
@@ -150,6 +150,6 @@ describe('DestinationDialog', () => {
     })
     await waitFor(() => expect(screen.getByRole('button', { name: '检查冲突' })).toBeEnabled())
     expect(screen.queryByText('可执行')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '开始复制' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '复制 1 项' })).toBeDisabled()
   })
 })

@@ -290,6 +290,7 @@ async fn extended_anchor_save_advances_only_the_authoring_head_within_budget() {
             None,
             "调整箭头指向处".into(),
             vec![TargetEdit::Add {
+                style: None,
                 asset_version_id: harness.asset,
                 anchor: FeedbackAnchor::ImageArrow(arrow),
             }],
@@ -314,6 +315,7 @@ async fn normal_authoring_save_meets_latency_budgets() {
             None,
             "asset-only".into(),
             vec![TargetEdit::Add {
+                style: None,
                 asset_version_id: harness.asset,
                 anchor: FeedbackAnchor::Asset,
             }],
@@ -328,6 +330,7 @@ async fn normal_authoring_save_meets_latency_budgets() {
             Some(feedback),
             "asset and first region".into(),
             vec![TargetEdit::Add {
+                style: None,
                 asset_version_id: harness.asset,
                 anchor: FeedbackAnchor::ImageRect(NormalizedRect::new(0.1, 0.1, 0.2, 0.2).unwrap()),
             }],
@@ -340,6 +343,7 @@ async fn normal_authoring_save_meets_latency_budgets() {
             Some(feedback),
             "asset and two regions".into(),
             vec![TargetEdit::Add {
+                style: None,
                 asset_version_id: harness.asset,
                 anchor: FeedbackAnchor::ImageRect(
                     NormalizedRect::new(0.45, 0.45, 0.2, 0.2).unwrap(),

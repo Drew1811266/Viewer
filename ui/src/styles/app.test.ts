@@ -25,27 +25,25 @@ describe('workspace style contracts', () => {
     expect(coveredWorkspace).not.toMatch(/\bvisibility:/)
   })
 
-  it('keeps magnifier settings grouped, wrapped, and reachable in the dialog body', () => {
+  it('keeps magnifier settings grouped, segmented, and reachable in the dialog body', () => {
     const rules = parseRules(appCss)
-    const subheading = rules.find((rule) => rule.selector === '.settings-dialog-subheading')
-    const group = rules.find((rule) => rule.selector === '.magnifier-setting-group')
-    const options = rules.find((rule) => rule.selector === '.magnifier-setting-options')
+    const group = rules.find((rule) => rule.selector === '.settings-dialog-group')
+    const row = rules.find((rule) => rule.selector === '.settings-choice-row')
+    const segmented = rules.find(
+      (rule) => rule.selector === '.settings-segmented.viewer-segmented-control',
+    )
 
-    expect(subheading?.declarations).toMatchObject({
-      'border-top': '1px solid var(--viewer-border)',
-      'font-size': '13px',
-      margin: '20px 0 12px',
-      'padding-top': '16px',
-    })
     expect(group?.declarations).toMatchObject({
-      border: '0',
-      margin: '0 0 14px',
-      padding: '0',
+      'border-top': '1px solid var(--viewer-border)',
+      display: 'grid',
     })
-    expect(options?.declarations).toMatchObject({
-      display: 'flex',
-      'flex-wrap': 'wrap',
-      gap: '8px',
+    expect(row?.declarations).toMatchObject({
+      'grid-template-columns': '108px minmax(0, 1fr)',
+      'min-height': '44px',
+    })
+    expect(segmented?.declarations).toMatchObject({
+      background: 'var(--viewer-surface)',
+      border: '1px solid var(--viewer-border)',
     })
   })
 
@@ -54,15 +52,15 @@ describe('workspace style contracts', () => {
     const title = rules.find((rule) => rule.selector === '.empty-project h1')
     const copy = rules.find((rule) => rule.selector === '.empty-project p')
 
-    expect(title?.declarations['font-size']).toBe('20px')
-    expect(copy?.declarations['font-size']).toBe('13px')
+    expect(title?.declarations['font-size']).toBe('28px')
+    expect(copy?.declarations['font-size']).toBe('14px')
   })
 
-  it('keeps the main workspace header at the approved compact density', () => {
+  it('keeps the main workspace header at the approved M3 density', () => {
     const rules = parseRules(appCss)
     const header = rules.find((rule) => rule.selector === '.workspace-header')
 
-    expect(header?.declarations['min-height']).toBe('40px')
+    expect(header?.declarations['min-height']).toBe('52px')
   })
 
   it('keeps aggregate browsing as a compact status tag instead of a full-width band', () => {
@@ -152,10 +150,10 @@ describe('workspace style contracts', () => {
       (rule) => rule.selector === '.image-cell[aria-selected="true"]::after',
     )
 
-    expect(card?.declarations['border-radius']).toBe('0')
+    expect(card?.declarations['border-radius']).toBe('var(--viewer-radius-card)')
     expect(selectionOverlay?.declarations).toMatchObject({
-      border: '2px solid var(--viewer-accent)',
-      'border-radius': '0',
+      border: '2px solid var(--viewer-secondary-container)',
+      'border-radius': 'var(--viewer-radius-card)',
       'box-sizing': 'border-box',
       inset: '0',
       'pointer-events': 'none',
@@ -165,7 +163,7 @@ describe('workspace style contracts', () => {
     expect(legacyOverlay).toBeUndefined()
     expect(selectedCard?.declarations.background).toBeUndefined()
     expect(selectedCard?.declarations['box-shadow']).toBeUndefined()
-    expect(organizationHandle?.declarations['z-index']).toBe('3')
+    expect(organizationHandle?.declarations['z-index']).toBe('4')
     expect(activeFocus?.declarations).toMatchObject({
       outline: 'var(--viewer-focus-outline)',
       'outline-offset': 'var(--viewer-focus-offset)',
@@ -199,33 +197,31 @@ describe('workspace style contracts', () => {
     const stage = rules.find((rule) => rule.selector === '.image-cell-preview')
     const metadata = rules.find((rule) => rule.selector === '.image-cell-meta')
     const name = rules.find((rule) => rule.selector === '.image-cell-name')
-    const marker = rules.find((rule) => rule.selector === '.image-cell-meta > .file-marker')
+    const marker = rules.find((rule) => rule.selector === '.image-cell-marker')
 
     expect(card?.declarations).toMatchObject({
       background: 'var(--viewer-thumbnail-card-surface)',
       border: '0',
-      'border-radius': '0',
+      'border-radius': 'var(--viewer-radius-card)',
     })
     expect(stage?.declarations.background).toBe('var(--viewer-thumbnail-stage-surface)')
     expect(metadata?.declarations).toMatchObject({
-      'border-top': '1px solid var(--viewer-thumbnail-border)',
-      display: 'flex',
-      gap: '8px',
-      'min-height': '48px',
-      padding: '6px 8px',
+      display: 'grid',
+      gap: '1px',
+      'min-height': '56px',
+      padding: '7px var(--viewer-space-3) 8px',
     })
     expect(name?.declarations).toMatchObject({
-      'font-size': '13px',
+      'font-size': '14px',
       'font-weight': '500',
       overflow: 'hidden',
       'text-overflow': 'ellipsis',
       'white-space': 'nowrap',
     })
     expect(marker?.declarations).toMatchObject({
-      'border-radius': '999px',
-      'font-size': '10px',
-      'font-weight': '700',
-      padding: '3px 6px',
+      'border-radius': 'var(--viewer-radius-chip)',
+      'font-size': '11px',
+      'font-weight': '500',
     })
   })
 
@@ -245,11 +241,11 @@ describe('workspace style contracts', () => {
         ".workspace-menu-item[data-danger-reveal='interaction']:hover:not(:disabled)",
     )
 
-    expect(popover?.declarations['min-width']).toBe('180px')
+    expect(popover?.declarations['min-width']).toBe('208px')
     expect(item?.declarations).toMatchObject({
       border: '0',
       'justify-content': 'flex-start',
-      'min-height': '32px',
+      'min-height': '48px',
       'text-align': 'left',
       width: '100%',
     })
@@ -264,13 +260,13 @@ describe('workspace style contracts', () => {
     })
   })
 
-  it('anchors the formal information inspector below the 40px workspace header', () => {
+  it('anchors the formal information inspector below the 52px workspace header', () => {
     const rules = parseRules(viewerStyleSources)
     const inspector = rules.find((rule) => rule.selector === '.viewer-inspector')
 
     expect(inspector?.declarations).toMatchObject({
       position: 'fixed',
-      top: '40px',
+      top: '52px',
       right: '0',
       bottom: '0',
     })
@@ -281,7 +277,7 @@ describe('workspace style contracts', () => {
     const rules = parseRules(viewerStyleSources)
     const inspector = rules.find((rule) => rule.selector === '.viewer-inspector')
 
-    expect(inspector?.declarations.top).toBe('40px')
+    expect(inspector?.declarations.top).toBe('52px')
     expect(rules.some((rule) => rule.selector === '.operation-results')).toBe(false)
     expect(rules.some((rule) => rule.selector === '.operation-results-list')).toBe(true)
   })
@@ -314,8 +310,8 @@ describe('workspace style contracts', () => {
     )
 
     expect(besideInspector?.declarations).toMatchObject({
-      right: 'calc(clamp(320px, 24vw, 340px) + 16px)',
-      width: 'min(360px, calc(100vw - clamp(320px, 24vw, 340px) - 48px))',
+      right: 'calc(336px + 16px)',
+      width: 'min(360px, calc(100vw - 336px - 48px))',
     })
   })
 
@@ -338,11 +334,17 @@ describe('workspace style contracts', () => {
     })
   })
 
-  it('keeps the one-category settings shell compact instead of reserving empty rows', () => {
+  it('fills the settings sheet with a fixed category sidebar and scrolling content', () => {
     const rules = parseRules(appCss)
     const shell = rules.find((rule) => rule.selector === '.settings-dialog-shell')
+    const content = rules.find((rule) => rule.selector === '.settings-dialog-content')
 
-    expect(shell?.declarations['min-height']).toBe('144px')
+    expect(shell?.declarations).toMatchObject({
+      'grid-template-columns': '208px minmax(0, 1fr)',
+      height: '100%',
+      'min-height': '0',
+    })
+    expect(content?.declarations['overflow-y']).toBe('auto')
   })
 
   it('gives the five-stop thumbnail slider one cross-platform visual contract', () => {
@@ -372,7 +374,7 @@ describe('workspace style contracts', () => {
     expect(track?.declarations.background).toContain('var(--thumbnail-level-progress)')
     expect(thumb?.declarations).toMatchObject({
       appearance: 'none',
-      background: 'var(--viewer-accent)',
+      background: 'var(--viewer-secondary-container)',
       'border-radius': '50%',
       height: '18px',
       width: '18px',
@@ -429,12 +431,12 @@ describe('workspace style contracts', () => {
     })
     expect(segmentedButtons?.declarations).toMatchObject({
       border: '0',
-      'border-radius': '0',
+      'border-radius': 'var(--viewer-radius-chip)',
       'min-height': '30px',
     })
     expect(complete?.declarations).toMatchObject({
-      'font-weight': '650',
-      'min-width': '52px',
+      'font-weight': '500',
+      'min-width': '76px',
     })
   })
 
@@ -525,10 +527,10 @@ describe('workspace style contracts', () => {
 
     expect(row?.declarations).toMatchObject({
       display: 'grid',
-      'grid-template-columns': '112px minmax(0, 1fr)',
+      'grid-template-columns': '152px minmax(0, 1fr)',
       // 视口外行跳过布局与绘制（滚动掉帧优化，2026-09-15 采样后落地）。
       'content-visibility': 'auto',
-      'contain-intrinsic-size': 'auto 156px',
+      'contain-intrinsic-size': 'auto 158px',
     })
     expect(shell?.declarations).toMatchObject({
       'min-width': '0',
@@ -547,8 +549,8 @@ describe('workspace style contracts', () => {
       transition: 'opacity 180ms ease',
     })
     expect(thumb?.declarations).toMatchObject({
-      background: 'var(--viewer-text-tertiary)',
-      'border-radius': '999px',
+      background: 'var(--viewer-secondary-container)',
+      'border-radius': '2px',
     })
     for (const selector of visibleScrollbarSelectors) {
       expect(rules.find((rule) => rule.selector === selector)?.declarations.opacity, selector).toBe(
@@ -567,17 +569,37 @@ describe('workspace style contracts', () => {
     expect(item?.declarations.width).toBeUndefined()
     expect(item?.declarations.height).toBeUndefined()
     expect(thumbnail?.declarations).toMatchObject({
-      background: 'transparent',
+      background: 'var(--viewer-surface)',
       border: '0',
-      overflow: 'visible',
+      overflow: 'hidden',
       padding: '0',
     })
     expect(thumbnailHover?.declarations['box-shadow']).toBe(
-      'inset 0 0 0 1px var(--viewer-thumbnail-hover-ring)',
+      'inset 0 0 0 2px var(--viewer-thumbnail-hover-ring)',
     )
     expect(image?.declarations['object-fit']).toBe('contain')
     expect(image?.declarations.background).not.toBe('#e5e8ed')
     expect(placeholder?.declarations.background).toBe('var(--viewer-soft-surface)')
+  })
+
+  it('keeps the category header on one compact line above the filmstrip rows', () => {
+    const rules = parseRules(appCss)
+    const header = rules.find((rule) => rule.selector === '.folder-overview-header')
+    const title = rules.find((rule) => rule.selector === '.folder-overview-header h1')
+    const meta = rules.find((rule) => rule.selector === '.folder-overview-header p')
+    const list = rules.find((rule) => rule.selector === '.folder-filmstrip-list')
+
+    expect(header?.declarations).toMatchObject({
+      display: 'flex',
+      'align-items': 'baseline',
+      'justify-content': 'space-between',
+    })
+    expect(title?.declarations).toMatchObject({
+      'font-size': '24px',
+      'line-height': '32px',
+    })
+    expect(meta?.declarations.margin).toBe('0')
+    expect(list?.declarations['margin-top']).toBe('var(--viewer-space-4)')
   })
 
   it('paints thumbnail keyboard focus above every thumbnail child state', () => {
@@ -591,7 +613,7 @@ describe('workspace style contracts', () => {
 
     expect(identityFocus?.declarations).toMatchObject({
       outline: 'var(--viewer-focus-outline)',
-      'outline-offset': 'var(--viewer-focus-offset)',
+      'outline-offset': '-3px',
     })
     expect(thumbnailFocus?.declarations).toMatchObject({
       outline: 'var(--viewer-focus-outline)',
@@ -612,12 +634,14 @@ describe('workspace style contracts', () => {
         'var(--viewer-surface)',
       )
       expect(winningDeclaration(rules, new Set([selector]), 'border'), selector).toBe(
-        '1px solid var(--viewer-border-strong)',
+        '1px solid var(--viewer-control-border)',
       )
       expect(contrastRatio('#8a94a3', '#ffffff'), selector).toBeGreaterThanOrEqual(3)
-      expect(winningDeclaration(rules, new Set([selector]), 'border-radius'), selector).toBe('6px')
+      expect(winningDeclaration(rules, new Set([selector]), 'border-radius'), selector).toBe(
+        'var(--viewer-radius-control)',
+      )
       expect(winningDeclaration(rules, new Set([selector]), 'cursor'), selector).toBe('pointer')
-      expect(winningDeclaration(rules, new Set([selector]), 'min-height'), selector).toBe('30px')
+      expect(winningDeclaration(rules, new Set([selector]), 'min-height'), selector).toBe('36px')
     }
 
     const hoverSelectors = [
@@ -627,10 +651,10 @@ describe('workspace style contracts', () => {
     ]
     for (const selector of hoverSelectors) {
       expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe(
-        'var(--viewer-soft-surface)',
+        'var(--viewer-surface-low)',
       )
       expect(winningDeclaration(rules, new Set([selector]), 'border-color'), selector).toBe(
-        'var(--viewer-border)',
+        'var(--viewer-control-border)',
       )
     }
 
@@ -641,10 +665,10 @@ describe('workspace style contracts', () => {
     ]
     for (const selector of openSelectors) {
       expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe(
-        'var(--viewer-accent-soft)',
+        'var(--viewer-secondary-container)',
       )
       expect(winningDeclaration(rules, new Set([selector]), 'border-color'), selector).toBe(
-        'var(--viewer-accent)',
+        'transparent',
       )
     }
 
@@ -720,7 +744,7 @@ describe('workspace style contracts', () => {
     expect(violations).toEqual([])
   })
 
-  it('marks selected sidebar rows with the approved floating card and accent pill', () => {
+  it('marks selected sidebar rows with the approved tonal surface', () => {
     const rules = parseRules(appCss)
     for (const selector of [
       '.project-root-button[aria-pressed="true"]',
@@ -728,14 +752,11 @@ describe('workspace style contracts', () => {
     ]) {
       const selectedRule = rules.find((rule) => rule.selector === selector)
       expect(selectedRule?.declarations, selector).toMatchObject({
-        background: 'var(--viewer-surface)',
-        color: 'var(--viewer-text)',
+        background: 'var(--viewer-surface-low)',
+        color: 'var(--viewer-on-primary-container)',
       })
       const pillRule = rules.find((rule) => rule.selector === `${selector}::before`)
-      expect(pillRule?.declarations, `${selector}::before`).toMatchObject({
-        background: 'var(--viewer-accent)',
-        content: "''",
-      })
+      expect(pillRule?.declarations, `${selector}::before`).toMatchObject({ content: 'none' })
     }
   })
 
@@ -751,27 +772,24 @@ describe('workspace style contracts', () => {
     expect(declaration('.viewer-toolbar', 'height')).toBe('52px')
     expect(declaration('.image-preview-stage', 'background')).toBe('var(--preview-stage)')
     expect(declaration('.image-preview-stage', 'overflow')).toBe('hidden')
-    expect(declaration('.image-preview-stage > .image-preview-image', 'border')).toBe(
-      '1px solid var(--preview-border)',
-    )
-    expect(declaration('.image-preview-stage > .image-preview-image', 'box-shadow')).toBe(
-      'var(--preview-image-shadow)',
-    )
+    expect(declaration('.image-preview-stage > .image-preview-image', 'border')).toBe('0')
+    expect(declaration('.image-preview-stage > .image-preview-image', 'box-shadow')).toBe('none')
     expect(declaration('.image-preview-stage > .image-preview-image', 'height')).toBe('auto')
     expect(declaration('.image-preview-stage > .image-preview-image', 'width')).toBe('auto')
     expect(declaration('.image-preview-stage > .image-preview-image', 'max-height')).toBe('none')
     expect(declaration('.image-preview-stage > .image-preview-image', 'max-width')).toBe('none')
     expect(declaration('.preview-navigation-float', 'background')).toBe('var(--viewer-surface)')
     expect(declaration('.preview-navigation-float', 'border')).toBe(
-      '1px solid var(--viewer-border)',
+      '1px solid var(--viewer-control-border)',
     )
     expect(declaration('.preview-navigation-float', 'color')).toBe('var(--viewer-text)')
     expect(declaration('.preview-overlay [role="alert"]', 'color')).toBe('var(--preview-danger)')
     expect(declaration('.text-preview', 'background')).toBe('var(--preview-document-surface)')
     expect(declaration('.text-preview', 'color')).toBe('var(--preview-text)')
     expect(declaration('.preview-overlay > .viewer-toolbar', 'flex')).toBe('0 0 auto')
-    expect(declaration('.text-encoding-field .viewer-field__control', 'width')).toBe('132px')
+    expect(declaration('.text-encoding-field .viewer-field__control', 'width')).toBe('96px')
 
+    expect(declaration('.preview-navigation-float', 'min-height')).toBe('40px')
     expect(declaration('.preview-navigation-float .viewer-icon-button', 'min-height')).toBe('30px')
     expect(declaration('.preview-navigation-float .viewer-icon-button', 'width')).toBe('30px')
 
@@ -1020,7 +1038,7 @@ describe('workspace style contracts', () => {
       ),
     ).toBe('var(--preview-accent-surface)')
     expect(declaration(".viewer-button[data-active='true']", 'background')).toBe(
-      'var(--viewer-accent-soft)',
+      'var(--viewer-secondary-container)',
     )
     expect(
       declaration('.compare-pane .marker-buttons .viewer-button[aria-pressed="true"]', 'color'),

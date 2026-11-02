@@ -12,13 +12,48 @@ export interface MagnifierPreferences {
   area: MagnifierArea
 }
 
+export type SpeechInputMode = 'click' | 'hold'
+export type SpeechLocale = 'simplified_chinese' | 'english'
+
+export interface SpeechPreferences {
+  inputMode: SpeechInputMode
+  locale: SpeechLocale
+  autoPunctuation: boolean
+}
+
+export interface SpeechCaptureRequest {
+  locale: SpeechLocale
+  autoPunctuation: boolean
+}
+
+export interface SpeechStatus {
+  available: boolean
+  speechAuthorized: boolean
+  microphoneAuthorized: boolean
+  onDevice: boolean
+  localeSupported: boolean
+  locale: string
+}
+
+export interface SpeechPermissions {
+  speechAuthorized: boolean
+  microphoneAuthorized: boolean
+}
+
+export interface SpeechTranscript {
+  text: string
+  elapsedMs: number
+  onDevice: boolean
+}
+
 export interface ViewerSettingsUpdate {
   thumbnailDensity: ThumbnailDensity
   magnifier: MagnifierPreferences
+  speech: SpeechPreferences
 }
 
 export interface ViewerSettings extends ViewerSettingsUpdate {
-  schemaVersion: 4
+  schemaVersion: 5
 }
 
 export interface ProjectSnapshot {
@@ -697,6 +732,37 @@ export interface ReviewPoint {
   y: number
 }
 
+export type ReviewAnnotationTool =
+  | 'point'
+  | 'arrow'
+  | 'brush'
+  | 'rectangle'
+  | 'ellipse'
+  | 'text'
+  | 'line'
+  | 'highlighter'
+  | 'polygon'
+  | 'ruler'
+export type ReviewAnnotationColor =
+  | 'red'
+  | 'orange'
+  | 'yellow'
+  | 'green'
+  | 'teal'
+  | 'blue'
+  | 'purple'
+  | 'black'
+export type ReviewAnnotationWidth = 'thin' | 'medium' | 'thick'
+export type ReviewAnnotationTextSize = 'small' | 'medium' | 'large'
+export interface ReviewAnnotationStyle {
+  tool: ReviewAnnotationTool
+  color: ReviewAnnotationColor
+  width: ReviewAnnotationWidth
+  opacityPercent: number
+  dashed: boolean
+  textSize?: ReviewAnnotationTextSize
+}
+
 export type ReviewAnchor =
   | { kind: 'asset' }
   | { kind: 'image_point'; x: number; y: number }
@@ -704,6 +770,9 @@ export type ReviewAnchor =
   | { kind: 'image_rect'; x: number; y: number; width: number; height: number }
   | { kind: 'image_stroke'; points: ReadonlyArray<ReviewPoint> }
   | { kind: 'image_ellipse'; x: number; y: number; width: number; height: number }
+  | { kind: 'image_text'; x: number; y: number }
+  | { kind: 'image_line'; tail: ReviewPoint; head: ReviewPoint }
+  | { kind: 'image_polygon'; points: ReadonlyArray<ReviewPoint> }
   | { kind: 'video_point'; positionUs: number }
   | { kind: 'video_range'; startUs: number; endUs: number }
 

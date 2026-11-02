@@ -1,5 +1,6 @@
 use super::super::{
     ContinuousReviewProtocol, MAX_REVIEW_DOCUMENT_BYTES, detect_continuous_review_protocol, v3, v4,
+    v5,
 };
 use super::repository::{View, protocol_error};
 use std::collections::HashSet;
@@ -74,6 +75,7 @@ fn read_document(
     let record = match protocol {
         ContinuousReviewProtocol::V3 => v3::decode_state_v3(&bytes),
         ContinuousReviewProtocol::V4 => v4::decode_state_v4(&bytes),
+        ContinuousReviewProtocol::V5 => v5::decode_state_v5(&bytes),
     }
     .map_err(protocol_error)?;
     if record.state.project_id != view.index.project_id
@@ -94,6 +96,20 @@ fn read_document(
     if ancestry.len() < MAX_HISTORY_NODES {
         ancestry.insert(key, record.state.parent);
     }
+    let protocol = if protocol == ContinuousReviewProtocol::V4
+        && record
+            .state
+            .feedback
+            .iter()
+            .flat_map(|item| &item.targets)
+            .any(|target| target.style.is_some())
+    {
+        // A legacy v4 document with style cannot be encoded as v4. Read it as
+        // v5 so the verified response and the next save both use the v5 wire.
+        ContinuousReviewProtocol::V5
+    } else {
+        protocol
+    };
     Ok(VersionedReviewState {
         protocol: protocol.into(),
         record,
@@ -266,6 +282,7 @@ pub(super) fn archive_with_plan(
     let record = match protocol {
         ContinuousReviewProtocol::V3 => v3::decode_archive_v3(&bytes),
         ContinuousReviewProtocol::V4 => v4::decode_archive_v4(&bytes),
+        ContinuousReviewProtocol::V5 => v5::decode_archive_v5(&bytes),
     }
     .map_err(protocol_error)?;
     if record.checkpoint.project_id != view.index.project_id

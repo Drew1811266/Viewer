@@ -14,7 +14,14 @@ pub fn encode_state_v4(record: &ReviewStateRecord) -> Result<Vec<u8>, ReviewProt
 }
 
 pub fn decode_state_v4(bytes: &[u8]) -> Result<ReviewStateRecord, ReviewProtocolError> {
-    super::v3::decode_state_for(ContinuousReviewProtocol::V4, bytes)
+    match super::v3::decode_state_for(ContinuousReviewProtocol::V4, bytes) {
+        Ok(record) => Ok(record),
+        // Early 0.3.0 builds briefly wrote v5 `style` values into v4 documents.
+        // Accept those files for reading; the next successful save promotes the
+        // stream to v5, and v4 writes remain strict.
+        Err(ReviewProtocolError::InvalidData) => super::v3::decode_state_v4_with_style(bytes),
+        Err(error) => Err(error),
+    }
 }
 
 pub(in crate::review) fn encode_authoring_state(
@@ -74,6 +81,42 @@ mod tests {
         assert!(decode_read_result_v4(&fixture("review-read-result-v3.valid.json")).is_err());
     }
 
+    #[test]
+    fn reads_legacy_v4_state_that_contains_v5_styles() {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fixture("review-state-v5.valid.json")).unwrap();
+        value["protocolVersion"] = serde_json::Value::String(REVIEW_PROTOCOL_V4.to_owned());
+        let bytes = serde_json::to_vec(&value).unwrap();
+
+        let state = decode_state_v4(&bytes).unwrap();
+        assert!(
+            state
+                .state
+                .feedback
+                .iter()
+                .flat_map(|item| &item.targets)
+                .any(|target| target.style.is_some())
+        );
+    }
+
+    #[test]
+    fn reads_legacy_v4_authoring_state_that_contains_v5_styles() {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fixture("review-state-v5.valid.json")).unwrap();
+        value["protocolVersion"] = serde_json::Value::String(REVIEW_PROTOCOL_V4.to_owned());
+        value["evidence"] = serde_json::json!([]);
+        let bytes = serde_json::to_vec(&value).unwrap();
+
+        let state = super::super::v3::decode_authoring_state_v4_with_style(&bytes).unwrap();
+        assert!(
+            state
+                .state
+                .feedback
+                .iter()
+                .flat_map(|item| &item.targets)
+                .any(|target| target.style.is_some())
+        );
+    }
     #[test]
     fn all_v4_wrappers_round_trip_shared_legacy_records() {
         let state =

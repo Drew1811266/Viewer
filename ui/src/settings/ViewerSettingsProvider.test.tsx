@@ -29,7 +29,16 @@ function settings(
   thumbnailDensity: ThumbnailDensity,
   magnifier: MagnifierPreferences = DEFAULT_MAGNIFIER,
 ): ViewerSettings {
-  return { schemaVersion: 4, thumbnailDensity, magnifier }
+  return {
+    schemaVersion: 5,
+    thumbnailDensity,
+    magnifier,
+    speech: {
+      inputMode: 'click',
+      locale: 'simplified_chinese',
+      autoPunctuation: true,
+    },
+  }
 }
 
 function Consumer() {
@@ -73,8 +82,8 @@ describe('ViewerSettingsProvider', () => {
     const loaded = deferred<ViewerSettings>()
     renderProvider({ getViewerSettings: () => loaded.promise, updateViewerSettings: vi.fn() })
 
-    expect(screen.getByLabelText('density')).toHaveTextContent('standard')
-    expect(screen.getByLabelText('height')).toHaveTextContent('132')
+    expect(screen.getByLabelText('density')).toHaveTextContent('large')
+    expect(screen.getByLabelText('height')).toHaveTextContent('164')
     expect(screen.getByLabelText('shape')).toHaveTextContent('circle')
     expect(screen.getByLabelText('magnification')).toHaveTextContent('2')
     expect(screen.getByLabelText('area')).toHaveTextContent('small')
@@ -98,7 +107,7 @@ describe('ViewerSettingsProvider', () => {
     renderProvider({ getViewerSettings: () => loaded.promise, updateViewerSettings: vi.fn() })
 
     await act(async () => loaded.reject(new Error('offline')))
-    expect(screen.getByLabelText('density')).toHaveTextContent('standard')
+    expect(screen.getByLabelText('density')).toHaveTextContent('large')
     expect(screen.getByLabelText('shape')).toHaveTextContent('circle')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
@@ -116,8 +125,9 @@ describe('ViewerSettingsProvider', () => {
     expect(screen.getByLabelText('shape')).toHaveTextContent('rounded_rectangle')
     await waitFor(() => expect(updateViewerSettings).toHaveBeenCalledOnce())
     expect(updateViewerSettings).toHaveBeenCalledWith({
-      thumbnailDensity: 'standard',
+      thumbnailDensity: 'large',
       magnifier: { shape: 'rounded_rectangle', magnification: 2, area: 'small' },
+      speech: { inputMode: 'click', locale: 'simplified_chinese', autoPunctuation: true },
     })
   })
 
@@ -150,8 +160,9 @@ describe('ViewerSettingsProvider', () => {
     )
     await waitFor(() => expect(updateViewerSettings).toHaveBeenCalledTimes(2))
     expect(updateViewerSettings).toHaveBeenNthCalledWith(2, {
-      thumbnailDensity: 'standard',
+      thumbnailDensity: 'large',
       magnifier: { shape: 'rounded_rectangle', magnification: 4, area: 'small' },
+      speech: { inputMode: 'click', locale: 'simplified_chinese', autoPunctuation: true },
     })
 
     await act(async () =>
@@ -236,7 +247,7 @@ describe('ViewerSettingsProvider', () => {
       ),
     )
 
-    expect(screen.getByLabelText('density')).toHaveTextContent('standard')
+    expect(screen.getByLabelText('density')).toHaveTextContent('large')
     expect(screen.getByLabelText('shape')).toHaveTextContent('circle')
     expect(screen.getByLabelText('magnification')).toHaveTextContent('4')
     expect(screen.getByLabelText('area')).toHaveTextContent('small')

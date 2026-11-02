@@ -65,10 +65,10 @@ describe('magnifier geometry', () => {
   })
 
   it('uses the six approved fixed shape and area dimensions', () => {
-    expect(lensDimensions('circle', 'small')).toEqual({ width: 200, height: 200 })
+    expect(lensDimensions('circle', 'small')).toEqual({ width: 180, height: 180 })
     expect(lensDimensions('circle', 'medium')).toEqual({ width: 280, height: 280 })
     expect(lensDimensions('circle', 'large')).toEqual({ width: 380, height: 380 })
-    expect(lensDimensions('rounded_rectangle', 'small')).toEqual({ width: 230, height: 150 })
+    expect(lensDimensions('rounded_rectangle', 'small')).toEqual({ width: 220, height: 145 })
     expect(lensDimensions('rounded_rectangle', 'medium')).toEqual({ width: 300, height: 200 })
     expect(lensDimensions('rounded_rectangle', 'large')).toEqual({ width: 420, height: 280 })
   })

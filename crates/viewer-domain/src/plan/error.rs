@@ -14,6 +14,22 @@ pub enum PlanErrorCode {
     TooLarge,
 }
 
+impl PlanErrorCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::UnsupportedVersion => "unsupported_version",
+            Self::InvalidSchema => "invalid_schema",
+            Self::DuplicateId => "duplicate_id",
+            Self::UnknownValue => "unknown_value",
+            Self::UnknownGroup => "unknown_group",
+            Self::AssetMissing => "asset_missing",
+            Self::CountMismatch => "count_mismatch",
+            Self::RelocationConflict => "relocation_conflict",
+            Self::TooLarge => "too_large",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanError {

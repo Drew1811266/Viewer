@@ -9,6 +9,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { useMemo } from 'react'
 import { buildPlanGraph, type PlanGraphNode, type PlanSnapshot } from './planGraph'
+import { STATE_LABELS } from './planLabels'
 
 interface PlanNodeData extends Record<string, unknown> {
   label: string
@@ -22,12 +23,6 @@ interface PlanNodeData extends Record<string, unknown> {
   generated?: number
   brief?: string
 }
-
-const STATE_LABEL = {
-  current: '已生成 · 一致',
-  stale: '计划已变',
-  ungenerated: '未生成',
-} as const
 
 function PlanCard({ data }: NodeProps) {
   const node = data as PlanNodeData
@@ -86,7 +81,7 @@ function ShotCard({ data }: NodeProps) {
       <span className="plan-node__meta plan-node__meta--dim plan-node__meta--clamp">
         {node.detail}
       </span>
-      <span className={`plan-node__state plan-node__state--${state}`}>{STATE_LABEL[state]}</span>
+      <span className={`plan-node__state plan-node__state--${state}`}>{STATE_LABELS[state]}</span>
     </div>
   )
 }

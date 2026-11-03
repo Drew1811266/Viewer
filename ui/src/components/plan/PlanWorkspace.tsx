@@ -2,27 +2,11 @@ import { useMemo, useState } from 'react'
 import type { PlanBridge } from '../../api/plan'
 import { PlanCanvas } from './PlanCanvas'
 import type { PlanSnapshot } from './planGraph'
+import { STATE_LABELS, statusLabel } from './planLabels'
 import { stalePanelCopy, usePlanWorkspace } from './usePlanWorkspace'
 
 export interface PlanWorkspaceProps {
   bridge: PlanBridge | null
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: '待处理',
-  changed: '已改',
-  replaced: '已换',
-  orphaned: '已失效',
-}
-
-const STATE_CHIP: Record<string, string> = {
-  current: '已生成 · 一致',
-  stale: '计划已变',
-  ungenerated: '未生成',
-}
-
-export function statusLabel(status: string): string {
-  return STATUS_LABELS[status] ?? status
 }
 
 export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
@@ -128,7 +112,7 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
                 <span
                   className={`plan-node__state plan-node__state--${selectedShot.generation ?? 'ungenerated'}`}
                 >
-                  {STATE_CHIP[selectedShot.generation ?? 'ungenerated']}
+                  {STATE_LABELS[selectedShot.generation ?? 'ungenerated']}
                 </span>
               </div>
               <span className="plan-drawer__intent">{selectedShot.prompt.split('\n').at(-1)}</span>

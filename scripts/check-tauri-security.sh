@@ -94,7 +94,8 @@ for (const [name, sources] of directives) {
       throw new Error(`remote HTTPS source in ${name}: ${source}`);
     }
     const isTauriIpc = name === "connect-src" && source === "http://ipc.localhost";
-    const isMacCustomImage = name === "img-src" && source === "http://viewer-image.localhost";
+    const macCustomImageHosts = ["http://viewer-image.localhost", "http://plan-ref.localhost"];
+    const isMacCustomImage = name === "img-src" && macCustomImageHosts.includes(source);
     if (source.startsWith("http:") && !isTauriIpc && !isMacCustomImage) {
       throw new Error(`remote HTTP source in ${name}: ${source}`);
     }
@@ -107,13 +108,19 @@ if (JSON.stringify(connectSources) !== JSON.stringify(["'self'", "ipc:", "http:/
 for (const [name, sources] of directives) {
   if (
     name !== "img-src" &&
-    (sources.includes("viewer-image:") || sources.includes("http://viewer-image.localhost"))
+    (sources.includes("viewer-image:") ||
+      sources.includes("http://viewer-image.localhost") ||
+      sources.includes("plan-ref:") ||
+      sources.includes("http://plan-ref.localhost"))
   ) {
-    throw new Error(`viewer-image scheme is forbidden in ${name}`);
+    throw new Error(`restricted image scheme is forbidden in ${name}`);
   }
 }
 if (!(directives.get("img-src") ?? []).includes("viewer-image:")) {
   throw new Error("img-src must contain the restricted viewer-image scheme");
+}
+if (!(directives.get("img-src") ?? []).includes("plan-ref:")) {
+  throw new Error("img-src must contain the restricted plan-ref scheme");
 }
 
 console.log("Tauri capability and CSP allowlists passed");

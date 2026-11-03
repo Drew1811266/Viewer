@@ -738,7 +738,7 @@ mod tests {
     }
 
     #[test]
-    fn csp_allows_only_the_explicit_viewer_image_origins() {
+    fn csp_allows_only_the_explicit_image_origins() {
         let configuration: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.conf.json"))
                 .expect("tauri configuration must be valid JSON");
@@ -752,7 +752,7 @@ mod tests {
             .expect("CSP must define img-src");
         assert_eq!(
             image_directive,
-            "img-src 'self' asset: data: viewer-image: http://viewer-image.localhost"
+            "img-src 'self' asset: data: plan-ref: http://plan-ref.localhost viewer-image: http://viewer-image.localhost"
         );
         assert!(!csp.contains('*'));
     }

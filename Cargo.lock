@@ -4741,6 +4741,7 @@ name = "viewer-domain"
 version = "0.3.0"
 dependencies = [
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "uuid",
 ]

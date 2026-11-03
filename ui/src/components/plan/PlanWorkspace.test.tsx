@@ -87,7 +87,8 @@ describe('PlanWorkspace', () => {
     render(<PlanWorkspace bridge={fake} />)
     await waitFor(() => expect(screen.getByText('s1')).toBeInTheDocument())
     fireEvent.click(screen.getByText('s1'))
-    fireEvent.click(await screen.findByText('标记这个分镜'))
+    fireEvent.change(screen.getByLabelText('标记备注'), { target: { value: '光太硬' } })
+    fireEvent.click(await screen.findByText('保存标记'))
     await waitFor(() => expect(fake.writeMarks).toHaveBeenCalledOnce())
     const calls = (fake.writeMarks as unknown as { mock: { calls: unknown[][] } }).mock.calls
     const payload = calls[0]?.[0] as

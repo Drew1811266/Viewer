@@ -5,6 +5,15 @@ import type { PlanFilter, PlanSnapshot } from './planGraph'
 import { STATE_LABELS, statusLabel } from './planLabels'
 import { stalePanelCopy, usePlanWorkspace } from './usePlanWorkspace'
 
+const CATEGORY_LABELS: Record<string, string> = {
+  wrong: '错误',
+  missing: '缺失',
+  extra: '多余',
+  style: '风格',
+  order: '顺序',
+  other: '其它',
+}
+
 export interface PlanWorkspaceProps {
   bridge: PlanBridge | null
 }
@@ -13,6 +22,8 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
   const plan = usePlanWorkspace(bridge)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [filter, setFilter] = useState<PlanFilter>('all')
+  const [category, setCategory] = useState('wrong')
+  const [note, setNote] = useState('')
 
   const selectedShot = useMemo(() => {
     if (!plan.snapshot || !selectedNodeId?.startsWith('shot:')) return null
@@ -171,7 +182,8 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
                   <span className="plan-mark__dot" aria-hidden="true" />
                   <span className="plan-mark__body">
                     <span className="plan-mark__note">
-                      {statusLabel(entry.status)} · {entry.mark.category}
+                      {statusLabel(entry.status)} ·{' '}
+                      {CATEGORY_LABELS[entry.mark.category] ?? entry.mark.category}
                     </span>
                     <span className="plan-mark__meta">{entry.mark.note ?? '没有备注'}</span>
                   </span>
@@ -185,21 +197,49 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
                 </div>
               ))}
 
-              <div className="plan-drawer__actions">
-                <button
-                  type="button"
-                  className="plan-button"
-                  onClick={() =>
-                    void plan.addMark({
-                      target: { kind: 'shot', shotId: selectedShot.shotId },
-                      category: 'wrong',
-                      observedHash: selectedShot.hash,
-                    })
-                  }
-                >
-                  标记这个分镜
-                </button>
-              </div>
+              <form
+                className="plan-mark-form"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  if (!selectedShot) return
+                  void plan.addMark({
+                    target: { kind: 'shot', shotId: selectedShot.shotId },
+                    category,
+                    note: note.trim() || undefined,
+                    observedHash: selectedShot.hash,
+                  })
+                  setNote('')
+                }}
+              >
+                <span className="plan-drawer__section">对这张说一句</span>
+                <div className="plan-mark-form__row">
+                  {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className="plan-filter"
+                      aria-pressed={category === value}
+                      onClick={() => setCategory(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  className="plan-mark-form__input"
+                  aria-label="标记备注"
+                  placeholder="这张的光太硬了…"
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                />
+                <div className="plan-mark-form__row">
+                  <span className="plan-mark__meta">⌘ Enter 保存</span>
+                  <span className="plan-workspace__spacer" />
+                  <button type="submit" className="plan-mark-form__save">
+                    保存标记
+                  </button>
+                </div>
+              </form>
               <p className="plan-drawer__hint">标记写到 .viewer/plan-marks/，不改计划文件</p>
             </>
           ) : (

@@ -26,7 +26,7 @@ describe('PlanCanvas', () => {
     render(<PlanCanvas snapshot={snapshot} />)
     expect(screen.getByText('夏')).toBeInTheDocument()
     expect(screen.getByText('冬')).toBeInTheDocument()
-    expect(screen.getByText('声明 3 · 实际 2')).toBeInTheDocument()
+    expect(screen.getByText('⚠ 声明 3')).toBeInTheDocument()
   })
 
   it('titles the plan node with the revision and totals', () => {

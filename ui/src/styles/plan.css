@@ -1,14 +1,12 @@
-/* 生成计划覆盖层：只在计划表面打开时出现，不改变主工作区布局。 */
+/* 生成计划：节点图 + 素材抽屉。视觉基线来自 viewer.pen 的 U01/U03。 */
 
 .plan-overlay {
   position: fixed;
   inset: 0;
   z-index: 60;
   display: flex;
-  align-items: stretch;
-  justify-content: stretch;
-  padding: 24px;
-  background: rgb(0 0 0 / 32%);
+  padding: 0;
+  background: var(--md-surface, var(--viewer-canvas));
 }
 
 .plan-overlay__panel {
@@ -18,24 +16,23 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  background: var(--md-surface, #fbfbfb);
-  border-radius: 16px;
-  box-shadow: 0 18px 48px rgb(0 0 0 / 28%);
+  background: var(--md-surface, var(--viewer-canvas));
 }
 
 .plan-overlay__close {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 2;
+  top: 14px;
+  right: 16px;
+  z-index: 3;
   padding: 6px 14px;
-  color: var(--md-on-surface, #1b1b1f);
-  background: var(--md-surface-container, #eef2f7);
-  border: none;
+  color: var(--md-on-surface-variant, var(--viewer-text-secondary));
+  background: var(--md-surface-container, var(--viewer-surface-high));
+  border: 1px solid var(--md-outline-variant, var(--viewer-border));
   border-radius: 999px;
   cursor: pointer;
 }
 
+/* ---------- 顶部 ---------- */
 .plan-workspace {
   display: flex;
   flex: 1;
@@ -45,27 +42,108 @@
 
 .plan-workspace__bar {
   display: flex;
+  flex: 0 0 64px;
   gap: 16px;
   align-items: center;
-  padding: 16px 64px 12px 20px;
-  border-bottom: 1px solid var(--md-outline-variant, #e3e6ec);
+  padding: 0 64px 0 20px;
+  background: var(--md-surface, var(--viewer-surface));
+  border-bottom: 1px solid var(--md-outline-variant, var(--viewer-border));
 }
 
-.plan-workspace__picker {
+.plan-workspace__switcher {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 246px;
+  height: 44px;
+  padding: 0 12px;
+  background: var(--md-surface, var(--viewer-surface));
+  border: 1px solid var(--md-outline-variant, var(--viewer-border));
+  border-radius: 12px;
+}
+
+.plan-workspace__switcher-icon {
+  display: grid;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  color: var(--viewer-on-primary-container);
+  place-items: center;
+}
+
+.plan-workspace__switcher-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.plan-workspace__title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--md-on-surface, var(--viewer-text));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-workspace__subtitle {
+  font-size: 10px;
+  color: var(--viewer-text-tertiary);
+}
+
+.plan-workspace__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.plan-workspace__counts {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--viewer-text-secondary);
+}
+
+.plan-workspace__producer {
+  font-size: 10px;
+  color: var(--viewer-text-tertiary);
+}
+
+.plan-workspace__spacer {
+  flex: 1;
+}
+
+.plan-workspace__filters {
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
-.plan-workspace__meta {
-  font-variant-numeric: tabular-nums;
+.plan-filter {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 11px;
+  color: var(--viewer-text-secondary);
+  cursor: pointer;
+  background: var(--viewer-surface);
+  border: 1px solid var(--md-outline-variant, var(--viewer-border));
+  border-radius: 15px;
 }
 
-.plan-workspace__stale {
-  margin-left: auto;
-  color: var(--md-on-surface-variant, #54565f);
+.plan-filter[aria-pressed='true'] {
+  color: var(--viewer-on-primary-container);
+  background: var(--viewer-surface-low);
+  border-color: var(--viewer-on-primary-container);
 }
 
+.plan-filter__count {
+  font-weight: 600;
+}
+
+/* ---------- 主体 ---------- */
 .plan-workspace__body {
   display: flex;
   flex: 1;
@@ -76,116 +154,398 @@
   position: relative;
   flex: 1;
   min-width: 0;
-  min-height: 420px;
-  height: 100%;
+  min-height: 0;
+  background: var(--viewer-canvas);
 }
 
 .plan-workspace__empty,
 .plan-workspace__error {
   margin: 32px;
-  color: var(--md-on-surface-variant, #54565f);
+  font-size: 12px;
+  color: var(--viewer-text-secondary);
 }
 
-.plan-drawer {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 320px;
-  padding: 18px;
-  overflow-y: auto;
-  border-left: 1px solid var(--md-outline-variant, #e3e6ec);
-}
-
-.plan-drawer__prompt {
-  margin: 0;
-  padding: 12px;
-  overflow-x: auto;
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  background: var(--md-surface-container, #eef2f7);
-  border-radius: 10px;
-}
-
-.plan-drawer__marks {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.plan-drawer__marks li {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  background: var(--md-surface-container, #eef2f7);
-  border-radius: 8px;
-}
-
-/* 节点卡片 */
+/* ---------- 节点 ---------- */
 .plan-node {
-  position: relative;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 4px;
   width: 100%;
   height: 100%;
-  padding: 10px 12px;
-  color: var(--md-on-surface, #1b1b1f);
-  background: var(--md-surface, #fbfbfb);
-  border: 1px solid var(--md-outline-variant, #d7dbe3);
-  border-radius: 12px;
+  padding: 14px 16px;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--viewer-text);
+  background: var(--viewer-surface);
+  border: 1px solid var(--md-outline-variant, var(--viewer-border));
+  border-radius: 14px;
 }
 
 .plan-node--plan {
-  background: var(--md-primary-container, #e8f9ff);
+  flex-direction: row;
+  gap: 14px;
+  align-items: center;
 }
 
-.plan-node--group {
-  font-weight: 600;
+.plan-node__icon {
+  display: grid;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  color: var(--viewer-on-primary-container);
+  background: var(--viewer-surface-low);
+  border-radius: 12px;
+  place-items: center;
 }
 
-.plan-node--shot {
+.plan-node__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plan-node__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.plan-node__row--footer {
+  margin-top: auto;
+}
+
+.plan-node__dot {
+  width: 8px;
+  height: 8px;
+  background: var(--viewer-on-primary-container);
+  border-radius: 50%;
+}
+
+.plan-node__label {
   font-size: 13px;
+  font-weight: 600;
+  color: var(--viewer-text);
 }
 
-/* 描边表示生成状态：细=最新，粗=计划已变，虚线=未生成 */
-.plan-node--shot[data-generation='current'] {
-  border-width: 1px;
-}
-
-.plan-node--shot[data-generation='stale'] {
-  border-width: 3px;
-  border-color: #b3261e;
-}
-
-.plan-node--shot[data-generation='ungenerated'] {
-  color: var(--md-on-surface-variant, #6b6f78);
-  border-style: dashed;
-}
-
-.plan-node--affected {
-  box-shadow: 0 0 0 2px rgb(103 80 164 / 28%);
-}
-
-.plan-node__detail {
+.plan-node__meta {
   overflow: hidden;
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--md-on-surface-variant, #54565f);
+  font-size: 11px;
+  color: var(--viewer-text-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.plan-node__badge {
-  position: absolute;
-  top: -6px;
-  right: -6px;
+.plan-node__meta--dim {
+  font-size: 10px;
+  color: var(--viewer-text-tertiary);
+}
+
+.plan-node__meta--clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.plan-node__thumbs {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.plan-node__thumb {
+  width: 46px;
+  height: 46px;
+  background: var(--viewer-surface-high);
+  border-radius: 8px;
+}
+
+.plan-node__thumb--shot {
+  width: 100%;
+  height: 56px;
+  margin-bottom: 6px;
+}
+
+.plan-node__strong {
   font-size: 12px;
+  font-weight: 600;
+}
+
+.plan-node__chip {
+  padding: 2px 8px;
+  font-size: 10px;
+  border-radius: 999px;
+}
+
+.plan-node__chip--warn {
+  margin-left: auto;
+  color: var(--viewer-warning);
+  background: var(--viewer-warning-container);
+}
+
+.plan-node--mismatch {
+  border-color: var(--viewer-danger);
+}
+
+.plan-node--affected {
+  box-shadow: 0 0 0 2px var(--viewer-danger-selection-soft);
+}
+
+.plan-node--shot {
+  padding: 8px;
+}
+
+.plan-shot--stale {
+  border: 2px solid var(--viewer-danger);
+}
+
+.plan-shot--ungenerated {
+  color: var(--viewer-text-tertiary);
+  border-style: dashed;
+}
+
+.plan-node__state {
+  margin-top: auto;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.plan-node__state--current {
+  color: var(--viewer-success);
+}
+
+.plan-node__state--stale {
+  color: var(--viewer-danger);
+}
+
+.plan-node__state--ungenerated {
+  color: var(--viewer-text-tertiary);
+}
+
+/* ---------- 抽屉 ---------- */
+.plan-drawer {
+  display: flex;
+  flex: 0 0 368px;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 24px;
+  overflow-y: auto;
+  background: var(--viewer-surface);
+  border-left: 1px solid var(--md-outline-variant, var(--viewer-border));
+}
+
+.plan-drawer__head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.plan-drawer__id {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.plan-drawer__intent {
+  font-size: 12px;
+  color: var(--viewer-text-secondary);
+}
+
+.plan-drawer__section {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--viewer-text-tertiary);
+}
+
+.plan-segment {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 0;
+}
+
+.plan-segment__tag {
+  flex: 0 0 76px;
+  padding: 4px 0;
+  font-size: 9px;
+  font-weight: 500;
+  text-align: center;
+  border-radius: 6px;
+}
+
+.plan-segment__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--viewer-text);
+}
+
+.plan-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--viewer-surface-high);
+  border-radius: 12px;
+}
+
+.plan-refs {
+  display: flex;
+  gap: 10px;
+}
+
+.plan-ref {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 98px;
+}
+
+.plan-ref__img {
+  height: 50px;
+  background: var(--viewer-surface-high);
+  border-radius: 6px;
+}
+
+.plan-ref__row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--viewer-text-secondary);
+}
+
+.plan-ref__fan {
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--viewer-accent-text);
+  background: var(--viewer-accent-soft);
+  border-radius: 999px;
+}
+
+.plan-kv {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+}
+
+.plan-kv__key {
+  flex: 0 0 44px;
+  color: var(--viewer-text-tertiary);
+}
+
+.plan-kv__value {
+  font-weight: 500;
+}
+
+.plan-mark {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--viewer-surface-high);
+  border-radius: 10px;
+}
+
+.plan-mark__dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  background: var(--viewer-accent-text);
+  border-radius: 50%;
+}
+
+.plan-mark__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plan-mark__note {
+  font-size: 11px;
+  color: var(--viewer-text);
+}
+
+.plan-mark__meta {
+  font-size: 10px;
+  color: var(--viewer-text-tertiary);
+}
+
+.plan-drawer__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.plan-button {
+  display: inline-flex;
+  flex: 1;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--viewer-surface);
+  cursor: pointer;
+  background: var(--viewer-on-primary-container);
+  border: none;
+  border-radius: 12px;
+}
+
+.plan-button:disabled {
+  color: var(--viewer-text-tertiary);
+  cursor: not-allowed;
+  background: var(--viewer-surface-container);
+}
+
+.plan-drawer__hint {
+  margin: 0;
+  font-size: 10px;
+  color: var(--viewer-text-tertiary);
+  text-align: center;
+}
+
+.plan-mark-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--viewer-surface-lowest);
+  border: 1px solid var(--md-outline-variant, var(--viewer-border));
+  border-radius: 14px;
+}
+
+.plan-mark-form__input {
+  height: 40px;
+  padding: 0 12px;
+  font-size: 11px;
+  background: var(--viewer-surface);
+  border: 1px solid var(--md-outline-variant, var(--viewer-border));
+  border-radius: 10px;
+}
+
+.plan-mark-form__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.plan-mark-form__save {
+  height: 34px;
+  padding: 0 18px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--viewer-surface);
+  cursor: pointer;
+  background: var(--viewer-on-primary-container);
+  border: none;
+  border-radius: 10px;
 }

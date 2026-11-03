@@ -14,7 +14,17 @@ function bridge(): PlanBridge {
       blake3: 'hash',
       groups: [{ id: 'g1', label: '夏', declaredCount: 3, actualCount: 2, brief: '轻薄夏装' }],
       shots: [
-        { shotId: 's1', groupId: 'g1', prompt: '轻薄夏装\n海边', hash: 'h1', references: ['a'] },
+        {
+          shotId: 's1',
+          groupId: 'g1',
+          prompt: '轻薄夏装\n海边',
+          hash: 'h1',
+          references: ['a'],
+          segments: [
+            { kind: 'group', label: '组', path: 'groups.brief', text: '轻薄夏装' },
+            { kind: 'shot', label: '分镜', path: 'shots.delta', text: '海边' },
+          ],
+        },
       ],
       warnings: [],
       diff: null,
@@ -43,15 +53,19 @@ function bridge(): PlanBridge {
 describe('PlanWorkspace', () => {
   it('loads the plan and shows revision, counts and mark states', async () => {
     render(<PlanWorkspace bridge={bridge()} />)
-    await waitFor(() => expect(screen.getAllByText('r4 · 1 组 / 1 张').length).toBeGreaterThan(0))
+    await waitFor(() => expect(screen.getByText('1 组 · 1 张')).toBeInTheDocument())
     expect(screen.getByText('待处理 0 · 已改 1 · 已换 0 · 已失效 0')).toBeInTheDocument()
+    expect(screen.getAllByText('autumn').length).toBeGreaterThan(0)
   })
 
   it('opens the drawer for the selected shot', async () => {
     render(<PlanWorkspace bridge={bridge()} />)
     await waitFor(() => expect(screen.getByText('s1')).toBeInTheDocument())
     fireEvent.click(screen.getByText('s1'))
-    await waitFor(() => expect(screen.getByText('参考图 1 张')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('参考图 · 1 张')).toBeInTheDocument())
+    const drawer = screen.getByTestId('plan-drawer')
+    expect(drawer).toHaveTextContent('轻薄夏装')
+    expect(drawer).toHaveTextContent('海边')
   })
 
   it('writes a mark for the selected shot', async () => {

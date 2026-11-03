@@ -13,12 +13,22 @@ pub struct PlanGroupDto {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PlanSegmentDto {
+    pub kind: String,
+    pub label: String,
+    pub path: String,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlanShotDto {
     pub shot_id: String,
     pub group_id: String,
     pub prompt: String,
     pub hash: String,
     pub references: Vec<String>,
+    pub segments: Vec<PlanSegmentDto>,
     pub generation: viewer_application::plan::ShotGeneration,
 }
 

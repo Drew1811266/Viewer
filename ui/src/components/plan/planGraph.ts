@@ -8,12 +8,20 @@ export interface PlanSnapshotGroup {
   brief: string
 }
 
+export interface PlanSegment {
+  kind: 'group' | 'value' | 'shot'
+  label: string
+  path: string
+  text: string
+}
+
 export interface PlanSnapshotShot {
   shotId: string
   groupId: string
   prompt: string
   hash: string
   references: string[]
+  segments?: PlanSegment[]
   generation?: 'ungenerated' | 'current' | 'stale'
 }
 
@@ -37,10 +45,14 @@ export interface PlanGraphNode {
   countMismatch: boolean
   affected: boolean
   generation?: 'ungenerated' | 'current' | 'stale'
-  width: number
-  height: number
+  declared?: number
+  actual?: number
+  generated?: number
+  brief?: string
   x: number
   y: number
+  width: number
+  height: number
 }
 
 export interface PlanGraphEdge {
@@ -54,9 +66,9 @@ export interface PlanGraph {
   edges: PlanGraphEdge[]
 }
 
-const PLAN_NODE = { width: 260, height: 76 }
-const GROUP_NODE = { width: 240, height: 84 }
-const SHOT_NODE = { width: 200, height: 60 }
+const PLAN_NODE = { width: 300, height: 88 }
+const GROUP_NODE = { width: 300, height: 168 }
+const SHOT_NODE = { width: 124, height: 116 }
 
 export function buildPlanGraph(snapshot: PlanSnapshot): PlanGraph {
   const affected = new Set(snapshot.diff?.affectedShots ?? [])
@@ -79,18 +91,19 @@ export function buildPlanGraph(snapshot: PlanSnapshot): PlanGraph {
 
   for (const group of snapshot.groups) {
     const groupId = `group:${group.id}`
+    const groupShots = snapshot.shots.filter((shot) => shot.groupId === group.id)
+    const generated = groupShots.filter((shot) => shot.generation === 'current').length
     nodes.push({
       id: groupId,
       kind: 'group',
       label: group.label,
-      detail:
-        group.declaredCount === group.actualCount
-          ? `${group.actualCount} 张`
-          : `声明 ${group.declaredCount} · 实际 ${group.actualCount}`,
+      detail: group.brief,
+      brief: group.brief,
+      declared: group.declaredCount,
+      actual: group.actualCount,
+      generated,
       countMismatch: group.declaredCount !== group.actualCount,
-      affected: snapshot.shots.some(
-        (shot) => shot.groupId === group.id && affected.has(shot.shotId),
-      ),
+      affected: groupShots.some((shot) => affected.has(shot.shotId)),
       ...GROUP_NODE,
       x: 0,
       y: 0,
@@ -105,7 +118,7 @@ export function buildPlanGraph(snapshot: PlanSnapshot): PlanGraph {
       id: shotNodeId,
       kind: 'shot',
       label: shot.shotId,
-      detail: shot.prompt.split('\n')[0] ?? '',
+      detail: shot.prompt.split('\n').at(-1) ?? '',
       countMismatch: false,
       affected: affected.has(shot.shotId),
       generation: shot.generation ?? 'ungenerated',

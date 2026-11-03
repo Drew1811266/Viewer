@@ -4,7 +4,9 @@ use viewer_application::plan::{compose_plan, diff_plans, shot_generation, valida
 use viewer_domain::plan::{PlanId, PlanMarks};
 use viewer_infrastructure::plan::{AssetStore, MarksStore, PlanRepository, RunRepository};
 
-use crate::dto::plan::{PlanGroupDto, PlanMarksDto, PlanShotDto, PlanSnapshotDto, PlanSummaryDto};
+use crate::dto::plan::{
+    PlanGroupDto, PlanMarksDto, PlanSegmentDto, PlanShotDto, PlanSnapshotDto, PlanSummaryDto,
+};
 
 #[derive(Debug)]
 pub enum PlanViewError {
@@ -88,6 +90,11 @@ pub fn plan_snapshot(root: &Path, plan_id: &str) -> Result<PlanSnapshotDto, Plan
                 .iter()
                 .map(|reference| reference.asset_id.as_hex())
                 .collect(),
+            segments: shot
+                .segments
+                .iter()
+                .map(|segment| segment_dto(&published.plan, segment))
+                .collect(),
             generation: generation
                 .get(&shot.shot_id)
                 .copied()
@@ -153,6 +160,48 @@ pub fn write_marks(root: &Path, marks: PlanMarks) -> Result<(), PlanViewError> {
         .write(&marks)
         .map(|_| ())
         .map_err(|error| PlanViewError::Invalid(error.to_string()))
+}
+
+fn segment_dto(
+    plan: &viewer_domain::plan::PlanDocument,
+    segment: &viewer_application::plan::PromptSegment,
+) -> PlanSegmentDto {
+    use viewer_application::plan::SegmentSource;
+    match &segment.source {
+        SegmentSource::Group => PlanSegmentDto {
+            kind: "group".to_owned(),
+            label: "组".to_owned(),
+            path: "groups.brief".to_owned(),
+            text: segment.text.clone(),
+        },
+        SegmentSource::Value { dimension, value } => {
+            let dimension_label = plan
+                .dimensions
+                .iter()
+                .find(|candidate| &candidate.id == dimension)
+                .map(|candidate| candidate.label.clone())
+                .unwrap_or_else(|| dimension.clone());
+            let value_label = plan
+                .dimensions
+                .iter()
+                .find(|candidate| &candidate.id == dimension)
+                .and_then(|candidate| candidate.values.iter().find(|v| &v.id == value))
+                .map(|candidate| candidate.label.clone())
+                .unwrap_or_else(|| value.clone());
+            PlanSegmentDto {
+                kind: "value".to_owned(),
+                label: format!("{dimension_label} · {value_label}"),
+                path: format!("dimensions.{dimension}.values.{value}"),
+                text: segment.text.clone(),
+            }
+        }
+        SegmentSource::Shot => PlanSegmentDto {
+            kind: "shot".to_owned(),
+            label: "分镜".to_owned(),
+            path: "shots.delta".to_owned(),
+            text: segment.text.clone(),
+        },
+    }
 }
 
 fn parse_plan_id(raw: &str) -> Result<PlanId, PlanViewError> {

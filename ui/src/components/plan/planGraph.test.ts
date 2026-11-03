@@ -51,7 +51,9 @@ describe('buildPlanGraph', () => {
     const graph = buildPlanGraph(snapshot)
     const summer = graph.nodes.find((node) => node.id === 'group:g1')
     expect(summer?.countMismatch).toBe(true)
-    expect(summer?.detail).toBe('声明 3 · 实际 2')
+    expect(summer?.declared).toBe(3)
+    expect(summer?.actual).toBe(2)
+    expect(summer?.brief).toBe('轻薄夏装')
     expect(graph.nodes.find((node) => node.id === 'group:g2')?.countMismatch).toBe(false)
   })
 

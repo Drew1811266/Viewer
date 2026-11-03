@@ -653,3 +653,85 @@
 .plan-affected__chevron {
   color: var(--viewer-text-tertiary);
 }
+
+/* ---------- 组内下钻 ---------- */
+.plan-group {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.plan-group__bar {
+  display: flex;
+  flex: 0 0 56px;
+  gap: 12px;
+  align-items: center;
+  padding: 0 20px;
+  background: var(--viewer-surface);
+  border-bottom: 1px solid var(--viewer-border);
+}
+
+.plan-group__back,
+.plan-group__breadcrumb {
+  font-size: 11px;
+  color: var(--viewer-text-secondary);
+}
+
+.plan-group__back {
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.plan-group__grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px;
+  align-content: start;
+  padding: 20px;
+  overflow-y: auto;
+  background: var(--viewer-canvas);
+}
+
+.plan-group__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: var(--viewer-surface);
+  border: 1px solid var(--viewer-border);
+  border-radius: 16px;
+}
+
+.plan-group__card.plan-shot--stale {
+  border: 2px solid var(--viewer-danger);
+}
+
+.plan-group__card.plan-shot--ungenerated {
+  border-style: dashed;
+}
+
+.plan-group__preview {
+  height: 140px;
+  background: var(--viewer-surface-high);
+  border-radius: 10px;
+}
+
+.plan-group__id {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.plan-group__intent {
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--viewer-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

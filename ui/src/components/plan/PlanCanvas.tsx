@@ -90,6 +90,7 @@ const nodeTypes = { plan: PlanCard, group: GroupCard, shot: ShotCard }
 
 export interface PlanCanvasProps {
   snapshot: PlanSnapshot
+  onDrillGroup?: (groupId: string) => void
   filter?: PlanFilter
   selectedNodeId?: string | null
   onSelectNode?: (nodeId: string) => void
@@ -100,6 +101,7 @@ export function PlanCanvas({
   filter = 'all',
   selectedNodeId,
   onSelectNode,
+  onDrillGroup,
 }: PlanCanvasProps) {
   const graph = useMemo(() => buildPlanGraph(snapshot, filter), [snapshot, filter])
 
@@ -150,7 +152,13 @@ export function PlanCanvas({
         fitView
         minZoom={0.4}
         maxZoom={1.6}
-        onNodeClick={(_, node) => onSelectNode?.(node.id)}
+        onNodeClick={(_, node) => {
+          if (node.id.startsWith('group:') && onDrillGroup) {
+            onDrillGroup(node.id.slice('group:'.length))
+            return
+          }
+          onSelectNode?.(node.id)
+        }}
       >
         <Background gap={24} />
         <Controls showInteractive={false} />

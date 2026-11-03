@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { PlanBridge } from '../../api/plan'
 import { PlanCanvas } from './PlanCanvas'
+import { PlanGroupView } from './PlanGroupView'
 import { buildRedoList, type PlanFilter, type PlanSnapshot, redoListDocument } from './planGraph'
 import { STATE_LABELS, statusLabel } from './planLabels'
 import { stalePanelCopy, usePlanWorkspace } from './usePlanWorkspace'
@@ -22,6 +23,7 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
   const plan = usePlanWorkspace(bridge)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [filter, setFilter] = useState<PlanFilter>('all')
+  const [drillGroupId, setDrillGroupId] = useState<string | null>(null)
   const [category, setCategory] = useState('wrong')
   const [note, setNote] = useState('')
 
@@ -138,12 +140,23 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
       ) : null}
 
       <div className="plan-workspace__body">
-        {plan.snapshot ? (
+        {plan.snapshot && drillGroupId ? (
+          <PlanGroupView
+            snapshot={plan.snapshot}
+            groupId={drillGroupId}
+            onBack={() => setDrillGroupId(null)}
+            onSelectShot={(shotId) => {
+              setSelectedNodeId(`shot:${shotId}`)
+              setDrillGroupId(null)
+            }}
+          />
+        ) : plan.snapshot ? (
           <PlanCanvas
             snapshot={plan.snapshot}
             filter={filter}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
+            onDrillGroup={setDrillGroupId}
           />
         ) : (
           <p className="plan-workspace__empty">

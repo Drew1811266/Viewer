@@ -103,6 +103,19 @@ describe('PlanWorkspace', () => {
     )
   })
 
+  it('drills into a group and comes back', async () => {
+    render(<PlanWorkspace bridge={bridge()} />)
+    await waitFor(() => expect(screen.getByTestId('plan-canvas')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText('夏', { selector: '.plan-node__label' }))
+    const groupView = await screen.findByTestId('plan-group')
+    expect(groupView).toHaveTextContent('秋季形象片 / 夏')
+    expect(groupView).toHaveTextContent('1 张 · 已生成 0/1')
+
+    fireEvent.click(screen.getByText('返回画布', { exact: false }))
+    await waitFor(() => expect(screen.getByTestId('plan-canvas')).toBeInTheDocument())
+  })
+
   it('opens the drawer for the selected shot', async () => {
     render(<PlanWorkspace bridge={bridge()} />)
     await waitFor(() => expect(screen.getByText('s1')).toBeInTheDocument())

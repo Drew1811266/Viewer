@@ -147,7 +147,11 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
               <div className="plan-refs">
                 {selectedShot.references.map((reference) => (
                   <div className="plan-ref" key={reference}>
-                    <span className="plan-ref__img" aria-hidden="true" />
+                    <img
+                      className="plan-ref__img"
+                      src={`plan-ref://localhost/${reference}`}
+                      alt={`参考图 ${reference.slice(0, 6)}`}
+                    />
                     <span className="plan-ref__row">
                       <span>{reference.slice(0, 6)}</span>
                     </span>

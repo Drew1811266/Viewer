@@ -17,6 +17,7 @@ pub mod image_render_events;
 pub mod image_render_runtime;
 pub mod markdown;
 pub mod operation_runtime;
+mod plan_protocol;
 pub mod state;
 pub mod video_events;
 #[cfg(all(target_os = "macos", feature = "video-feasibility"))]
@@ -233,6 +234,8 @@ pub fn application_context() -> tauri::Context<tauri::Wry> {
 pub fn run() {
     let registry = Arc::new(ImageArtifactRegistry::default());
     let active_image_session = image_protocol::ActiveImageSession::default();
+    let active_plan_root = plan_protocol::ActivePlanRoot::default();
+    let runtime_active_plan_root = active_plan_root.clone();
     let image_resolver = Arc::new(image_protocol::ImageProtocolResolver::new(
         active_image_session.clone(),
         Arc::clone(&registry),
@@ -243,6 +246,12 @@ pub fn run() {
         .plugin(navigation_guard())
         .plugin(tauri_plugin_dialog::init())
         .manage(Arc::clone(&image_resolver))
+        .register_asynchronous_uri_scheme_protocol(
+            "plan-ref",
+            move |_context, request, responder| {
+                plan_protocol::handle_request(&active_plan_root, &request, responder);
+            },
+        )
         .register_asynchronous_uri_scheme_protocol(
             "viewer-image",
             move |_context, request, responder| {
@@ -380,6 +389,7 @@ pub fn run() {
                 Arc::clone(&runtime_registry),
                 runtime_active_image_session.clone(),
                 video_probe,
+                runtime_active_plan_root.clone(),
             ));
             let video_events: Arc<dyn video_runtime::VideoEventPort> = Arc::new(
                 video_events::TauriVideoEventEmitter::new(app.handle().clone()),

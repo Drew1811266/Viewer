@@ -360,6 +360,7 @@ pub struct DesktopRuntime {
     image_factory: Arc<dyn DesktopImageFactory>,
     image_registry: Arc<ImageArtifactRegistry>,
     active_image_session: ActiveImageSession,
+    plan_root: crate::plan_protocol::ActivePlanRoot,
     text_reader: Arc<dyn TextPreviewPort>,
     text_writer: Arc<dyn TextSavePort>,
     clock: Arc<dyn ClockPort>,
@@ -421,6 +422,7 @@ impl DesktopRuntime {
             Arc::new(SystemClock),
             Arc::new(SessionMarkerProjectionFactory),
             video_probe,
+            crate::plan_protocol::ActivePlanRoot::default(),
         )
     }
 
@@ -463,6 +465,7 @@ impl DesktopRuntime {
             Arc::new(SystemClock),
             Arc::new(SessionMarkerProjectionFactory),
             Arc::new(UnavailableVideoProbe),
+            crate::plan_protocol::ActivePlanRoot::default(),
         )
     }
 
@@ -476,6 +479,7 @@ impl DesktopRuntime {
         image_registry: Arc<ImageArtifactRegistry>,
         active_image_session: ActiveImageSession,
         video_probe: Arc<dyn VideoMetadataProbe>,
+        plan_root: crate::plan_protocol::ActivePlanRoot,
     ) -> Self {
         Self::new_with_runtime_services(
             cache_base,
@@ -488,6 +492,7 @@ impl DesktopRuntime {
             Arc::new(SystemClock),
             Arc::new(SessionMarkerProjectionFactory),
             video_probe,
+            plan_root,
         )
     }
 
@@ -511,6 +516,7 @@ impl DesktopRuntime {
             Arc::new(SystemClock),
             marker_projection_factory,
             Arc::new(UnavailableVideoProbe),
+            crate::plan_protocol::ActivePlanRoot::default(),
         )
     }
 
@@ -526,6 +532,7 @@ impl DesktopRuntime {
         clock: Arc<dyn ClockPort>,
         marker_projection_factory: Arc<dyn DesktopMarkerProjectionFactory>,
         video_probe: Arc<dyn VideoMetadataProbe>,
+        plan_root: crate::plan_protocol::ActivePlanRoot,
     ) -> Self {
         let coordinator = Arc::new(TaskCoordinator::default());
         let derived_scheduler = Arc::new(DerivedWorkScheduler::default());
@@ -541,6 +548,7 @@ impl DesktopRuntime {
             image_factory,
             image_registry,
             active_image_session,
+            plan_root,
             text_reader: Arc::new(TextPreviewReader),
             text_writer: Arc::new(AtomicTextWriter),
             clock,

@@ -404,7 +404,9 @@
 }
 
 .plan-ref__img {
+  width: 100%;
   height: 50px;
+  object-fit: cover;
   background: var(--viewer-surface-high);
   border-radius: 6px;
 }

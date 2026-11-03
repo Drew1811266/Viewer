@@ -2,7 +2,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 
-use super::{PlanRepository, RepoError};
+use super::{PlanRepository, PublishedPlan, RepoError};
 use viewer_application::plan::compose_plan;
 use viewer_domain::plan::PlanId;
 
@@ -63,10 +63,7 @@ pub fn run_plan_reader<R: Read, W: Write>(input: R, mut output: W) -> bool {
     }
 }
 
-fn current(repository: &PlanRepository, plan_id: Option<&str>) -> Result<Value, (String, String)> {
-    let plan_id = plan_id.ok_or_else(|| ("integrity".to_owned(), "planId is required".to_owned()))?;
-    let parsed = PlanId::parse(plan_id).map_err(|error| (error.code.as_str().to_owned(), error.message))?;
-    let published = repository.current(&parsed).map_err(repo_error)?;
+pub(crate) fn compose_payload(published: &PublishedPlan) -> Value {
     let composed = compose_plan(&published.plan);
     let shots: Vec<Value> = composed
         .iter()
@@ -80,7 +77,7 @@ fn current(repository: &PlanRepository, plan_id: Option<&str>) -> Result<Value, 
         })
         .collect();
 
-    Ok(json!({
+    json!({
         "status": "ok",
         "planId": published.plan.plan_id.as_str(),
         "revision": published.plan.revision.get(),
@@ -91,7 +88,16 @@ fn current(repository: &PlanRepository, plan_id: Option<&str>) -> Result<Value, 
             "message": entry.message,
         })).collect::<Vec<_>>(),
         "shots": shots,
-    }))
+    })
+}
+
+fn current(repository: &PlanRepository, plan_id: Option<&str>) -> Result<Value, (String, String)> {
+    let plan_id = plan_id.ok_or_else(|| ("integrity".to_owned(), "planId is required".to_owned()))?;
+    let parsed = PlanId::parse(plan_id).map_err(|error| (error.code.as_str().to_owned(), error.message))?;
+    let published = repository.current(&parsed).map_err(repo_error)?;
+    let mut payload = compose_payload(&published);
+    payload["status"] = Value::String("ok".to_owned());
+    Ok(payload)
 }
 
 fn list(repository: &PlanRepository) -> Value {

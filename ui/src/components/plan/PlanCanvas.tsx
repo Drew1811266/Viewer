@@ -5,6 +5,7 @@ import {
   Handle,
   type Node,
   type NodeProps,
+  PanOnScrollMode,
   Position,
   ReactFlow,
 } from '@xyflow/react'
@@ -170,6 +171,12 @@ export function PlanCanvas({
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable
+        // 鼠标拖拽平移画布；双指滑动平移；双指捏合缩放
+        panOnDrag
+        panOnScroll
+        panOnScrollMode={PanOnScrollMode.Free}
+        zoomOnScroll={false}
+        zoomOnPinch
         fitView
         minZoom={0.4}
         maxZoom={1.6}

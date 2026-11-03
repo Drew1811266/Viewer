@@ -30,6 +30,14 @@ describe('PlanCanvas', () => {
     expect(screen.getByText('⚠ 声明 3')).toBeInTheDocument()
   })
 
+  it('maps trackpad gestures to pan and pinch-zoom', () => {
+    const source = readFileSync('src/components/plan/PlanCanvas.tsx', 'utf8')
+    expect(source).toContain('panOnScroll')
+    expect(source).toContain('zoomOnPinch')
+    expect(source).toContain('zoomOnScroll={false}')
+    expect(source).toContain('panOnDrag')
+  })
+
   it('wires connectors as bezier curves rather than stepped lines', () => {
     const source = readFileSync('src/components/plan/PlanCanvas.tsx', 'utf8')
     expect(source).toContain("type: 'default'")

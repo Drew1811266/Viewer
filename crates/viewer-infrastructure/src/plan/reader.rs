@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use std::io::{Read, Write};
 
 use super::{PlanRepository, PublishedPlan, RepoError};
-use viewer_application::plan::compose_plan;
+use viewer_application::plan::{compose_plan, diff_plans};
 use viewer_domain::plan::PlanId;
 
 pub const READER_PROTOCOL_V1: &str = "viewer.plan.reader/1";
@@ -66,7 +66,10 @@ pub fn run_plan_reader<R: Read, W: Write>(input: R, mut output: W) -> bool {
     }
 }
 
-pub(crate) fn compose_payload(published: &PublishedPlan) -> Value {
+pub(crate) fn compose_payload(
+    published: &PublishedPlan,
+    previous: Option<&PublishedPlan>,
+) -> Value {
     let composed = compose_plan(&published.plan);
     let shots: Vec<Value> = composed
         .iter()
@@ -80,10 +83,13 @@ pub(crate) fn compose_payload(published: &PublishedPlan) -> Value {
         })
         .collect();
 
+    let diff = previous.map(|previous| diff_plans(&previous.plan, &published.plan));
+
     json!({
         "status": "ok",
         "planId": published.plan.plan_id.as_str(),
         "revision": published.plan.revision.get(),
+        "diff": diff,
         "blake3": published.blake3,
         "ignored": published.ignored.iter().map(|entry| json!({
             "revision": entry.revision,
@@ -100,7 +106,8 @@ fn current(repository: &PlanRepository, plan_id: Option<&str>) -> Result<Value, 
     let parsed =
         PlanId::parse(plan_id).map_err(|error| (error.code.as_str().to_owned(), error.message))?;
     let published = repository.current(&parsed).map_err(repo_error)?;
-    let mut payload = compose_payload(&published);
+    let previous = repository.previous(&parsed).ok().flatten();
+    let mut payload = compose_payload(&published, previous.as_ref());
     payload["status"] = Value::String("ok".to_owned());
     Ok(payload)
 }
@@ -250,6 +257,38 @@ mod tests {
         assert_eq!(response["revision"], 1);
         assert_eq!(response["shots"][0]["prompt"], "轻薄夏装\n海边逆光");
         assert!(response["shots"][0]["hash"].is_string());
+    }
+
+    #[test]
+    fn current_reports_the_diff_against_the_previous_revision() {
+        let directory = project_with_plan();
+        let mut second = {
+            let raw = std::fs::read(
+                directory
+                    .path()
+                    .join(".viewer/plans/incoming/autumn/1.json"),
+            )
+            .unwrap();
+            serde_json::from_slice::<viewer_domain::plan::PlanDocument>(&raw).unwrap()
+        };
+        second.revision = viewer_domain::plan::Revision::new(2);
+        second.shots[0].delta = Some("换成室内".to_owned());
+        std::fs::write(
+            directory
+                .path()
+                .join(".viewer/plans/incoming/autumn/2.json"),
+            serde_json::to_vec(&second).unwrap(),
+        )
+        .unwrap();
+
+        let request = format!(
+            r#"{{"protocolVersion":"viewer.plan.reader/1","operation":"current","projectRoot":"{}","planId":"autumn"}}"#,
+            directory.path().display()
+        );
+        let (ok, response) = run(&request);
+        assert!(ok, "{response}");
+        assert_eq!(response["revision"], 2);
+        assert_eq!(response["diff"]["affectedShots"][0], "s1");
     }
 
     #[test]

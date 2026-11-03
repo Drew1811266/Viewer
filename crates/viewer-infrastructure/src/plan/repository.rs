@@ -58,6 +58,10 @@ impl PlanRepository {
     }
 
     pub fn current(&self, plan_id: &PlanId) -> Result<PublishedPlan, RepoError> {
+        self.load(plan_id, 0)
+    }
+
+    fn load(&self, plan_id: &PlanId, skip: usize) -> Result<PublishedPlan, RepoError> {
         let directory = self.incoming_root.join(plan_id.as_str());
         if !directory.is_dir() {
             return Err(RepoError::UnknownPlan(plan_id.to_string()));
@@ -85,15 +89,19 @@ impl PlanRepository {
         revisions.sort_unstable_by(|left, right| right.cmp(left));
 
         let mut ignored = Vec::new();
+        let mut valid = 0;
         for revision in &revisions {
             let path = directory.join(format!("{revision}.json"));
             match self.read_and_validate(&path, *revision) {
                 Ok((plan, hash)) => {
-                    return Ok(PublishedPlan {
-                        plan,
-                        blake3: hash,
-                        ignored,
-                    });
+                    if valid == skip {
+                        return Ok(PublishedPlan {
+                            plan,
+                            blake3: hash,
+                            ignored,
+                        });
+                    }
+                    valid += 1;
                 }
                 Err((code, message)) => ignored.push(IgnoredRevision {
                     revision: *revision,
@@ -104,6 +112,14 @@ impl PlanRepository {
         }
 
         Err(RepoError::InvalidPlan(plan_id.to_string()))
+    }
+
+    pub fn previous(&self, plan_id: &PlanId) -> Result<Option<PublishedPlan>, RepoError> {
+        match self.load(plan_id, 1) {
+            Ok(published) => Ok(Some(published)),
+            Err(RepoError::InvalidPlan(_)) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     pub fn list(&self) -> Vec<PlanSummary> {
@@ -317,6 +333,43 @@ mod tests {
             .unwrap();
         assert_eq!(published.plan.revision.get(), 1);
         assert_eq!(published.ignored[0].code, "revision_mismatch");
+    }
+
+    #[test]
+    fn previous_skips_the_current_revision() {
+        let directory = setup();
+        for revision in 1..=2 {
+            write_revision(
+                directory.path(),
+                revision,
+                serde_json::to_string(&document(revision))
+                    .unwrap()
+                    .as_bytes(),
+            );
+        }
+        let repository = PlanRepository::open(directory.path()).unwrap();
+        let previous = repository
+            .previous(&PlanId::parse("autumn").unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(previous.plan.revision.get(), 1);
+    }
+
+    #[test]
+    fn previous_is_none_for_a_single_revision() {
+        let directory = setup();
+        write_revision(
+            directory.path(),
+            1,
+            serde_json::to_string(&document(1)).unwrap().as_bytes(),
+        );
+        let repository = PlanRepository::open(directory.path()).unwrap();
+        assert!(
+            repository
+                .previous(&PlanId::parse("autumn").unwrap())
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

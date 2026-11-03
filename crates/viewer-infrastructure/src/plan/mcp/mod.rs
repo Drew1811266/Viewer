@@ -315,7 +315,10 @@ fn tool_current(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
     let id = plan_id(arguments)?;
     let repository = PlanRepository::open(&root).map_err(|error| (-32603, error.to_string()))?;
     match repository.current(&id) {
-        Ok(published) => Ok((compose_payload(&published), false)),
+        Ok(published) => {
+            let previous = repository.previous(&id).ok().flatten();
+            Ok((compose_payload(&published, previous.as_ref()), false))
+        }
         Err(error) => Ok((json!({ "ok": false, "message": error.to_string() }), true)),
     }
 }

@@ -3,19 +3,20 @@ use std::io::{BufRead, Read, Write};
 use std::path::Path;
 
 use viewer_application::plan::{AssetIndexView, validate_plan};
-use viewer_domain::plan::{MAX_PLAN_BYTES, PlanDocument, PlanId, parse_plan};
+use viewer_domain::plan::{MAX_PLAN_BYTES, PlanDocument, PlanId, RunRecord, parse_plan};
 
-use super::{AssetStore, PlanRepository};
+use super::{AssetStore, PlanRepository, RunRepository};
 use crate::plan::reader::compose_payload;
 
 pub const SERVER_NAME: &str = "viewer-plan";
 
-const TOOL_NAMES: [&str; 7] = [
+const TOOL_NAMES: [&str; 8] = [
     "assets_import",
     "marks_read",
     "plan_current",
     "plan_list",
     "plan_rules",
+    "plan_run_record",
     "plan_validate",
     "plan_write",
 ];
@@ -133,6 +134,9 @@ fn description(name: &str) -> &'static str {
         "plan_list" => "List every valid plan in the project.",
         "marks_read" => "Return the user marks recorded by the desktop app.",
         "assets_import" => "Import a reference image and return its content-addressed assetId.",
+        "plan_run_record" => {
+            "Append an immutable generation run without changing the plan revision."
+        }
         _ => "",
     }
 }
@@ -152,6 +156,7 @@ fn call_tool(params: &Value) -> Result<Value, (i64, String)> {
         "plan_list" => tool_list(&arguments),
         "marks_read" => tool_marks(&arguments),
         "assets_import" => tool_import(&arguments),
+        "plan_run_record" => tool_run_record(&arguments),
         other => Err((-32602, format!("unknown tool `{other}`"))),
     };
 
@@ -353,6 +358,29 @@ fn tool_marks(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
     }
 }
 
+fn tool_run_record(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
+    let root = project_root(arguments)?;
+    let Some(candidate) = arguments.get("run") else {
+        return Err((-32602, "run is required".to_owned()));
+    };
+    let bytes = serde_json::to_vec(candidate)
+        .map_err(|error| (-32602, format!("run is not serializable: {error}")))?;
+    let record = RunRecord::parse(&bytes)
+        .map_err(|error| (-32602, format!("{}: {}", error.path, error.message)))?;
+    let repository = RunRepository::open(&root).map_err(|error| (-32603, error.to_string()))?;
+    match repository.record(&record) {
+        Ok(path) => Ok((
+            json!({
+                "ok": true,
+                "runId": record.run_id,
+                "path": path.to_string_lossy(),
+            }),
+            false,
+        )),
+        Err(error) => Ok((json!({ "ok": false, "message": error.to_string() }), true)),
+    }
+}
+
 fn tool_import(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
     let root = project_root(arguments)?;
     let source = arguments
@@ -420,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_advertises_the_seven_tools() {
+    fn tools_list_advertises_the_eight_tools() {
         let responses = call(&[json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" })]);
         let mut names: Vec<_> = responses[0]["result"]["tools"]
             .as_array()
@@ -437,6 +465,7 @@ mod tests {
                 "plan_current",
                 "plan_list",
                 "plan_rules",
+                "plan_run_record",
                 "plan_validate",
                 "plan_write",
             ]
@@ -550,6 +579,55 @@ mod tests {
         )]);
         assert!(responses[0].get("error").is_some(), "{}", responses[0]);
         assert!(!outside.path().join("plans/incoming/autumn/1.json").exists());
+    }
+
+    #[test]
+    fn plan_run_record_appends_without_changing_the_revision() {
+        let directory = tempfile::tempdir().unwrap();
+        let plan = json!({
+            "protocolVersion": "viewer.plan/1",
+            "planId": "autumn",
+            "revision": 1,
+            "createdAt": "2026-11-03T00:00:00Z",
+            "producer": { "name": "harness" },
+            "groups": [{ "id": "g1", "label": "夏", "declaredCount": 1, "brief": "b" }],
+            "shots": [{ "id": "s1", "groupId": "g1" }]
+        });
+        let run = json!({
+            "protocolVersion": "viewer.plan.run/1",
+            "runId": "run-1",
+            "planId": "autumn",
+            "planRevision": 1,
+            "createdAt": "2026-11-03T00:01:00Z",
+            "producer": { "name": "harness" },
+            "model": { "id": "seedream" },
+            "shots": []
+        });
+        let responses = call(&[
+            tool_call(
+                10,
+                "plan_write",
+                json!({ "projectRoot": directory.path(), "plan": plan }),
+            ),
+            tool_call(
+                11,
+                "plan_run_record",
+                json!({ "projectRoot": directory.path(), "run": run }),
+            ),
+            tool_call(
+                12,
+                "plan_current",
+                json!({ "projectRoot": directory.path(), "planId": "autumn" }),
+            ),
+        ]);
+        assert_eq!(payload(&responses[1])["ok"], true);
+        assert_eq!(payload(&responses[2])["revision"], 1);
+        assert!(
+            directory
+                .path()
+                .join(".viewer/plans/runs/autumn/run-1.json")
+                .is_file()
+        );
     }
 
     #[test]

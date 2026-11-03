@@ -81,6 +81,7 @@ prompt = group.brief
 | `plan_rules` | — | 节点规则与上限 |
 | `plan_validate` | `projectRoot`, `plan` | `{ok, errors[], warnings[]}` |
 | `plan_write` | `projectRoot`, `plan` | 写入新 revision；有错误时 `isError` |
+| `plan_run_record` | `projectRoot`, `run` | 追加一条生成记录，不改动 revision |
 | `plan_current` | `projectRoot`, `planId` | 当前有效 revision + 拼装结果 + hash |
 | `plan_list` | `projectRoot` | 每个计划的有效 revision |
 | `marks_read` | `projectRoot`, `planId` | 用户标记（无标记时为 `null`） |

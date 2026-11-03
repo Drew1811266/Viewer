@@ -33,6 +33,14 @@
 | [quality/2026-10-28-asr-model-research.md](quality/2026-10-28-asr-model-research.md) | Research draft | — |
 | [quality/2026-10-28-annotation-tools-research.md](quality/2026-10-28-annotation-tools-research.md) | Research draft | — |
 
+## 0.3.1 规划、研究与设计（0.3.2 为随后的优化与修复轮次）
+
+| Document | Status | Replaced by |
+| --- | --- | --- |
+| [superpowers/specs/2026-11-02-viewer-generation-plan-graph-design.md](superpowers/specs/2026-11-02-viewer-generation-plan-graph-design.md) | Active | — |
+| [quality/2026-11-02-procedural-graph-and-usd-research.md](quality/2026-11-02-procedural-graph-and-usd-research.md) | Active | — |
+| [quality/2026-11-03-node-graph-rendering-research.md](quality/2026-11-03-node-graph-rendering-research.md) | Active | — |
+
 ## 当前工程与治理文档
 
 | Document | Status | Replaced by |

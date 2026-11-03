@@ -107,6 +107,7 @@ pub fn plan_snapshot(root: &Path, plan_id: &str) -> Result<PlanSnapshotDto, Plan
 
     Ok(PlanSnapshotDto {
         plan_id: published.plan.plan_id.as_str().to_owned(),
+        title: published.plan.title.clone(),
         revision: published.plan.revision.get(),
         blake3: published.blake3,
         groups,

@@ -10,6 +10,7 @@ function bridge(): PlanBridge {
     list: vi.fn().mockResolvedValue([{ planId: 'autumn', revision: 4, ignored: 0 }]),
     snapshot: vi.fn().mockResolvedValue({
       planId: 'autumn',
+      title: '秋季形象片',
       revision: 4,
       blake3: 'hash',
       groups: [{ id: 'g1', label: '夏', declaredCount: 3, actualCount: 2, brief: '轻薄夏装' }],
@@ -56,6 +57,19 @@ describe('PlanWorkspace', () => {
     await waitFor(() => expect(screen.getByText('1 组 · 1 张')).toBeInTheDocument())
     expect(screen.getByText('待处理 0 · 已改 1 · 已换 0 · 已失效 0')).toBeInTheDocument()
     expect(screen.getAllByText('autumn').length).toBeGreaterThan(0)
+    expect(screen.getByText('秋季形象片')).toBeInTheDocument()
+  })
+
+  it('filters the canvas by generation state', async () => {
+    const fake = bridge()
+    render(<PlanWorkspace bridge={fake} />)
+    await waitFor(() => expect(screen.getByText('s1')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /计划已变/ }))
+    await waitFor(() => expect(screen.queryByText('s1')).not.toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /全部/ }))
+    await waitFor(() => expect(screen.getByText('s1')).toBeInTheDocument())
   })
 
   it('opens the drawer for the selected shot', async () => {

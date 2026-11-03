@@ -25,8 +25,11 @@ export interface PlanSnapshotShot {
   generation?: 'ungenerated' | 'current' | 'stale'
 }
 
+export type PlanFilter = 'all' | 'ungenerated' | 'stale'
+
 export interface PlanSnapshot {
   planId: string
+  title?: string | null
   revision: number
   blake3: string
   groups: PlanSnapshotGroup[]
@@ -70,7 +73,7 @@ const PLAN_NODE = { width: 300, height: 88 }
 const GROUP_NODE = { width: 300, height: 168 }
 const SHOT_NODE = { width: 124, height: 116 }
 
-export function buildPlanGraph(snapshot: PlanSnapshot): PlanGraph {
+export function buildPlanGraph(snapshot: PlanSnapshot, filter: PlanFilter = 'all'): PlanGraph {
   const affected = new Set(snapshot.diff?.affectedShots ?? [])
   const planId = `plan:${snapshot.planId}`
 
@@ -111,7 +114,13 @@ export function buildPlanGraph(snapshot: PlanSnapshot): PlanGraph {
     edges.push({ id: `${planId}->${groupId}`, source: planId, target: groupId })
   }
 
-  for (const shot of snapshot.shots) {
+  const visibleShots = snapshot.shots.filter((shot) => {
+    const state = shot.generation ?? 'ungenerated'
+    if (filter === 'all') return true
+    return state === filter
+  })
+
+  for (const shot of visibleShots) {
     const shotNodeId = `shot:${shot.shotId}`
     const parent = `group:${shot.groupId}`
     nodes.push({

@@ -36,6 +36,7 @@ pub struct PlanShotDto {
 #[serde(rename_all = "camelCase")]
 pub struct PlanSnapshotDto {
     pub plan_id: String,
+    pub title: Option<String>,
     pub revision: u32,
     pub blake3: String,
     pub groups: Vec<PlanGroupDto>,

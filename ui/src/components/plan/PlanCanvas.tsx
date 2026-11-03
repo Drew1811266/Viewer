@@ -8,7 +8,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useMemo } from 'react'
-import { buildPlanGraph, type PlanGraphNode, type PlanSnapshot } from './planGraph'
+import { buildPlanGraph, type PlanFilter, type PlanGraphNode, type PlanSnapshot } from './planGraph'
 import { STATE_LABELS } from './planLabels'
 
 interface PlanNodeData extends Record<string, unknown> {
@@ -90,12 +90,18 @@ const nodeTypes = { plan: PlanCard, group: GroupCard, shot: ShotCard }
 
 export interface PlanCanvasProps {
   snapshot: PlanSnapshot
+  filter?: PlanFilter
   selectedNodeId?: string | null
   onSelectNode?: (nodeId: string) => void
 }
 
-export function PlanCanvas({ snapshot, selectedNodeId, onSelectNode }: PlanCanvasProps) {
-  const graph = useMemo(() => buildPlanGraph(snapshot), [snapshot])
+export function PlanCanvas({
+  snapshot,
+  filter = 'all',
+  selectedNodeId,
+  onSelectNode,
+}: PlanCanvasProps) {
+  const graph = useMemo(() => buildPlanGraph(snapshot, filter), [snapshot, filter])
 
   const nodes: Node[] = useMemo(
     () =>

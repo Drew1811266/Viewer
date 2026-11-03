@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { PlanBridge } from '../../api/plan'
 import { PlanCanvas } from './PlanCanvas'
-import type { PlanSnapshot } from './planGraph'
+import type { PlanFilter, PlanSnapshot } from './planGraph'
 import { STATE_LABELS, statusLabel } from './planLabels'
 import { stalePanelCopy, usePlanWorkspace } from './usePlanWorkspace'
 
@@ -12,6 +12,7 @@ export interface PlanWorkspaceProps {
 export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
   const plan = usePlanWorkspace(bridge)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<PlanFilter>('all')
 
   const selectedShot = useMemo(() => {
     if (!plan.snapshot || !selectedNodeId?.startsWith('shot:')) return null
@@ -44,9 +45,11 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
             ⌘
           </span>
           <div className="plan-workspace__switcher-body">
-            <span className="plan-workspace__title">{plan.selectedPlanId ?? '暂无计划'}</span>
+            <span className="plan-workspace__title">
+              {plan.snapshot?.title || plan.selectedPlanId || '暂无计划'}
+            </span>
             <span className="plan-workspace__subtitle">
-              {plan.snapshot ? `r${plan.snapshot.revision}` : '—'}
+              {plan.snapshot ? `${plan.selectedPlanId ?? ''} · r${plan.snapshot.revision}` : '—'}
             </span>
           </div>
           <select
@@ -74,15 +77,23 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
         ) : null}
 
         <span className="plan-workspace__spacer" />
-        <button type="button" className="plan-filter" aria-pressed="true">
-          全部 <span className="plan-filter__count">{plan.snapshot?.shots.length ?? 0}</span>
-        </button>
-        <button type="button" className="plan-filter" aria-pressed="false">
-          待生成 <span className="plan-filter__count">{ungeneratedCount(plan.snapshot)}</span>
-        </button>
-        <button type="button" className="plan-filter" aria-pressed="false">
-          计划已变 <span className="plan-filter__count">{staleCount(plan.snapshot)}</span>
-        </button>
+        {(
+          [
+            ['all', '全部', plan.snapshot?.shots.length ?? 0],
+            ['ungenerated', '待生成', ungeneratedCount(plan.snapshot)],
+            ['stale', '计划已变', staleCount(plan.snapshot)],
+          ] as const
+        ).map(([value, label, count]) => (
+          <button
+            key={value}
+            type="button"
+            className="plan-filter"
+            aria-pressed={filter === value}
+            onClick={() => setFilter(value)}
+          >
+            {label} <span className="plan-filter__count">{count}</span>
+          </button>
+        ))}
       </header>
 
       {plan.status === 'error' ? (
@@ -95,6 +106,7 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
         {plan.snapshot ? (
           <PlanCanvas
             snapshot={plan.snapshot}
+            filter={filter}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
           />

@@ -62,6 +62,24 @@ describe('WorkspaceMoreMenu', () => {
     expect(closeProject).toHaveBeenCalledOnce()
   })
 
+  it('opens the generation plan from the same menu', () => {
+    const onOpenPlan = vi.fn()
+    render(
+      <WorkspaceMoreMenu
+        access="read_write"
+        closing={false}
+        onOpenSettings={vi.fn()}
+        onOpenPlan={onOpenPlan}
+        onOpenPermissionSettings={vi.fn()}
+        onReselectProject={vi.fn()}
+        onCloseProject={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '更多' }))
+    fireEvent.click(screen.getByRole('button', { name: '生成计划' }))
+    expect(onOpenPlan).toHaveBeenCalledOnce()
+  })
+
   it('shows read-only access as a formal status row with a visible disabled reason', () => {
     render(
       <WorkspaceMoreMenu

@@ -6,6 +6,7 @@ pub mod image;
 pub mod metadata;
 pub mod operation;
 pub mod operation_commit;
+pub mod plan;
 pub mod ports;
 pub mod project;
 pub mod rename;

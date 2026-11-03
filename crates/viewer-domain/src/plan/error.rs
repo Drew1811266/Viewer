@@ -14,7 +14,8 @@ pub enum PlanErrorCode {
     TooLarge,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlanError {
     pub path: String,
     pub code: PlanErrorCode,

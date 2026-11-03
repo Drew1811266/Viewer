@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { PlanBridge } from '../../api/plan'
 import { PlanCanvas } from './PlanCanvas'
-import type { PlanFilter, PlanSnapshot } from './planGraph'
+import { buildRedoList, type PlanFilter, type PlanSnapshot, redoListDocument } from './planGraph'
 import { STATE_LABELS, statusLabel } from './planLabels'
 import { stalePanelCopy, usePlanWorkspace } from './usePlanWorkspace'
 
@@ -106,6 +106,30 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
           </button>
         ))}
       </header>
+
+      {plan.snapshot?.diff && plan.snapshot.diff.affectedShots.length > 0 ? (
+        <div className="plan-diff" data-testid="plan-diff">
+          <span className="plan-diff__label">本版改动</span>
+          <div className="plan-diff__card plan-diff__card--requirement">
+            <span className="plan-diff__title">
+              需求层 · {plan.snapshot.diff.requirement.length}
+            </span>
+            <span className="plan-diff__body">
+              {plan.snapshot.diff.requirement[0]?.message ?? '需求没有变化'}
+            </span>
+          </div>
+          <div className="plan-diff__card plan-diff__card--material">
+            <span className="plan-diff__title">素材层 · {plan.snapshot.diff.material.length}</span>
+            <span className="plan-diff__body">
+              {plan.snapshot.diff.material[0]?.message ?? '素材没有变化'}
+            </span>
+          </div>
+          <span className="plan-workspace__spacer" />
+          <span className="plan-diff__count">
+            受影响 {plan.snapshot.diff.affectedShots.length} 张
+          </span>
+        </div>
+      ) : null}
 
       {plan.status === 'error' ? (
         <p className="plan-workspace__error" role="alert">
@@ -243,12 +267,63 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
               <p className="plan-drawer__hint">标记写到 .viewer/plan-marks/，不改计划文件</p>
             </>
           ) : (
-            <p className="plan-drawer__hint">选中一个分镜看拼装结果</p>
+            <>
+              <span className="plan-drawer__section">
+                受影响 · {buildRedoList(plan.snapshot).length}
+              </span>
+              {buildRedoList(plan.snapshot).length === 0 ? (
+                <p className="plan-drawer__hint">这一版没有受影响的分镜</p>
+              ) : (
+                buildRedoList(plan.snapshot).map((entry) => (
+                  <button
+                    type="button"
+                    key={entry.shotId}
+                    className="plan-affected"
+                    onClick={() => setSelectedNodeId(`shot:${entry.shotId}`)}
+                  >
+                    <span className="plan-affected__dot" data-state={entry.state} />
+                    <span className="plan-affected__body">
+                      <span className="plan-affected__id">{entry.shotId}</span>
+                      <span className="plan-affected__meta">
+                        {entry.state === 'removed'
+                          ? '已删除'
+                          : entry.state === 'stale'
+                            ? '计划已变'
+                            : '未生成'}
+                      </span>
+                    </span>
+                    <span className="plan-affected__chevron">›</span>
+                  </button>
+                ))
+              )}
+              <div className="plan-drawer__actions">
+                <button
+                  type="button"
+                  className="plan-button"
+                  disabled={!plan.snapshot}
+                  onClick={() => downloadRedoList(plan.snapshot)}
+                >
+                  导出重做清单
+                </button>
+              </div>
+              <p className="plan-drawer__hint">选中一个分镜看拼装结果</p>
+            </>
           )}
         </aside>
       </div>
     </section>
   )
+}
+
+function downloadRedoList(snapshot: PlanSnapshot | null) {
+  if (!snapshot) return
+  const blob = new Blob([redoListDocument(snapshot)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${snapshot.planId}-r${snapshot.revision}-redo.json`
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 function ungeneratedCount(snapshot: PlanSnapshot | null): number {

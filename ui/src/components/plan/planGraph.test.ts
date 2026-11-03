@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPlanGraph, type PlanSnapshot } from './planGraph'
+import { buildPlanGraph, buildRedoList, type PlanSnapshot, redoListDocument } from './planGraph'
 
 const snapshot: PlanSnapshot = {
   planId: 'autumn',
@@ -22,7 +22,7 @@ const snapshot: PlanSnapshot = {
     { shotId: 's3', groupId: 'g2', prompt: '厚重冬装\n雪地', hash: 'h3', references: [] },
   ],
   warnings: [],
-  diff: { affectedShots: ['s2'] },
+  diff: { requirement: [], material: [], affectedShots: ['s2'] },
 }
 
 describe('buildPlanGraph', () => {
@@ -91,5 +91,34 @@ describe('buildPlanGraph', () => {
         expect(overlaps).toBe(false)
       }
     }
+  })
+})
+
+describe('buildRedoList', () => {
+  it('lists every affected shot with its state', () => {
+    const list = buildRedoList(snapshot)
+    expect(list.map((entry) => entry.shotId)).toEqual(['s2'])
+    expect(list[0]?.state).toBe('stale')
+  })
+
+  it('marks shots that disappeared from the revision as removed', () => {
+    const list = buildRedoList({
+      ...snapshot,
+      diff: { requirement: [], material: [], affectedShots: ['gone'] },
+    })
+    expect(list[0]).toEqual({ shotId: 'gone', state: 'removed', intent: '', hash: '' })
+  })
+
+  it('returns nothing when there is no diff', () => {
+    expect(buildRedoList(null)).toEqual([])
+  })
+
+  it('serialises a document agents can consume', () => {
+    const document = JSON.parse(redoListDocument(snapshot)) as {
+      protocolVersion: string
+      shots: { shotId: string }[]
+    }
+    expect(document.protocolVersion).toBe('viewer.plan-redo/1')
+    expect(document.shots[0]?.shotId).toBe('s2')
   })
 })

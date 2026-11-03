@@ -27,6 +27,19 @@ export interface PlanSnapshotShot {
 
 export type PlanFilter = 'all' | 'ungenerated' | 'stale'
 
+export interface PlanChange {
+  layer: 'requirement' | 'material'
+  kind: 'added' | 'removed' | 'modified'
+  path: string
+  message: string
+}
+
+export interface PlanDiff {
+  requirement: PlanChange[]
+  material: PlanChange[]
+  affectedShots: string[]
+}
+
 export interface PlanSnapshot {
   planId: string
   title?: string | null
@@ -35,7 +48,7 @@ export interface PlanSnapshot {
   groups: PlanSnapshotGroup[]
   shots: PlanSnapshotShot[]
   warnings: { path: string; code: string; message: string }[]
-  diff: null | { affectedShots: string[] }
+  diff: PlanDiff | null
 }
 
 export type PlanNodeKind = 'plan' | 'group' | 'shot'
@@ -164,4 +177,45 @@ function layout(nodes: PlanGraphNode[], edges: PlanGraphEdge[]): PlanGraphNode[]
       y: Math.round(positioned.y - node.height / 2),
     }
   })
+}
+
+export interface RedoEntry {
+  shotId: string
+  state: 'stale' | 'ungenerated' | 'removed'
+  intent: string
+  hash: string
+}
+
+export function buildRedoList(snapshot: PlanSnapshot | null): RedoEntry[] {
+  if (!snapshot?.diff) return []
+  const shots = new Map(snapshot.shots.map((shot) => [shot.shotId, shot]))
+  return [...snapshot.diff.affectedShots].sort().map((shotId) => {
+    const shot = shots.get(shotId)
+    if (!shot) {
+      return { shotId, state: 'removed' as const, intent: '', hash: '' }
+    }
+    return {
+      shotId,
+      state:
+        shot.generation === 'current' ? ('stale' as const) : (shot.generation ?? 'ungenerated'),
+      intent: shot.prompt.split('\n').at(-1) ?? '',
+      hash: shot.hash,
+    }
+  })
+}
+
+export function redoListDocument(snapshot: PlanSnapshot): string {
+  return JSON.stringify(
+    {
+      protocolVersion: 'viewer.plan-redo/1',
+      planId: snapshot.planId,
+      revision: snapshot.revision,
+      generatedAt: new Date().toISOString(),
+      requirement: snapshot.diff?.requirement ?? [],
+      material: snapshot.diff?.material ?? [],
+      shots: buildRedoList(snapshot),
+    },
+    null,
+    2,
+  )
 }

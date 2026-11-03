@@ -4,9 +4,17 @@ import type {
   ImageRendererAck,
   ImageRendererEvent,
 } from '../rendering/imageRendererTypes'
+import type { PlanBridge } from './plan'
 import type { ReviewWorkspacePort } from './reviewWorkspaceTypes'
 
 // Separate from the legacy ViewerBridge: declaring this transport does not switch product UI.
+export const tauriPlanBridge: PlanBridge = {
+  list: (projectRoot) => invoke('plan_list', { projectRoot }),
+  snapshot: (projectRoot, planId) => invoke('plan_snapshot', { projectRoot, planId }),
+  readMarks: (projectRoot, planId) => invoke('plan_marks_read', { projectRoot, planId }),
+  writeMarks: (projectRoot, marks) => invoke('plan_marks_write', { projectRoot, marks }),
+}
+
 export const tauriReviewWorkspaceBridge: ReviewWorkspacePort = {
   getWorkspace: (request) => invoke('get_review_workspace', { request }),
   prepareAssets: (request) => invoke('prepare_review_assets', { request }),

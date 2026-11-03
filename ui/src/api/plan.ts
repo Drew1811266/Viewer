@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core'
 import type { PlanSnapshot } from '../components/plan/planGraph'
 
 export interface PlanSummary {
@@ -34,11 +33,4 @@ export interface PlanBridge {
   snapshot(projectRoot: string, planId: string): Promise<PlanSnapshot>
   readMarks(projectRoot: string, planId: string): Promise<PlanMarksView>
   writeMarks(projectRoot: string, marks: unknown): Promise<void>
-}
-
-export const tauriPlanBridge: PlanBridge = {
-  list: (projectRoot) => invoke('plan_list', { projectRoot }),
-  snapshot: (projectRoot, planId) => invoke('plan_snapshot', { projectRoot, planId }),
-  readMarks: (projectRoot, planId) => invoke('plan_marks_read', { projectRoot, planId }),
-  writeMarks: (projectRoot, marks) => invoke('plan_marks_write', { projectRoot, marks }),
 }

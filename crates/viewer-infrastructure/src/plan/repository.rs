@@ -87,7 +87,7 @@ impl PlanRepository {
         let mut ignored = Vec::new();
         for revision in &revisions {
             let path = directory.join(format!("{revision}.json"));
-            match self.read_and_validate(&path) {
+            match self.read_and_validate(&path, *revision) {
                 Ok((plan, hash)) => {
                     return Ok(PublishedPlan {
                         plan,
@@ -133,7 +133,11 @@ impl PlanRepository {
         summaries
     }
 
-    fn read_and_validate(&self, path: &Path) -> Result<(PlanDocument, String), (String, String)> {
+    fn read_and_validate(
+        &self,
+        path: &Path,
+        revision: u32,
+    ) -> Result<(PlanDocument, String), (String, String)> {
         let mut last_failure: Option<(String, String)> = None;
         for attempt in 0..RETRY_ATTEMPTS {
             let bytes =
@@ -141,6 +145,15 @@ impl PlanRepository {
             let hash = blake3::hash(&bytes).to_hex().to_string();
             match parse_plan(&bytes, MAX_PLAN_BYTES) {
                 Ok(plan) => {
+                    if plan.revision.get() != revision || plan.revision.get() == 0 {
+                        return Err((
+                            "revision_mismatch".to_owned(),
+                            format!(
+                                "file name {revision} does not match document revision {}",
+                                plan.revision.get()
+                            ),
+                        ));
+                    }
                     let validation = validate_plan(&plan, &self.assets);
                     if let Some(error) = validation.errors.first() {
                         return Err((error.code.as_str().to_owned(), error.message.clone()));
@@ -190,6 +203,7 @@ mod tests {
                 attributes: BTreeMap::new(),
                 declared_count: 1,
                 brief: "brief".to_owned(),
+                references: Vec::new(),
             }],
             shots: vec![PlanShot {
                 id: "s1".to_owned(),
@@ -282,6 +296,27 @@ mod tests {
             .unwrap();
         assert_eq!(published.plan.revision.get(), 1);
         assert_eq!(published.ignored[0].code, "unknown_group");
+    }
+
+    #[test]
+    fn revision_that_disagrees_with_the_file_name_is_ignored() {
+        let directory = setup();
+        write_revision(
+            directory.path(),
+            1,
+            serde_json::to_string(&document(1)).unwrap().as_bytes(),
+        );
+        write_revision(
+            directory.path(),
+            2,
+            serde_json::to_string(&document(1)).unwrap().as_bytes(),
+        );
+        let published = PlanRepository::open(directory.path())
+            .unwrap()
+            .current(&PlanId::parse("autumn").unwrap())
+            .unwrap();
+        assert_eq!(published.plan.revision.get(), 1);
+        assert_eq!(published.ignored[0].code, "revision_mismatch");
     }
 
     #[test]

@@ -9,6 +9,8 @@ pub const MAX_RULES: usize = 50;
 pub const MAX_REFERENCES_PER_SHOT: usize = 20;
 pub const MAX_TEXT_CHARS: usize = 2000;
 pub const MAX_BRIEF_CHARS: usize = 1000;
+pub const MAX_DECLARED_COUNT: u32 = 500;
+pub const MAX_MODEL_PARAMS: usize = 32;
 
 pub trait AssetIndexView {
     fn contains(&self, asset_id: &AssetId) -> bool;
@@ -58,6 +60,13 @@ pub fn validate_plan(plan: &PlanDocument, assets: &dyn AssetIndexView) -> PlanVa
         };
     }
 
+    if plan.revision.get() == 0 {
+        fail!(
+            "revision",
+            PlanErrorCode::InvalidSchema,
+            "revision must be at least 1"
+        );
+    }
     if plan.groups.is_empty() {
         fail!(
             "groups",
@@ -185,6 +194,22 @@ pub fn validate_plan(plan: &PlanDocument, assets: &dyn AssetIndexView) -> PlanVa
                 format!("group brief must be at most {MAX_BRIEF_CHARS} characters")
             );
         }
+        if group.declared_count > MAX_DECLARED_COUNT {
+            fail!(
+                format!("groups[{index}].declaredCount"),
+                PlanErrorCode::InvalidSchema,
+                format!("declaredCount must be at most {MAX_DECLARED_COUNT}")
+            );
+        }
+        for (asset_index, asset) in group.references.iter().enumerate() {
+            if !assets.contains(asset) {
+                fail!(
+                    format!("groups[{index}].references[{asset_index}]"),
+                    PlanErrorCode::AssetMissing,
+                    "asset is not present in the reference store"
+                );
+            }
+        }
         validate_attributes(
             &mut validation,
             &declared_values,
@@ -231,6 +256,17 @@ pub fn validate_plan(plan: &PlanDocument, assets: &dyn AssetIndexView) -> PlanVa
             }
         }
         if shot
+            .model
+            .as_ref()
+            .is_some_and(|model| model.params.len() > MAX_MODEL_PARAMS)
+        {
+            fail!(
+                format!("shots[{index}].model.params"),
+                PlanErrorCode::InvalidSchema,
+                format!("model params may declare at most {MAX_MODEL_PARAMS} keys")
+            );
+        }
+        if shot
             .delta
             .as_ref()
             .is_some_and(|delta| delta.chars().count() > MAX_TEXT_CHARS)
@@ -275,6 +311,13 @@ pub fn validate_plan(plan: &PlanDocument, assets: &dyn AssetIndexView) -> PlanVa
                 format!("relocations[{index}].from"),
                 PlanErrorCode::RelocationConflict,
                 "the same source id is relocated more than once"
+            );
+        }
+        if node_ids.contains(relocation.to.as_str()) {
+            fail!(
+                format!("relocations[{index}].to"),
+                PlanErrorCode::RelocationConflict,
+                "a relocation target collides with an existing node id"
             );
         }
     }
@@ -324,6 +367,7 @@ mod tests {
             attributes: BTreeMap::new(),
             declared_count: declared,
             brief: "brief".to_owned(),
+            references: Vec::new(),
         }
     }
 

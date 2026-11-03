@@ -164,12 +164,21 @@ fn call_tool(params: &Value) -> Result<Value, (i64, String)> {
     }
 }
 
-fn project_root(arguments: &Value) -> Result<&Path, (i64, String)> {
-    let root = arguments
+fn project_root(arguments: &Value) -> Result<std::path::PathBuf, (i64, String)> {
+    let raw = arguments
         .get("projectRoot")
         .and_then(Value::as_str)
         .ok_or((-32602, "projectRoot is required".to_owned()))?;
-    Ok(Path::new(root))
+    let canonical = std::fs::canonicalize(raw).map_err(|_| {
+        (
+            -32602,
+            format!("projectRoot is not an existing directory: {raw}"),
+        )
+    })?;
+    if !canonical.is_dir() {
+        return Err((-32602, format!("projectRoot is not a directory: {raw}")));
+    }
+    Ok(canonical)
 }
 
 fn plan_id(arguments: &Value) -> Result<PlanId, (i64, String)> {
@@ -214,7 +223,7 @@ fn tool_validate(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
         Ok(document) => document,
         Err(payload) => return Ok((payload, true)),
     };
-    let validation = validate_against(root, &document)?;
+    let validation = validate_against(&root, &document)?;
     let failed = validation["ok"] == Value::Bool(false);
     Ok((validation, failed))
 }
@@ -228,35 +237,68 @@ fn tool_write(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
         Ok(document) => document,
         Err(payload) => return Ok((payload, true)),
     };
-    let validation = validate_against(root, &document)?;
+    let validation = validate_against(&root, &document)?;
     if validation["ok"] == Value::Bool(false) {
         return Ok((validation, true));
     }
 
-    let directory = root
-        .join(".viewer")
+    let viewer = root.join(".viewer");
+    std::fs::create_dir_all(&viewer).map_err(|error| (-32603, error.to_string()))?;
+    let viewer = std::fs::canonicalize(&viewer).map_err(|error| (-32603, error.to_string()))?;
+    if !viewer.starts_with(&root) {
+        return Err((
+            -32602,
+            "plan write target escapes the project root".to_owned(),
+        ));
+    }
+    let directory = viewer
         .join("plans")
         .join("incoming")
         .join(document.plan_id.as_str());
-    let path = directory.join(format!("{}.json", document.revision.get()));
-    if path.exists() {
-        return Ok((
-            json!({
-                "ok": false,
-                "errors": [{
-                    "path": "revision",
-                    "code": "revision_conflict",
-                    "message": format!("revision {} is immutable and already exists", document.revision.get()),
-                }],
-                "warnings": [],
-            }),
-            true,
-        ));
-    }
     std::fs::create_dir_all(&directory).map_err(|error| (-32603, error.to_string()))?;
+
+    let path = directory.join(format!("{}.json", document.revision.get()));
     let bytes =
         serde_json::to_vec_pretty(&document).map_err(|error| (-32603, error.to_string()))?;
-    std::fs::write(&path, bytes).map_err(|error| (-32603, error.to_string()))?;
+    let temporary = directory.join(format!(".{}.json.tmp", document.revision.get()));
+    std::fs::write(&temporary, &bytes).map_err(|error| (-32603, error.to_string()))?;
+
+    // hard_link 是原子的"若不存在则创建"：两个并发写入只有一个能成功。
+    match std::fs::hard_link(&temporary, &path) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&temporary);
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let repairable = std::fs::read(&path)
+                .map(|existing| parse_plan(&existing, MAX_PLAN_BYTES).is_err())
+                .unwrap_or(true);
+            if repairable {
+                std::fs::rename(&temporary, &path).map_err(|error| (-32603, error.to_string()))?;
+            } else {
+                let _ = std::fs::remove_file(&temporary);
+                return Ok((
+                    json!({
+                        "ok": false,
+                        "errors": [{
+                            "path": "revision",
+                            "code": "revision_conflict",
+                            "message": format!(
+                                "revision {} is immutable and already holds a valid document",
+                                document.revision.get()
+                            ),
+                        }],
+                        "warnings": [],
+                    }),
+                    true,
+                ));
+            }
+        }
+        Err(error) => {
+            let _ = std::fs::remove_file(&temporary);
+            return Err((-32603, error.to_string()));
+        }
+    }
+
     Ok((
         json!({ "ok": true, "revision": document.revision.get(), "warnings": validation["warnings"] }),
         false,
@@ -266,7 +308,7 @@ fn tool_write(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
 fn tool_current(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
     let root = project_root(arguments)?;
     let id = plan_id(arguments)?;
-    let repository = PlanRepository::open(root).map_err(|error| (-32603, error.to_string()))?;
+    let repository = PlanRepository::open(&root).map_err(|error| (-32603, error.to_string()))?;
     match repository.current(&id) {
         Ok(published) => Ok((compose_payload(&published), false)),
         Err(error) => Ok((json!({ "ok": false, "message": error.to_string() }), true)),
@@ -275,7 +317,7 @@ fn tool_current(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
 
 fn tool_list(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
     let root = project_root(arguments)?;
-    let repository = PlanRepository::open(root).map_err(|error| (-32603, error.to_string()))?;
+    let repository = PlanRepository::open(&root).map_err(|error| (-32603, error.to_string()))?;
     let plans: Vec<Value> = repository
         .list()
         .iter()
@@ -317,7 +359,7 @@ fn tool_import(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
         .get("path")
         .and_then(Value::as_str)
         .ok_or((-32602, "path is required".to_owned()))?;
-    let store = AssetStore::open(root).map_err(|error| (-32603, error.to_string()))?;
+    let store = AssetStore::open(&root).map_err(|error| (-32603, error.to_string()))?;
     match store.import_path(Path::new(source)) {
         Ok(imported) => Ok((
             json!({
@@ -452,6 +494,62 @@ mod tests {
                 .join(".viewer/plans/incoming/autumn/1.json")
                 .exists()
         );
+    }
+
+    #[test]
+    fn plan_write_leaves_exactly_one_revision_and_no_temporary_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let plan = json!({
+            "protocolVersion": "viewer.plan/1",
+            "planId": "autumn",
+            "revision": 1,
+            "createdAt": "2026-11-03T00:00:00Z",
+            "producer": { "name": "harness" },
+            "groups": [{ "id": "g1", "label": "夏", "declaredCount": 1, "brief": "b" }],
+            "shots": [{ "id": "s1", "groupId": "g1" }]
+        });
+        let responses = call(&[tool_call(
+            7,
+            "plan_write",
+            json!({ "projectRoot": directory.path(), "plan": plan }),
+        )]);
+        assert_eq!(responses[0]["result"]["isError"], false);
+        let entries: Vec<_> =
+            std::fs::read_dir(directory.path().join(".viewer/plans/incoming/autumn"))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+        assert_eq!(entries, vec!["1.json".to_owned()]);
+    }
+
+    #[test]
+    fn rejects_a_project_root_that_does_not_exist() {
+        let missing = tempfile::tempdir().unwrap().path().join("missing");
+        let responses = call(&[tool_call(8, "plan_list", json!({ "projectRoot": missing }))]);
+        assert!(responses[0].get("error").is_some(), "{}", responses[0]);
+    }
+
+    #[test]
+    fn refuses_to_write_through_a_symlinked_viewer_directory() {
+        let outside = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), project.path().join(".viewer")).unwrap();
+        let plan = json!({
+            "protocolVersion": "viewer.plan/1",
+            "planId": "autumn",
+            "revision": 1,
+            "createdAt": "2026-11-03T00:00:00Z",
+            "producer": { "name": "harness" },
+            "groups": [{ "id": "g1", "label": "夏", "declaredCount": 1, "brief": "b" }],
+            "shots": [{ "id": "s1", "groupId": "g1" }]
+        });
+        let responses = call(&[tool_call(
+            9,
+            "plan_write",
+            json!({ "projectRoot": project.path(), "plan": plan }),
+        )]);
+        assert!(responses[0].get("error").is_some(), "{}", responses[0]);
+        assert!(!outside.path().join("plans/incoming/autumn/1.json").exists());
     }
 
     #[test]

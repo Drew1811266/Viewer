@@ -67,6 +67,8 @@ pub struct PlanGroup {
     pub attributes: BTreeMap<String, String>,
     pub declared_count: u32,
     pub brief: String,
+    #[serde(default)]
+    pub references: Vec<AssetId>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -46,26 +46,56 @@ pub fn compose_plan(plan: &PlanDocument) -> Vec<ComposedShot> {
 }
 
 fn compose_shot(plan: &PlanDocument, shot: &PlanShot) -> ComposedShot {
+    let group = plan.groups.iter().find(|group| group.id == shot.group_id);
     let mut segments = Vec::new();
     let mut references: Vec<EffectiveReference> = Vec::new();
 
-    if let Some(prompt) = shot
+    if let Some(group) = group {
+        for asset_id in &group.references {
+            push_reference(&mut references, *asset_id, None, ReferenceOrigin::Group);
+        }
+    }
+
+    let mut attributes: BTreeMap<&str, &str> = BTreeMap::new();
+    if let Some(group) = group {
+        for (key, value) in &group.attributes {
+            attributes.insert(key.as_str(), value.as_str());
+        }
+    }
+    for (key, value) in &shot.attributes {
+        attributes.insert(key.as_str(), value.as_str());
+    }
+
+    for dimension in &plan.dimensions {
+        let Some(value_id) = attributes.get(dimension.id.as_str()) else {
+            continue;
+        };
+        let Some(value) = dimension.values.iter().find(|value| value.id == *value_id) else {
+            continue;
+        };
+        for asset_id in &value.references {
+            push_reference(
+                &mut references,
+                *asset_id,
+                None,
+                value_origin(dimension, value),
+            );
+        }
+    }
+
+    let explicit = shot
         .prompt
         .as_ref()
-        .filter(|value| !value.trim().is_empty())
-    {
+        .filter(|value| !value.trim().is_empty());
+
+    if let Some(prompt) = explicit {
         segments.push(PromptSegment {
             source: SegmentSource::Shot,
             text: prompt.clone(),
         });
     } else {
-        if let Some(group) = plan.groups.iter().find(|group| group.id == shot.group_id) {
+        if let Some(group) = group {
             push_text(&mut segments, SegmentSource::Group, Some(&group.brief));
-        }
-
-        let mut attributes: BTreeMap<&str, &str> = BTreeMap::new();
-        for (key, value) in &shot.attributes {
-            attributes.insert(key.as_str(), value.as_str());
         }
         for dimension in &plan.dimensions {
             let Some(value_id) = attributes.get(dimension.id.as_str()) else {
@@ -79,14 +109,6 @@ fn compose_shot(plan: &PlanDocument, shot: &PlanShot) -> ComposedShot {
                 value_source(dimension, value),
                 value.fragment.as_deref(),
             );
-            for asset_id in &value.references {
-                push_reference(
-                    &mut references,
-                    *asset_id,
-                    None,
-                    value_origin(dimension, value),
-                );
-            }
         }
         push_text(&mut segments, SegmentSource::Shot, shot.delta.as_deref());
     }
@@ -109,7 +131,7 @@ fn compose_shot(plan: &PlanDocument, shot: &PlanShot) -> ComposedShot {
 
     ComposedShot {
         shot_id: shot.id.clone(),
-        hash: shot_hash(shot, &segments, &references),
+        hash: shot_hash(&prompt, &references),
         prompt,
         segments,
         references,
@@ -154,7 +176,7 @@ fn push_reference(
 ) {
     if references
         .iter()
-        .any(|existing| existing.asset_id == asset_id)
+        .any(|existing| existing.asset_id == asset_id && existing.role == role)
     {
         return;
     }
@@ -165,33 +187,29 @@ fn push_reference(
     });
 }
 
-fn shot_hash(
-    shot: &PlanShot,
-    segments: &[PromptSegment],
-    references: &[EffectiveReference],
-) -> String {
+/// 哈希只覆盖"拼装后的提示词 + 素材集合"，因此改名或换组不会让外部工具误判需要重生成。
+fn shot_hash(prompt: &str, references: &[EffectiveReference]) -> String {
     let mut hasher = blake3::Hasher::new();
-    hasher.update(shot.id.as_bytes());
-    hasher.update(b"\0");
-    hasher.update(shot.group_id.as_bytes());
-    for (key, value) in &shot.attributes {
-        hasher.update(key.as_bytes());
-        hasher.update(b"=");
-        hasher.update(value.as_bytes());
-        hasher.update(b"\0");
-    }
-    for segment in segments {
-        hasher.update(segment.text.as_bytes());
-        hasher.update(b"\0");
-    }
-    let mut asset_ids: Vec<String> = references
+    hasher.update(prompt.as_bytes());
+    let mut entries: Vec<(String, &'static str)> = references
         .iter()
-        .map(|reference| reference.asset_id.as_hex())
+        .map(|reference| {
+            let role = match reference.role {
+                Some(AssetRole::Style) => "style",
+                Some(AssetRole::Subject) => "subject",
+                Some(AssetRole::Composition) => "composition",
+                Some(AssetRole::Other) => "other",
+                None => "",
+            };
+            (reference.asset_id.as_hex(), role)
+        })
         .collect();
-    asset_ids.sort();
-    for asset_id in asset_ids {
-        hasher.update(asset_id.as_bytes());
+    entries.sort();
+    for (asset, role) in entries {
         hasher.update(b"\0");
+        hasher.update(asset.as_bytes());
+        hasher.update(b":");
+        hasher.update(role.as_bytes());
     }
     hasher.finalize().to_hex().to_string()
 }
@@ -266,6 +284,7 @@ mod tests {
                     attributes: BTreeMap::new(),
                     declared_count: 1,
                     brief: "轻薄夏装".to_owned(),
+                    references: Vec::new(),
                 },
                 PlanGroup {
                     id: "g_winter".to_owned(),
@@ -273,6 +292,7 @@ mod tests {
                     attributes: BTreeMap::new(),
                     declared_count: 1,
                     brief: "厚重冬装".to_owned(),
+                    references: Vec::new(),
                 },
             ],
             shots,
@@ -348,6 +368,71 @@ mod tests {
                 value: "summer".to_owned()
             }
         );
+    }
+
+    #[test]
+    fn group_attributes_are_inherited_and_overridable_by_shots() {
+        let mut document = plan(
+            vec![shot("s1", "g_summer", &[("subject", "boy")], "海边逆光")],
+            "明亮清爽",
+        );
+        document.groups[0]
+            .attributes
+            .insert("series".to_owned(), "summer".to_owned());
+
+        let composed = compose_plan(&document);
+        assert_eq!(
+            composed[0].prompt,
+            "轻薄夏装\n明亮清爽\n10 岁男孩\n海边逆光"
+        );
+    }
+
+    #[test]
+    fn explicit_prompt_keeps_shared_references() {
+        let asset = AssetId::from_bytes([5; 32]);
+        let mut document = plan(
+            vec![shot("s1", "g_summer", &[("series", "summer")], "x")],
+            "明亮",
+        );
+        document.dimensions[0].values[0].fragment = None;
+        document.dimensions[0].values[0].references = vec![asset];
+        document.shots[0].prompt = Some("完全手写".to_owned());
+
+        let composed = compose_plan(&document);
+        assert_eq!(composed[0].segments.len(), 1);
+        assert_eq!(composed[0].references.len(), 1);
+        assert_eq!(composed[0].references[0].asset_id, asset);
+    }
+
+    #[test]
+    fn the_same_asset_under_two_roles_is_recorded_twice() {
+        let asset = AssetId::from_bytes([6; 32]);
+        let mut target = shot("s1", "g_summer", &[], "x");
+        target.references = vec![
+            viewer_domain::plan::ShotReference {
+                asset_id: asset,
+                role: Some(AssetRole::Style),
+            },
+            viewer_domain::plan::ShotReference {
+                asset_id: asset,
+                role: Some(AssetRole::Subject),
+            },
+        ];
+        let composed = compose_plan(&plan(vec![target], "明亮"));
+        assert_eq!(composed[0].references.len(), 2);
+    }
+
+    #[test]
+    fn renaming_a_shot_does_not_change_its_hash() {
+        let before = compose_plan(&plan(
+            vec![shot("s1", "g_summer", &[("series", "summer")], "a")],
+            "明亮",
+        ));
+        let after = compose_plan(&plan(
+            vec![shot("s2", "g_summer", &[("series", "summer")], "a")],
+            "明亮",
+        ));
+        assert_eq!(before[0].hash, after[0].hash);
     }
 
     #[test]

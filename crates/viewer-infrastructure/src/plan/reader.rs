@@ -119,10 +119,12 @@ fn list(repository: &PlanRepository) -> Value {
 fn marks(project_root: &str, plan_id: Option<&str>) -> Result<Value, (String, String)> {
     let plan_id =
         plan_id.ok_or_else(|| ("integrity".to_owned(), "planId is required".to_owned()))?;
+    let plan_id =
+        PlanId::parse(plan_id).map_err(|error| (error.code.as_str().to_owned(), error.message))?;
     let path = std::path::Path::new(project_root)
         .join(".viewer")
         .join("plan-marks")
-        .join(plan_id)
+        .join(plan_id.as_str())
         .join("current.json");
     match std::fs::read(&path) {
         Ok(bytes) => serde_json::from_slice::<Value>(&bytes)
@@ -191,6 +193,7 @@ mod tests {
                 attributes: BTreeMap::new(),
                 declared_count: 1,
                 brief: "轻薄夏装".to_owned(),
+                references: Vec::new(),
             }],
             shots: vec![PlanShot {
                 id: "s1".to_owned(),
@@ -252,6 +255,18 @@ mod tests {
         let (ok, response) = run(&request);
         assert!(!ok);
         assert_eq!(response["code"], "unknown_operation");
+    }
+
+    #[test]
+    fn marks_rejects_a_traversing_plan_id() {
+        let directory = tempfile::tempdir().unwrap();
+        let request = format!(
+            r#"{{"protocolVersion":"viewer.plan.reader/1","operation":"marks","projectRoot":"{}","planId":"../escape"}}"#,
+            directory.path().display()
+        );
+        let (ok, response) = run(&request);
+        assert!(!ok);
+        assert_eq!(response["code"], "invalid_schema");
     }
 
     #[test]

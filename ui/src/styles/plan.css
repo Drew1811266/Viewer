@@ -839,3 +839,15 @@
   align-items: center;
   font-size: 11px;
 }
+
+/* React Flow 需要 Handle 才能给自定义节点连边；这里保持不可见且不拦截交互 */
+.plan-handle {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+  background: transparent;
+  border: none;
+  opacity: 0;
+}

@@ -2,8 +2,10 @@ import {
   Background,
   Controls,
   type Edge,
+  Handle,
   type Node,
   type NodeProps,
+  Position,
   ReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -24,10 +26,25 @@ interface PlanNodeData extends Record<string, unknown> {
   brief?: string
 }
 
+function NodeHandles() {
+  return (
+    <>
+      <Handle type="target" position={Position.Top} className="plan-handle" isConnectable={false} />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="plan-handle"
+        isConnectable={false}
+      />
+    </>
+  )
+}
+
 function PlanCard({ data }: NodeProps) {
   const node = data as PlanNodeData
   return (
     <div className="plan-node plan-node--plan">
+      <NodeHandles />
       <span className="plan-node__icon" aria-hidden="true">
         ⌘
       </span>
@@ -48,6 +65,7 @@ function GroupCard({ data }: NodeProps) {
         node.affected ? ' plan-node--affected' : ''
       }`}
     >
+      <NodeHandles />
       <div className="plan-node__row">
         <span className="plan-node__dot" aria-hidden="true" />
         <span className="plan-node__label">{node.label}</span>
@@ -76,6 +94,7 @@ function ShotCard({ data }: NodeProps) {
   const state = node.generation ?? 'ungenerated'
   return (
     <div className={`plan-node plan-node--shot plan-shot--${state}`} data-state={state}>
+      <NodeHandles />
       <span className="plan-node__thumb plan-node__thumb--shot" aria-hidden="true" />
       <span className="plan-node__label">{node.label}</span>
       <span className="plan-node__meta plan-node__meta--dim plan-node__meta--clamp">

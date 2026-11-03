@@ -2,7 +2,7 @@ import './jsdomPolyfills'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { PlanCanvas } from './PlanCanvas'
-import type { PlanSnapshot } from './planGraph'
+import { buildPlanGraph, type PlanSnapshot } from './planGraph'
 
 const snapshot: PlanSnapshot = {
   planId: 'autumn',
@@ -33,4 +33,18 @@ describe('PlanCanvas', () => {
     render(<PlanCanvas snapshot={snapshot} />)
     expect(screen.getByText('r4 · 2 组 / 3 张')).toBeInTheDocument()
   })
+
+  it('gives every node the handles React Flow needs to draw its edges', () => {
+    render(<PlanCanvas snapshot={snapshot} />)
+    const graph = buildPlanGraph(snapshot)
+    const nodes = document.querySelectorAll('.react-flow__node')
+    expect(nodes.length).toBe(graph.nodes.length)
+    for (const node of nodes) {
+      expect(node.querySelector('.react-flow__handle-top')).not.toBeNull()
+      expect(node.querySelector('.react-flow__handle-bottom')).not.toBeNull()
+    }
+  })
+
+  // jsdom 没有布局，React Flow 拿不到节点尺寸就不会生成 SVG 边，
+  // 因此这里只守住"Handle 存在"这个前提条件；边的实际绘制由真机验证。
 })

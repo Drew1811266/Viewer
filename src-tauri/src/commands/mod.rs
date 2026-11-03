@@ -5,6 +5,7 @@ pub(crate) mod markers;
 #[cfg(debug_assertions)]
 pub(crate) mod memory_pressure;
 pub(crate) mod operations;
+pub(crate) mod plan;
 pub(crate) mod preview;
 pub(crate) mod project;
 pub(crate) mod review;

@@ -251,6 +251,10 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             health,
+            commands::plan::plan_list,
+            commands::plan::plan_snapshot,
+            commands::plan::plan_marks_read,
+            commands::plan::plan_marks_write,
             commands::project::open_project,
             commands::project::close_project,
             commands::project::project_snapshot,

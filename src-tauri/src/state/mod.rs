@@ -2,6 +2,7 @@ mod batch_image;
 mod common;
 mod markers;
 mod organization;
+pub mod plan;
 mod preview;
 mod review;
 mod review_workspace;

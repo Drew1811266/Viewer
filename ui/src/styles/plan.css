@@ -21,14 +21,15 @@
 
 .plan-overlay__close {
   position: absolute;
-  top: 14px;
-  right: 16px;
+  top: 17px;
+  right: 20px;
   z-index: 3;
-  padding: 6px 14px;
+  height: 30px;
+  padding: 0 14px;
   color: var(--md-on-surface-variant, var(--viewer-text-secondary));
   background: var(--md-surface-container, var(--viewer-surface-high));
   border: 1px solid var(--md-outline-variant, var(--viewer-border));
-  border-radius: 999px;
+  border-radius: 15px;
   cursor: pointer;
 }
 
@@ -45,7 +46,7 @@
   flex: 0 0 64px;
   gap: 16px;
   align-items: center;
-  padding: 0 64px 0 20px;
+  padding: 0 108px 0 20px;
   background: var(--md-surface, var(--viewer-surface));
   border-bottom: 1px solid var(--md-outline-variant, var(--viewer-border));
 }

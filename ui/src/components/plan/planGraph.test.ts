@@ -70,14 +70,14 @@ describe('buildPlanGraph', () => {
     expect(graph.nodes.find((node) => node.id === 'shot:s1')?.generation).toBe('ungenerated')
   })
 
-  it('places ranks left to right without overlapping', () => {
+  it('places ranks top to bottom without overlapping', () => {
     const graph = buildPlanGraph(snapshot)
     const plan = graph.nodes.find((node) => node.kind === 'plan')
     const group = graph.nodes.find((node) => node.id === 'group:g1')
     const shot = graph.nodes.find((node) => node.id === 'shot:s1')
     if (!plan || !group || !shot) throw new Error('expected plan, group and shot nodes')
-    expect(group.x).toBeGreaterThan(plan.x + plan.width)
-    expect(shot.x).toBeGreaterThan(group.x + group.width)
+    expect(group.y).toBeGreaterThan(plan.y + plan.height)
+    expect(shot.y).toBeGreaterThan(group.y + group.height)
 
     const boxes = graph.nodes.map((node) => ({
       x: node.x,

@@ -158,7 +158,7 @@ export function buildPlanGraph(snapshot: PlanSnapshot, filter: PlanFilter = 'all
 
 function layout(nodes: PlanGraphNode[], edges: PlanGraphEdge[]): PlanGraphNode[] {
   const graph = new dagre.graphlib.Graph()
-  graph.setGraph({ rankdir: 'LR', nodesep: 18, ranksep: 90 })
+  graph.setGraph({ rankdir: 'TB', nodesep: 28, ranksep: 56 })
   graph.setDefaultEdgeLabel(() => ({}))
 
   for (const node of nodes) {

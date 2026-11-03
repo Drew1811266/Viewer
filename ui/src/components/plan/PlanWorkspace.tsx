@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { PlanBridge } from '../../api/plan'
 import { PlanCanvas } from './PlanCanvas'
 import { PlanGroupView } from './PlanGroupView'
+import { PlanEmpty, PlanError, PlanLoading } from './PlanStates'
 import { buildRedoList, type PlanFilter, type PlanSnapshot, redoListDocument } from './planGraph'
 import { STATE_LABELS, statusLabel } from './planLabels'
 import { stalePanelCopy, usePlanWorkspace } from './usePlanWorkspace'
@@ -133,14 +134,18 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
         </div>
       ) : null}
 
-      {plan.status === 'error' ? (
-        <p className="plan-workspace__error" role="alert">
-          {plan.error}
-        </p>
-      ) : null}
-
       <div className="plan-workspace__body">
-        {plan.snapshot && drillGroupId ? (
+        {plan.status === 'error' ? (
+          <PlanError
+            message={plan.error ?? '读取计划失败'}
+            warnings={plan.snapshot?.warnings ?? []}
+            onRetry={plan.reload}
+          />
+        ) : !plan.snapshot && plan.status === 'loading' ? (
+          <PlanLoading />
+        ) : !plan.snapshot ? (
+          <PlanEmpty onRetry={plan.reload} />
+        ) : drillGroupId ? (
           <PlanGroupView
             snapshot={plan.snapshot}
             groupId={drillGroupId}
@@ -150,7 +155,7 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
               setDrillGroupId(null)
             }}
           />
-        ) : plan.snapshot ? (
+        ) : (
           <PlanCanvas
             snapshot={plan.snapshot}
             filter={filter}
@@ -158,10 +163,6 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
             onSelectNode={setSelectedNodeId}
             onDrillGroup={setDrillGroupId}
           />
-        ) : (
-          <p className="plan-workspace__empty">
-            {plan.status === 'loading' ? '正在读取计划…' : '这个项目还没有生成计划'}
-          </p>
         )}
 
         <aside className="plan-drawer" data-testid="plan-drawer">

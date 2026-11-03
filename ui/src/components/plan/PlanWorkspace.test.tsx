@@ -88,6 +88,17 @@ describe('PlanWorkspace', () => {
     expect(screen.getByText('受影响 1 张')).toBeInTheDocument()
   })
 
+  it('shows the validation failure with the offending path', async () => {
+    const broken = {
+      ...bridge(),
+      snapshot: vi.fn().mockRejectedValue(new Error('plan r3 无法解析')),
+    }
+    render(<PlanWorkspace bridge={broken} />)
+    await waitFor(() => expect(screen.getByTestId('plan-error')).toBeInTheDocument())
+    expect(screen.getByText('plan r3 无法解析')).toBeInTheDocument()
+    expect(screen.getByText('重新读取')).toBeInTheDocument()
+  })
+
   it('filters the canvas by generation state', async () => {
     render(<PlanWorkspace bridge={bridge()} />)
     await waitFor(() => expect(screen.getByTestId('plan-canvas')).toBeInTheDocument())
@@ -183,7 +194,8 @@ describe('PlanWorkspace', () => {
   it('explains that the project has no plan', async () => {
     const empty = { ...bridge(), list: vi.fn().mockResolvedValue([]) }
     render(<PlanWorkspace bridge={empty} />)
-    await waitFor(() => expect(screen.getByText('这个项目还没有生成计划')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('plan-empty')).toBeInTheDocument())
+    expect(screen.getByText('项目里还没有生成计划')).toBeInTheDocument()
   })
 
   it('summarises mark states without inventing an approval', () => {

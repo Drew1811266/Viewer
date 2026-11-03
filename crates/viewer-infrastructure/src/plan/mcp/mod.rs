@@ -340,21 +340,31 @@ fn tool_list(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
 fn tool_marks(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
     let root = project_root(arguments)?;
     let id = plan_id(arguments)?;
-    let path = root
-        .join(".viewer")
-        .join("plan-marks")
-        .join(id.as_str())
-        .join("current.json");
-    match std::fs::read(&path) {
-        Ok(bytes) => {
-            let value: Value =
-                serde_json::from_slice(&bytes).map_err(|error| (-32603, error.to_string()))?;
-            Ok((json!({ "ok": true, "marks": value }), false))
+    let store = super::MarksStore::open(&root).map_err(|error| (-32603, error.to_string()))?;
+    let Some(marks) = store
+        .read(&id)
+        .map_err(|error| (-32603, error.to_string()))?
+    else {
+        return Ok((json!({ "ok": true, "marks": Value::Null }), false));
+    };
+
+    match PlanRepository::open(&root).and_then(|repository| repository.current(&id)) {
+        Ok(published) => {
+            let resolved = viewer_domain::plan::resolve_marks(&marks, &published.plan);
+            Ok((
+                json!({
+                    "ok": true,
+                    "planRevision": published.plan.revision.get(),
+                    "planAvailable": true,
+                    "marks": resolved,
+                }),
+                false,
+            ))
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok((json!({ "ok": true, "marks": Value::Null }), false))
-        }
-        Err(error) => Err((-32603, error.to_string())),
+        Err(_) => Ok((
+            json!({ "ok": true, "planAvailable": false, "marks": marks.marks }),
+            false,
+        )),
     }
 }
 

@@ -1,6 +1,7 @@
 mod document;
 mod error;
 mod ids;
+mod marks;
 mod run;
 
 pub use document::{
@@ -9,6 +10,10 @@ pub use document::{
 };
 pub use error::{PlanError, PlanErrorCode};
 pub use ids::{AssetId, PlanId, Revision};
+pub use marks::{
+    MARKS_PROTOCOL_V1, MarkCategory, MarkStatus, MarkTarget, PlanMark, PlanMarks, ResolvedMark,
+    resolve_marks,
+};
 pub use run::{RUN_PROTOCOL_V1, RunRecord, RunShot};
 
 pub const PLAN_PROTOCOL_V1: &str = "viewer.plan/1";

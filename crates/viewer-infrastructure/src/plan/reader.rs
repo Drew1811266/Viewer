@@ -121,19 +121,34 @@ fn marks(project_root: &str, plan_id: Option<&str>) -> Result<Value, (String, St
         plan_id.ok_or_else(|| ("integrity".to_owned(), "planId is required".to_owned()))?;
     let plan_id =
         PlanId::parse(plan_id).map_err(|error| (error.code.as_str().to_owned(), error.message))?;
-    let path = std::path::Path::new(project_root)
-        .join(".viewer")
-        .join("plan-marks")
-        .join(plan_id.as_str())
-        .join("current.json");
-    match std::fs::read(&path) {
-        Ok(bytes) => serde_json::from_slice::<Value>(&bytes)
-            .map(|value| json!({ "status": "ok", "marks": value }))
-            .map_err(|error| ("integrity".to_owned(), error.to_string())),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(json!({ "status": "ok", "marks": Value::Null }))
+    let root = std::path::Path::new(project_root);
+    let store =
+        super::MarksStore::open(root).map_err(|error| ("io".to_owned(), error.to_string()))?;
+    let Some(marks) = store
+        .read(&plan_id)
+        .map_err(|error| ("integrity".to_owned(), error.to_string()))?
+    else {
+        return Ok(json!({ "status": "ok", "planId": plan_id.as_str(), "marks": Value::Null }));
+    };
+
+    let plan = PlanRepository::open(root).and_then(|repository| repository.current(&plan_id));
+    match plan {
+        Ok(published) => {
+            let resolved = viewer_domain::plan::resolve_marks(&marks, &published.plan);
+            Ok(json!({
+                "status": "ok",
+                "planId": plan_id.as_str(),
+                "planRevision": published.plan.revision.get(),
+                "planAvailable": true,
+                "marks": resolved,
+            }))
         }
-        Err(error) => Err(("io".to_owned(), error.to_string())),
+        Err(_) => Ok(json!({
+            "status": "ok",
+            "planId": plan_id.as_str(),
+            "planAvailable": false,
+            "marks": marks.marks,
+        })),
     }
 }
 
@@ -267,6 +282,27 @@ mod tests {
         let (ok, response) = run(&request);
         assert!(!ok);
         assert_eq!(response["code"], "invalid_schema");
+    }
+
+    #[test]
+    fn marks_are_enriched_with_a_derived_status() {
+        let directory = project_with_plan();
+        let marks = r#"{"protocolVersion":"viewer.plan-marks/1","planId":"autumn","updatedAt":"2026-11-03T00:00:00Z","marks":[{"id":"mk_1","revision":1,"target":{"kind":"shot","shotId":"s1"},"category":"wrong","createdAt":"2026-11-03T00:00:00Z"}]}"#;
+        let path = directory
+            .path()
+            .join(".viewer/plan-marks/autumn/current.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, marks).unwrap();
+
+        let request = format!(
+            r#"{{"protocolVersion":"viewer.plan.reader/1","operation":"marks","projectRoot":"{}","planId":"autumn"}}"#,
+            directory.path().display()
+        );
+        let (ok, response) = run(&request);
+        assert!(ok, "{response}");
+        assert_eq!(response["planRevision"], 1);
+        assert_eq!(response["marks"][0]["status"], "pending");
+        assert_eq!(response["marks"][0]["resolvedTarget"], "s1");
     }
 
     #[test]

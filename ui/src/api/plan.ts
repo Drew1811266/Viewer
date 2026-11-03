@@ -29,8 +29,8 @@ export interface PlanMarksView {
 }
 
 export interface PlanBridge {
-  list(projectRoot: string): Promise<PlanSummary[]>
-  snapshot(projectRoot: string, planId: string): Promise<PlanSnapshot>
-  readMarks(projectRoot: string, planId: string): Promise<PlanMarksView>
-  writeMarks(projectRoot: string, marks: unknown): Promise<void>
+  list(): Promise<PlanSummary[]>
+  snapshot(planId: string): Promise<PlanSnapshot>
+  readMarks(planId: string): Promise<PlanMarksView>
+  writeMarks(marks: unknown): Promise<void>
 }

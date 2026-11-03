@@ -29,10 +29,7 @@ const EMPTY: PlanWorkspaceState = {
   error: null,
 }
 
-export function usePlanWorkspace(
-  bridge: PlanBridge | null,
-  projectRoot: string | null,
-): PlanWorkspaceController {
+export function usePlanWorkspace(bridge: PlanBridge | null): PlanWorkspaceController {
   const [state, setState] = useState<PlanWorkspaceState>(EMPTY)
   const [requestedPlanId, setRequestedPlanId] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
@@ -43,7 +40,7 @@ export function usePlanWorkspace(
   const reload = useCallback(() => setReloadToken((token) => token + 1), [])
 
   useEffect(() => {
-    if (!bridge || !projectRoot) {
+    if (!bridge) {
       setState(EMPTY)
       return
     }
@@ -52,7 +49,7 @@ export function usePlanWorkspace(
 
     void (async () => {
       try {
-        const plans = await bridge.list(projectRoot)
+        const plans = await bridge.list()
         if (cancelled) return
         const selected =
           plans.find((plan) => plan.planId === requestedPlanId)?.planId ?? plans[0]?.planId ?? null
@@ -61,8 +58,8 @@ export function usePlanWorkspace(
           return
         }
         const [snapshot, marks] = await Promise.all([
-          bridge.snapshot(projectRoot, selected),
-          bridge.readMarks(projectRoot, selected),
+          bridge.snapshot(selected),
+          bridge.readMarks(selected),
         ])
         if (cancelled) return
         setState({
@@ -87,7 +84,7 @@ export function usePlanWorkspace(
     return () => {
       cancelled = true
     }
-  }, [bridge, projectRoot, requestedPlanId, reloadToken])
+  }, [bridge, requestedPlanId, reloadToken])
 
   return useMemo(() => ({ ...state, selectPlan, reload }), [state, selectPlan, reload])
 }

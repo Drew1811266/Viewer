@@ -5,11 +5,10 @@ import { stalePanelCopy, usePlanWorkspace } from './usePlanWorkspace'
 
 export interface PlanWorkspaceProps {
   bridge: PlanBridge | null
-  projectRoot: string | null
 }
 
-export function PlanWorkspace({ bridge, projectRoot }: PlanWorkspaceProps) {
-  const plan = usePlanWorkspace(bridge, projectRoot)
+export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
+  const plan = usePlanWorkspace(bridge)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
 
   const selectedShot = useMemo(() => {

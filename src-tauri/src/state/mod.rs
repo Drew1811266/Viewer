@@ -663,6 +663,13 @@ impl DesktopRuntime {
         }
     }
 
+    /// 计划界面只能读写"当前打开的项目"，不接受前端传入的路径。
+    pub async fn plan_project_root(&self) -> Result<std::path::PathBuf, RuntimeError> {
+        let session = self.session.lock().await;
+        let session = session.as_ref().ok_or(RuntimeError::StaleSession)?;
+        Ok(session.active.root.clone())
+    }
+
     pub(crate) async fn authorized_image_source(
         &self,
         entity_id: EntityId,

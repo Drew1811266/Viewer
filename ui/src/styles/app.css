@@ -1,6 +1,7 @@
 @import url('./videoBrowser.css');
 @import url('./videoPreview.css');
 @import url('./review.css');
+@import url('./plan.css');
 
 :root {
   color: var(--viewer-text);

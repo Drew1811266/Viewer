@@ -1,0 +1,191 @@
+/* 生成计划覆盖层：只在计划表面打开时出现，不改变主工作区布局。 */
+
+.plan-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 24px;
+  background: rgb(0 0 0 / 32%);
+}
+
+.plan-overlay__panel {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--md-surface, #fbfbfb);
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 28%);
+}
+
+.plan-overlay__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  padding: 6px 14px;
+  color: var(--md-on-surface, #1b1b1f);
+  background: var(--md-surface-container, #eef2f7);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.plan-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.plan-workspace__bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 64px 12px 20px;
+  border-bottom: 1px solid var(--md-outline-variant, #e3e6ec);
+}
+
+.plan-workspace__picker {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.plan-workspace__meta {
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-workspace__stale {
+  margin-left: auto;
+  color: var(--md-on-surface-variant, #54565f);
+}
+
+.plan-workspace__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.plan-canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 420px;
+  height: 100%;
+}
+
+.plan-workspace__empty,
+.plan-workspace__error {
+  margin: 32px;
+  color: var(--md-on-surface-variant, #54565f);
+}
+
+.plan-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 320px;
+  padding: 18px;
+  overflow-y: auto;
+  border-left: 1px solid var(--md-outline-variant, #e3e6ec);
+}
+
+.plan-drawer__prompt {
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  background: var(--md-surface-container, #eef2f7);
+  border-radius: 10px;
+}
+
+.plan-drawer__marks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.plan-drawer__marks li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--md-surface-container, #eef2f7);
+  border-radius: 8px;
+}
+
+/* 节点卡片 */
+.plan-node {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  padding: 10px 12px;
+  color: var(--md-on-surface, #1b1b1f);
+  background: var(--md-surface, #fbfbfb);
+  border: 1px solid var(--md-outline-variant, #d7dbe3);
+  border-radius: 12px;
+}
+
+.plan-node--plan {
+  background: var(--md-primary-container, #e8f9ff);
+}
+
+.plan-node--group {
+  font-weight: 600;
+}
+
+.plan-node--shot {
+  font-size: 13px;
+}
+
+/* 描边表示生成状态：细=最新，粗=计划已变，虚线=未生成 */
+.plan-node--shot[data-generation='current'] {
+  border-width: 1px;
+}
+
+.plan-node--shot[data-generation='stale'] {
+  border-width: 3px;
+  border-color: #b3261e;
+}
+
+.plan-node--shot[data-generation='ungenerated'] {
+  color: var(--md-on-surface-variant, #6b6f78);
+  border-style: dashed;
+}
+
+.plan-node--affected {
+  box-shadow: 0 0 0 2px rgb(103 80 164 / 28%);
+}
+
+.plan-node__detail {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--md-on-surface-variant, #54565f);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-node__badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  font-size: 12px;
+}

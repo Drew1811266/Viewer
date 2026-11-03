@@ -28,6 +28,8 @@ export interface PlanWorkspaceController extends PlanWorkspaceState {
   removeMark: (markId: string) => Promise<void>
 }
 
+export const REFRESH_INTERVAL_MS = 2000
+
 const EMPTY: PlanWorkspaceState = {
   status: 'idle',
   plans: [],
@@ -94,6 +96,14 @@ export function usePlanWorkspace(bridge: PlanBridge | null): PlanWorkspaceContro
       cancelled = true
     }
   }, [bridge, requestedPlanId, reloadToken])
+
+  // 计划覆盖层打开期间每 2 秒重读一次，让 Agent 的新 revision 自动出现。
+  // 这是轮询而不是文件监听：后端 watcher 尚未按 .viewer/plans 分流。
+  useEffect(() => {
+    if (!bridge) return
+    const timer = setInterval(() => setReloadToken((token) => token + 1), REFRESH_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [bridge])
 
   const addMark = useCallback(
     async (draft: PlanMarkDraft) => {

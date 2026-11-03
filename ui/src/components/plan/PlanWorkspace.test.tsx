@@ -88,6 +88,23 @@ describe('PlanWorkspace', () => {
     expect(payload?.marks).toHaveLength(0)
   })
 
+  it('re-reads the plan while the surface stays open', async () => {
+    vi.useFakeTimers()
+    try {
+      const fake = bridge()
+      render(<PlanWorkspace bridge={fake} />)
+      await vi.advanceTimersByTimeAsync(0)
+      const initial = (fake.list as unknown as { mock: { calls: unknown[] } }).mock.calls.length
+      await vi.advanceTimersByTimeAsync(2100)
+      await vi.advanceTimersByTimeAsync(0)
+      await Promise.resolve()
+      const after = (fake.list as unknown as { mock: { calls: unknown[] } }).mock.calls.length
+      expect(after).toBeGreaterThan(initial)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('explains that the project has no plan', async () => {
     const empty = { ...bridge(), list: vi.fn().mockResolvedValue([]) }
     render(<PlanWorkspace bridge={empty} />)

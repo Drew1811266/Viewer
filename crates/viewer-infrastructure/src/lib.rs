@@ -1,6 +1,7 @@
 pub mod decode_scheduler;
 pub mod image_cache;
 pub mod operation;
+pub mod plan;
 pub mod portable;
 pub mod review;
 pub mod scan;

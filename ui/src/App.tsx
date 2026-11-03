@@ -6,7 +6,7 @@ import type {
   ReviewWorkspacePort,
 } from './api/reviewWorkspaceTypes'
 import type { ViewerBridge } from './api/viewer'
-import { tauriReviewWorkspaceBridge, tauriViewerBridge } from './api/viewer'
+import { tauriPlanBridge, tauriReviewWorkspaceBridge, tauriViewerBridge } from './api/viewer'
 import { visibleReviewFeedbackCounts } from './app/review/reviewFeedbackCounts'
 import { deriveReviewScope } from './app/review/reviewModel'
 import { useReviewSessionCoordinator } from './app/review/useReviewSessionCoordinator'
@@ -263,6 +263,7 @@ function ViewerWorkspace({
       }
       onReselectProject={reselectProject}
       imageRenderer={imageRenderer}
+      planBridge={bridge === tauriViewerBridge ? tauriPlanBridge : null}
     />
   )
 }

@@ -1,5 +1,6 @@
 import type { CSSProperties, MutableRefObject, ReactNode } from 'react'
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import type { PlanBridge } from '../../api/plan'
 import type { FolderTreeItem, RenamePreview, RenameRules } from '../../api/types'
 import BatchImageDialog from '../../components/BatchImageDialog'
 import BatchRenameDialog from '../../components/BatchRenameDialog'
@@ -14,6 +15,7 @@ import InfoOverlay from '../../components/InfoOverlay'
 import type { Point } from '../../components/imagePreview/imageGeometry'
 import OperationResults from '../../components/OperationResults'
 import OrganizationDragPreview from '../../components/OrganizationDragPreview'
+import { PlanWorkspace } from '../../components/plan/PlanWorkspace'
 import RadialFileMenu from '../../components/RadialFileMenu'
 import ReadOnlyBanner from '../../components/ReadOnlyBanner'
 import RenameDialog from '../../components/RenameDialog'
@@ -100,12 +102,14 @@ export interface WorkspaceProjectViewProps {
   reviewLayer: ReactNode
   onReselectProject(): void
   imageRenderer: ImageRendererPort | null
+  planBridge: PlanBridge | null
 }
 
 export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
   const { state, project, projectSessionId, commands, shell, viewing, organization } = props
   const moreMenuTriggerRef = useRef<HTMLElement>(null)
   const activeImageReviewControllerRef = useRef<ImageReviewWorkbenchController | null>(null)
+  const [planOpen, setPlanOpen] = useState(false)
   const displayedFolderId = state.projectionTransition?.selectedFolderId ?? state.selectedFolderId
   const projectionProgressVisible = useDelayedProjectionProgress(
     state.projectionTransition,
@@ -156,6 +160,7 @@ export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
             viewContext={viewContext}
             moreMenuTriggerRef={moreMenuTriggerRef}
             onCloseProject={requestCloseProject}
+            onOpenPlan={() => setPlanOpen(true)}
           />
           {project.access === 'read_only' && (
             <ReadOnlyBanner
@@ -178,6 +183,20 @@ export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
             moreMenuTriggerRef={moreMenuTriggerRef}
             activeImageReviewControllerRef={activeImageReviewControllerRef}
           />
+          {planOpen && props.planBridge ? (
+            <div className="plan-overlay" role="dialog" aria-label="生成计划">
+              <div className="plan-overlay__panel">
+                <button
+                  type="button"
+                  className="plan-overlay__close"
+                  onClick={() => setPlanOpen(false)}
+                >
+                  关闭
+                </button>
+                <PlanWorkspace bridge={props.planBridge} />
+              </div>
+            </div>
+          ) : null}
         </main>
       </SpeechServiceProvider>
     </ViewerToolbarReviewSlotProvider>
@@ -223,10 +242,12 @@ function WorkspaceHeader({
   reviewToolbarAction,
   onReselectProject,
   onCloseProject,
+  onOpenPlan,
 }: WorkspaceProjectViewProps & {
   viewContext: WorkspaceViewContext
   moreMenuTriggerRef: MutableRefObject<HTMLElement | null>
   onCloseProject(): void
+  onOpenPlan(): void
 }) {
   return (
     <header className="workspace-header">
@@ -278,6 +299,7 @@ function WorkspaceHeader({
           access={project.access}
           closing={state.status === 'closing'}
           onOpenSettings={() => emitIntent({ kind: 'open-settings' })}
+          onOpenPlan={onOpenPlan}
           onOpenPermissionSettings={() => void commands.openPermissionSettings()}
           onReselectProject={onReselectProject}
           onCloseProject={onCloseProject}

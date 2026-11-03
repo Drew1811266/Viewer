@@ -154,7 +154,9 @@ export function PlanCanvas({
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        type: 'smoothstep',
+        // 默认的 bezier 曲线比 smoothstep 的折线更贴合设计稿
+        type: 'default',
+        style: { stroke: 'var(--viewer-border-strong)', strokeWidth: 1.5 },
       })),
     [graph],
   )

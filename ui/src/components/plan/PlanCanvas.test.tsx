@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import './jsdomPolyfills'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
@@ -27,6 +28,12 @@ describe('PlanCanvas', () => {
     expect(screen.getByText('夏')).toBeInTheDocument()
     expect(screen.getByText('冬')).toBeInTheDocument()
     expect(screen.getByText('⚠ 声明 3')).toBeInTheDocument()
+  })
+
+  it('wires connectors as bezier curves rather than stepped lines', () => {
+    const source = readFileSync('src/components/plan/PlanCanvas.tsx', 'utf8')
+    expect(source).toContain("type: 'default'")
+    expect(source).not.toContain("type: 'smoothstep'")
   })
 
   it('titles the plan node with the revision and totals', () => {

@@ -119,3 +119,14 @@ node scripts/plan-protocol/read-marks.mjs --project <root> --plan <planId>
 
 成功向 stdout 写一行 JSON，失败写 stderr 并返回非零退出码。
 需要先构建：`pnpm build:plan-reader`（或 `pnpm build:plan-mcp`）。
+
+## 参考图读取
+
+参考图按内容寻址存放在 `.viewer/refs/<sha256>`，界面通过 `plan-ref://<host>/<assetId>` 读取：
+
+- 只接受 64 位十六进制 `assetId`，其余一律 400；
+- 请求时对路径做 `canonicalize` 并校验仍位于当前项目的 `.viewer/refs` 内，软链逃逸返回 403；
+- 未打开项目时返回 404；单文件上限 32 MB；
+- `Content-Type` 按文件头魔数判定（PNG / JPEG / GIF / WebP / TIFF）。
+
+该方案只暴露参考图，不暴露项目其它目录。

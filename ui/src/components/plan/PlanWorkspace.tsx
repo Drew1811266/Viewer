@@ -7,6 +7,17 @@ export interface PlanWorkspaceProps {
   bridge: PlanBridge | null
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  pending: '待处理',
+  changed: '已改',
+  replaced: '已换',
+  orphaned: '已失效',
+}
+
+export function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status
+}
+
 export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
   const plan = usePlanWorkspace(bridge)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -70,6 +81,39 @@ export function PlanWorkspace({ bridge }: PlanWorkspaceProps) {
               <h2>{selectedShot.shotId}</h2>
               <pre className="plan-drawer__prompt">{selectedShot.prompt}</pre>
               <p className="plan-drawer__refs">参考图 {selectedShot.references.length} 张</p>
+              <button
+                type="button"
+                className="plan-drawer__mark"
+                onClick={() =>
+                  void plan.addMark({
+                    target: { kind: 'shot', shotId: selectedShot.shotId },
+                    category: 'wrong',
+                    observedHash: selectedShot.hash,
+                  })
+                }
+              >
+                标记这个分镜
+              </button>
+              <ul className="plan-drawer__marks">
+                {plan.marks
+                  .filter(
+                    (entry) =>
+                      entry.mark.target.kind === 'shot' &&
+                      entry.mark.target.shotId === selectedShot.shotId,
+                  )
+                  .map((entry) => (
+                    <li key={entry.mark.id} data-status={entry.status}>
+                      <span>{statusLabel(entry.status)}</span>
+                      <button
+                        type="button"
+                        aria-label={`删除标记 ${entry.mark.id}`}
+                        onClick={() => void plan.removeMark(entry.mark.id)}
+                      >
+                        删除
+                      </button>
+                    </li>
+                  ))}
+              </ul>
             </>
           ) : (
             <p className="plan-drawer__hint">选中一个分镜看拼装结果</p>

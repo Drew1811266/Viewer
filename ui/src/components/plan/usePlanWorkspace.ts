@@ -14,9 +14,18 @@ export interface PlanWorkspaceState {
   error: string | null
 }
 
+export interface PlanMarkDraft {
+  target: { kind: 'shot'; shotId: string } | { kind: 'group'; groupId: string }
+  category: string
+  note?: string
+  observedHash?: string
+}
+
 export interface PlanWorkspaceController extends PlanWorkspaceState {
   selectPlan: (planId: string | null) => void
   reload: () => void
+  addMark: (draft: PlanMarkDraft) => Promise<void>
+  removeMark: (markId: string) => Promise<void>
 }
 
 const EMPTY: PlanWorkspaceState = {
@@ -86,7 +95,47 @@ export function usePlanWorkspace(bridge: PlanBridge | null): PlanWorkspaceContro
     }
   }, [bridge, requestedPlanId, reloadToken])
 
-  return useMemo(() => ({ ...state, selectPlan, reload }), [state, selectPlan, reload])
+  const addMark = useCallback(
+    async (draft: PlanMarkDraft) => {
+      if (!bridge || !state.snapshot) return
+      const mark = {
+        id: `mk_${Date.now().toString(36)}`,
+        revision: state.snapshot.revision,
+        target: draft.target,
+        category: draft.category,
+        ...(draft.note ? { note: draft.note } : {}),
+        ...(draft.observedHash ? { observedHash: draft.observedHash } : {}),
+        createdAt: new Date().toISOString(),
+      }
+      await bridge.writeMarks({
+        protocolVersion: 'viewer.plan-marks/1',
+        planId: state.snapshot.planId,
+        marks: [...state.marks.map((entry) => entry.mark), mark],
+        updatedAt: new Date().toISOString(),
+      })
+      reload()
+    },
+    [bridge, state.snapshot, state.marks, reload],
+  )
+
+  const removeMark = useCallback(
+    async (markId: string) => {
+      if (!bridge || !state.snapshot) return
+      await bridge.writeMarks({
+        protocolVersion: 'viewer.plan-marks/1',
+        planId: state.snapshot.planId,
+        marks: state.marks.filter((entry) => entry.mark.id !== markId).map((entry) => entry.mark),
+        updatedAt: new Date().toISOString(),
+      })
+      reload()
+    },
+    [bridge, state.snapshot, state.marks, reload],
+  )
+
+  return useMemo(
+    () => ({ ...state, selectPlan, reload, addMark, removeMark }),
+    [state, selectPlan, reload, addMark, removeMark],
+  )
 }
 
 export function stalePanelCopy(marks: ResolvedMark[]): string {

@@ -54,6 +54,40 @@ describe('PlanWorkspace', () => {
     await waitFor(() => expect(screen.getByText('参考图 1 张')).toBeInTheDocument())
   })
 
+  it('writes a mark for the selected shot', async () => {
+    const fake = bridge()
+    render(<PlanWorkspace bridge={fake} />)
+    await waitFor(() => expect(screen.getByText('s1')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('s1'))
+    fireEvent.click(await screen.findByText('标记这个分镜'))
+    await waitFor(() => expect(fake.writeMarks).toHaveBeenCalledOnce())
+    const calls = (fake.writeMarks as unknown as { mock: { calls: unknown[][] } }).mock.calls
+    const payload = calls[0]?.[0] as
+      | {
+          protocolVersion: string
+          planId: string
+          marks: { target: { kind: string; shotId: string }; revision: number }[]
+        }
+      | undefined
+    expect(payload?.protocolVersion).toBe('viewer.plan-marks/1')
+    expect(payload?.marks).toHaveLength(2)
+    const added = payload?.marks.at(-1)
+    expect(added?.target).toEqual({ kind: 'shot', shotId: 's1' })
+    expect(added?.revision).toBe(4)
+  })
+
+  it('removes a mark by id', async () => {
+    const fake = bridge()
+    render(<PlanWorkspace bridge={fake} />)
+    await waitFor(() => expect(screen.getByText('s1')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('s1'))
+    fireEvent.click(await screen.findByLabelText('删除标记 mk_1'))
+    await waitFor(() => expect(fake.writeMarks).toHaveBeenCalledOnce())
+    const calls = (fake.writeMarks as unknown as { mock: { calls: unknown[][] } }).mock.calls
+    const payload = calls[0]?.[0] as { marks: unknown[] } | undefined
+    expect(payload?.marks).toHaveLength(0)
+  })
+
   it('explains that the project has no plan', async () => {
     const empty = { ...bridge(), list: vi.fn().mockResolvedValue([]) }
     render(<PlanWorkspace bridge={empty} />)

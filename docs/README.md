@@ -27,6 +27,7 @@
 | [design/0.3.0/README.md](design/0.3.0/README.md) | Confirmed; implementation in progress | — |
 | [acceptance/0.3.0-acceptance-catalog.md](acceptance/0.3.0-acceptance-catalog.md) | Active (development) | — |
 | [product/0.3.0-DELTA.md](product/0.3.0-DELTA.md) | Development | — |
+| [product/0.3.1-DELTA.md](product/0.3.1-DELTA.md) | Development | — |
 | [design/0.3.0/AUDIT-2026-10-29.md](design/0.3.0/AUDIT-2026-10-29.md) | Correction audit | — |
 | [design/0.3.0/AUDIT-2026-11-01.md](design/0.3.0/AUDIT-2026-11-01.md) | Frame-by-frame audit; 4 decisions open | — |
 | [design/0.3.0/pen/overview.png](design/0.3.0/pen/overview.png) | Visual overview | — |

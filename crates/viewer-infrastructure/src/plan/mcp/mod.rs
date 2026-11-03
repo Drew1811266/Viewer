@@ -98,7 +98,7 @@ fn initialize(params: &Value) -> Value {
     json!({
         "protocolVersion": version,
         "capabilities": { "tools": {} },
-        "serverInfo": { "name": SERVER_NAME, "version": "0.3.0" }
+        "serverInfo": { "name": SERVER_NAME, "version": "0.3.1" }
     })
 }
 

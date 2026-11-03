@@ -49,8 +49,8 @@ pub struct PlanRepository {
 impl PlanRepository {
     pub fn open(project_root: &Path) -> Result<Self, RepoError> {
         let incoming_root = project_root.join(".viewer").join("plans").join("incoming");
-        let assets = AssetStore::open(project_root)
-            .map_err(|error| RepoError::Io(error.to_string()))?;
+        let assets =
+            AssetStore::open(project_root).map_err(|error| RepoError::Io(error.to_string()))?;
         Ok(Self {
             incoming_root,
             assets,
@@ -133,14 +133,11 @@ impl PlanRepository {
         summaries
     }
 
-    fn read_and_validate(
-        &self,
-        path: &Path,
-    ) -> Result<(PlanDocument, String), (String, String)> {
+    fn read_and_validate(&self, path: &Path) -> Result<(PlanDocument, String), (String, String)> {
         let mut last_failure: Option<(String, String)> = None;
         for attempt in 0..RETRY_ATTEMPTS {
-            let bytes = std::fs::read(path)
-                .map_err(|error| ("io".to_owned(), error.to_string()))?;
+            let bytes =
+                std::fs::read(path).map_err(|error| ("io".to_owned(), error.to_string()))?;
             let hash = blake3::hash(&bytes).to_hex().to_string();
             match parse_plan(&bytes, MAX_PLAN_BYTES) {
                 Ok(plan) => {
@@ -227,7 +224,9 @@ mod tests {
             write_revision(
                 directory.path(),
                 revision,
-                serde_json::to_string(&document(revision)).unwrap().as_bytes(),
+                serde_json::to_string(&document(revision))
+                    .unwrap()
+                    .as_bytes(),
             );
         }
         let repository = PlanRepository::open(directory.path()).unwrap();
@@ -246,7 +245,11 @@ mod tests {
             2,
             serde_json::to_string(&document(2)).unwrap().as_bytes(),
         );
-        write_revision(directory.path(), 3, b"{\"protocolVersion\":\"viewer.plan/1\"");
+        write_revision(
+            directory.path(),
+            3,
+            b"{\"protocolVersion\":\"viewer.plan/1\"",
+        );
 
         let repository = PlanRepository::open(directory.path()).unwrap();
         let published = repository

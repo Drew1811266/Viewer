@@ -161,9 +161,8 @@ pub fn parse_plan(bytes: &[u8], max_bytes: u64) -> Result<PlanDocument, PlanErro
             format!("plan document exceeds {max_bytes} bytes"),
         ));
     }
-    let probe: ProtocolProbe = serde_json::from_slice(bytes).map_err(|error| {
-        PlanError::new("", PlanErrorCode::InvalidSchema, error.to_string())
-    })?;
+    let probe: ProtocolProbe = serde_json::from_slice(bytes)
+        .map_err(|error| PlanError::new("", PlanErrorCode::InvalidSchema, error.to_string()))?;
     if probe.protocol_version != PLAN_PROTOCOL_V1 {
         return Err(PlanError::new(
             "protocolVersion",
@@ -205,10 +204,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_fields() {
-        let json = MINIMAL.replace(
-            "\"shots\"",
-            "\"surprise\": true,\n      \"shots\"",
-        );
+        let json = MINIMAL.replace("\"shots\"", "\"surprise\": true,\n      \"shots\"");
         let error = parse_plan(json.as_bytes(), MAX_PLAN_BYTES).unwrap_err();
         assert_eq!(error.code, PlanErrorCode::InvalidSchema);
     }

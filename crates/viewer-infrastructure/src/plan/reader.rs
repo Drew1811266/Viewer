@@ -54,7 +54,10 @@ pub fn run_plan_reader<R: Read, W: Write>(input: R, mut output: W) -> bool {
         "current" => current(&repository, request.plan_id.as_deref()),
         "list" => Ok(list(&repository)),
         "marks" => marks(project_root, request.plan_id.as_deref()),
-        other => Err(("unknown_operation".to_owned(), format!("unknown operation `{other}`"))),
+        other => Err((
+            "unknown_operation".to_owned(),
+            format!("unknown operation `{other}`"),
+        )),
     };
 
     match result {
@@ -92,8 +95,10 @@ pub(crate) fn compose_payload(published: &PublishedPlan) -> Value {
 }
 
 fn current(repository: &PlanRepository, plan_id: Option<&str>) -> Result<Value, (String, String)> {
-    let plan_id = plan_id.ok_or_else(|| ("integrity".to_owned(), "planId is required".to_owned()))?;
-    let parsed = PlanId::parse(plan_id).map_err(|error| (error.code.as_str().to_owned(), error.message))?;
+    let plan_id =
+        plan_id.ok_or_else(|| ("integrity".to_owned(), "planId is required".to_owned()))?;
+    let parsed =
+        PlanId::parse(plan_id).map_err(|error| (error.code.as_str().to_owned(), error.message))?;
     let published = repository.current(&parsed).map_err(repo_error)?;
     let mut payload = compose_payload(&published);
     payload["status"] = Value::String("ok".to_owned());
@@ -112,7 +117,8 @@ fn list(repository: &PlanRepository) -> Value {
 }
 
 fn marks(project_root: &str, plan_id: Option<&str>) -> Result<Value, (String, String)> {
-    let plan_id = plan_id.ok_or_else(|| ("integrity".to_owned(), "planId is required".to_owned()))?;
+    let plan_id =
+        plan_id.ok_or_else(|| ("integrity".to_owned(), "planId is required".to_owned()))?;
     let path = std::path::Path::new(project_root)
         .join(".viewer")
         .join("plan-marks")
@@ -144,7 +150,10 @@ fn succeed<W: Write>(output: &mut W, payload: Value) -> bool {
 }
 
 fn fail<W: Write>(output: &mut W, code: &str, message: &str) -> bool {
-    write_line(output, &json!({ "status": "error", "code": code, "message": message }));
+    write_line(
+        output,
+        &json!({ "status": "error", "code": code, "message": message }),
+    );
     false
 }
 
@@ -160,8 +169,8 @@ mod tests {
     use super::*;
 
     fn project_with_plan() -> tempfile::TempDir {
-        use viewer_domain::plan::{PlanDocument, PlanGroup, PlanShot, Producer, Revision};
         use std::collections::BTreeMap;
+        use viewer_domain::plan::{PlanDocument, PlanGroup, PlanShot, Producer, Revision};
 
         let directory = tempfile::tempdir().unwrap();
         let document = PlanDocument {
@@ -227,7 +236,8 @@ mod tests {
 
     #[test]
     fn unsupported_version_does_not_report_corruption() {
-        let (ok, response) = run(r#"{"protocolVersion":"viewer.plan.reader/9","operation":"list"}"#);
+        let (ok, response) =
+            run(r#"{"protocolVersion":"viewer.plan.reader/9","operation":"list"}"#);
         assert!(!ok);
         assert_eq!(response["code"], "unsupported_version");
     }

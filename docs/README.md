@@ -48,6 +48,7 @@
 | [TECHNICAL_FOUNDATIONS.md](TECHNICAL_FOUNDATIONS.md) | Active | — |
 | [OPEN_SOURCE_RESEARCH.md](OPEN_SOURCE_RESEARCH.md) | Active | — |
 | [protocol/README.md](protocol/README.md) | Active | — |
+| [protocol/plan-protocol.md](protocol/plan-protocol.md) | Active | — |
 | [quality/DEPENDENCY_HEALTH.md](quality/DEPENDENCY_HEALTH.md) | Active | — |
 | [quality/2026-08-27-continuous-review-validation.md](quality/2026-08-27-continuous-review-validation.md) | Development evidence | — |
 | [architecture/viewer-0.1-api-baseline.md](architecture/viewer-0.1-api-baseline.md) | Active | — |
@@ -81,6 +82,7 @@
 | [adr/0009-annotation-style-and-review-protocol-v5.md](adr/0009-annotation-style-and-review-protocol-v5.md) | Active | — |
 | [adr/0010-offline-speech-recognition.md](adr/0010-offline-speech-recognition.md) | Active | — |
 | [adr/0011-material-design-3-design-system.md](adr/0011-material-design-3-design-system.md) | Active | — |
+| [adr/0012-generation-plan-protocol-and-mcp-boundary.md](adr/0012-generation-plan-protocol-and-mcp-boundary.md) | Active | — |
 
 AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状态为 `Implemented`，实施计划
 内部状态为 `Complete`。两份文档继续以 Active 治理资料保留，用于约束未来阶段的依赖边界。

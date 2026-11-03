@@ -60,7 +60,10 @@ pub fn serve<R: Read, W: Write>(input: R, mut output: W) {
         let Some(id) = request.get("id").cloned() else {
             continue;
         };
-        let method = request.get("method").and_then(Value::as_str).unwrap_or_default();
+        let method = request
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let params = request.get("params").cloned().unwrap_or(Value::Null);
 
         let payload = match dispatch(method, &params) {
@@ -251,7 +254,8 @@ fn tool_write(arguments: &Value) -> Result<(Value, bool), (i64, String)> {
         ));
     }
     std::fs::create_dir_all(&directory).map_err(|error| (-32603, error.to_string()))?;
-    let bytes = serde_json::to_vec_pretty(&document).map_err(|error| (-32603, error.to_string()))?;
+    let bytes =
+        serde_json::to_vec_pretty(&document).map_err(|error| (-32603, error.to_string()))?;
     std::fs::write(&path, bytes).map_err(|error| (-32603, error.to_string()))?;
     Ok((
         json!({ "ok": true, "revision": document.revision.get(), "warnings": validation["warnings"] }),
@@ -442,7 +446,12 @@ mod tests {
             json!({ "projectRoot": directory.path(), "plan": plan }),
         )]);
         assert_eq!(responses[0]["result"]["isError"], true);
-        assert!(!directory.path().join(".viewer/plans/incoming/autumn/1.json").exists());
+        assert!(
+            !directory
+                .path()
+                .join(".viewer/plans/incoming/autumn/1.json")
+                .exists()
+        );
     }
 
     #[test]

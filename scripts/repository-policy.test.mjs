@@ -1589,3 +1589,14 @@ test('quality reports are continuous trends and not a release gate', async () =>
     /coverage|quality:report|architecture:trends|release|M4/,
   )
 })
+
+test('plan MCP server is a stdio binary and never a listening service', async () => {
+  const [binary, transport] = await Promise.all([
+    read('crates/viewer-infrastructure/src/bin/viewer-plan-mcp.rs'),
+    read('crates/viewer-infrastructure/src/plan/mcp/mod.rs'),
+  ])
+  for (const source of [binary, transport]) {
+    assert.doesNotMatch(source, /TcpListener|UdpSocket|\.bind\(|axum|hyper/, 'MCP must stay a stdio child process')
+  }
+  assert.match(binary, /serve\(/)
+})

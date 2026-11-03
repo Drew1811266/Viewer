@@ -39,11 +39,7 @@ pub struct PlanError {
 }
 
 impl PlanError {
-    pub fn new(
-        path: impl Into<String>,
-        code: PlanErrorCode,
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn new(path: impl Into<String>, code: PlanErrorCode, message: impl Into<String>) -> Self {
         Self {
             path: path.into(),
             code,

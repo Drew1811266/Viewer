@@ -49,7 +49,11 @@ fn compose_shot(plan: &PlanDocument, shot: &PlanShot) -> ComposedShot {
     let mut segments = Vec::new();
     let mut references: Vec<EffectiveReference> = Vec::new();
 
-    if let Some(prompt) = shot.prompt.as_ref().filter(|value| !value.trim().is_empty()) {
+    if let Some(prompt) = shot
+        .prompt
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
         segments.push(PromptSegment {
             source: SegmentSource::Shot,
             text: prompt.clone(),
@@ -70,9 +74,18 @@ fn compose_shot(plan: &PlanDocument, shot: &PlanShot) -> ComposedShot {
             let Some(value) = dimension.values.iter().find(|value| value.id == *value_id) else {
                 continue;
             };
-            push_text(&mut segments, value_source(dimension, value), value.fragment.as_deref());
+            push_text(
+                &mut segments,
+                value_source(dimension, value),
+                value.fragment.as_deref(),
+            );
             for asset_id in &value.references {
-                push_reference(&mut references, *asset_id, None, value_origin(dimension, value));
+                push_reference(
+                    &mut references,
+                    *asset_id,
+                    None,
+                    value_origin(dimension, value),
+                );
             }
         }
         push_text(&mut segments, SegmentSource::Shot, shot.delta.as_deref());
@@ -139,7 +152,10 @@ fn push_reference(
     role: Option<AssetRole>,
     origin: ReferenceOrigin,
 ) {
-    if references.iter().any(|existing| existing.asset_id == asset_id) {
+    if references
+        .iter()
+        .any(|existing| existing.asset_id == asset_id)
+    {
         return;
     }
     references.push(EffectiveReference {
@@ -183,9 +199,7 @@ fn shot_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use viewer_domain::plan::{
-        Dimension, DimensionValue, PlanGroup, PlanId, Producer, Revision,
-    };
+    use viewer_domain::plan::{Dimension, DimensionValue, PlanGroup, PlanId, Producer, Revision};
 
     fn shot(id: &str, group_id: &str, attributes: &[(&str, &str)], delta: &str) -> PlanShot {
         PlanShot {
@@ -269,7 +283,12 @@ mod tests {
     #[test]
     fn composes_group_then_values_in_declaration_order_then_delta() {
         let document = plan(
-            vec![shot("s1", "g_summer", &[("series", "summer"), ("subject", "boy")], "海边逆光")],
+            vec![shot(
+                "s1",
+                "g_summer",
+                &[("series", "summer"), ("subject", "boy")],
+                "海边逆光",
+            )],
             "明亮清爽",
         );
         let composed = compose_plan(&document);
@@ -293,7 +312,10 @@ mod tests {
                 SegmentSource::Shot,
             ]
         );
-        assert_eq!(composed[0].prompt, "轻薄夏装\n明亮清爽\n10 岁男孩\n海边逆光");
+        assert_eq!(
+            composed[0].prompt,
+            "轻薄夏装\n明亮清爽\n10 岁男孩\n海边逆光"
+        );
     }
 
     #[test]
@@ -305,7 +327,6 @@ mod tests {
         assert_eq!(composed[0].segments[0].source, SegmentSource::Shot);
         assert_eq!(composed[0].prompt, "完全手写的提示词");
     }
-
 
     #[test]
     fn value_references_record_their_owning_value() {

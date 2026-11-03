@@ -74,7 +74,8 @@ impl AssetStore {
             .extension()
             .and_then(|value| value.to_str())
             .ok_or(AssetError::UnsupportedFormat)?;
-        let metadata = std::fs::metadata(source).map_err(|error| AssetError::Io(error.to_string()))?;
+        let metadata =
+            std::fs::metadata(source).map_err(|error| AssetError::Io(error.to_string()))?;
         if metadata.len() > MAX_ASSET_BYTES {
             return Err(AssetError::TooLarge);
         }
@@ -84,15 +85,14 @@ impl AssetStore {
 
     pub fn contains(&self, asset_id: &AssetId) -> bool {
         let hex = asset_id.as_hex();
-        SUPPORTED_EXTENSIONS.iter().any(|extension| {
-            self.refs_root
-                .join(format!("{hex}.{extension}"))
-                .is_file()
-        })
+        SUPPORTED_EXTENSIONS
+            .iter()
+            .any(|extension| self.refs_root.join(format!("{hex}.{extension}")).is_file())
     }
 
     pub fn path_for(&self, asset_id: &AssetId, extension: &str) -> PathBuf {
-        self.refs_root.join(format!("{}.{extension}", asset_id.as_hex()))
+        self.refs_root
+            .join(format!("{}.{extension}", asset_id.as_hex()))
     }
 }
 
@@ -151,7 +151,11 @@ mod tests {
         std::fs::write(&source, PNG).unwrap();
 
         let imported = store.import_path(&source).unwrap();
-        assert!(imported.path.ends_with(format!("{}.png", imported.asset_id.as_hex())));
+        assert!(
+            imported
+                .path
+                .ends_with(format!("{}.png", imported.asset_id.as_hex()))
+        );
         assert!(store.contains(&imported.asset_id));
     }
 

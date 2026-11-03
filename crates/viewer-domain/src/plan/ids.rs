@@ -13,7 +13,9 @@ impl PlanId {
         let mut characters = value.chars();
         let valid = !value.is_empty()
             && value.len() <= Self::MAX_LEN
-            && characters.next().is_some_and(|first| first.is_ascii_alphanumeric())
+            && characters
+                .next()
+                .is_some_and(|first| first.is_ascii_alphanumeric())
             && value
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
@@ -145,7 +147,10 @@ mod tests {
         for invalid in ["", "-lead", "has space", "has/slash", &"a".repeat(65)] {
             assert!(PlanId::parse(invalid).is_err(), "accepted {invalid:?}");
         }
-        assert_eq!(PlanId::parse("autumn-hero_1").unwrap().as_str(), "autumn-hero_1");
+        assert_eq!(
+            PlanId::parse("autumn-hero_1").unwrap().as_str(),
+            "autumn-hero_1"
+        );
     }
 
     #[test]

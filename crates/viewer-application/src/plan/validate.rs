@@ -374,8 +374,15 @@ mod tests {
 
     #[test]
     fn declared_count_match_produces_no_warning() {
-        let document = plan(vec![group("g1", 2)], vec![shot("s1", "g1"), shot("s2", "g1")]);
-        assert!(validate_plan(&document, &HashSet::new()).warnings.is_empty());
+        let document = plan(
+            vec![group("g1", 2)],
+            vec![shot("s1", "g1"), shot("s2", "g1")],
+        );
+        assert!(
+            validate_plan(&document, &HashSet::new())
+                .warnings
+                .is_empty()
+        );
     }
 
     #[test]
@@ -429,8 +436,7 @@ mod tests {
                 .any(|error| error.code == PlanErrorCode::UnknownGroup)
         );
         assert!(validation.errors.iter().any(|error| {
-            error.code == PlanErrorCode::UnknownValue
-                && error.path == "groups[0].attributes.series"
+            error.code == PlanErrorCode::UnknownValue && error.path == "groups[0].attributes.series"
         }));
     }
 

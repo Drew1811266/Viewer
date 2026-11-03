@@ -14,6 +14,7 @@ export interface PlanSnapshotShot {
   prompt: string
   hash: string
   references: string[]
+  generation?: 'ungenerated' | 'current' | 'stale'
 }
 
 export interface PlanSnapshot {
@@ -35,6 +36,7 @@ export interface PlanGraphNode {
   detail: string
   countMismatch: boolean
   affected: boolean
+  generation?: 'ungenerated' | 'current' | 'stale'
   width: number
   height: number
   x: number
@@ -106,6 +108,7 @@ export function buildPlanGraph(snapshot: PlanSnapshot): PlanGraph {
       detail: shot.prompt.split('\n')[0] ?? '',
       countMismatch: false,
       affected: affected.has(shot.shotId),
+      generation: shot.generation ?? 'ungenerated',
       ...SHOT_NODE,
       x: 0,
       y: 0,

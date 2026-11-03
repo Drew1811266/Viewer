@@ -19,6 +19,7 @@ pub struct PlanShotDto {
     pub prompt: String,
     pub hash: String,
     pub references: Vec<String>,
+    pub generation: viewer_application::plan::ShotGeneration,
 }
 
 #[derive(Clone, Debug, Serialize)]

@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use viewer_application::plan::{compose_plan, diff_plans, validate_plan};
+use viewer_application::plan::{compose_plan, diff_plans, shot_generation, validate_plan};
 use viewer_domain::plan::{PlanId, PlanMarks};
-use viewer_infrastructure::plan::{AssetStore, MarksStore, PlanRepository};
+use viewer_infrastructure::plan::{AssetStore, MarksStore, PlanRepository, RunRepository};
 
 use crate::dto::plan::{PlanGroupDto, PlanMarksDto, PlanShotDto, PlanSnapshotDto, PlanSummaryDto};
 
@@ -47,6 +47,10 @@ pub fn plan_snapshot(root: &Path, plan_id: &str) -> Result<PlanSnapshotDto, Plan
     let previous = repository.previous(&plan_id).ok().flatten();
 
     let composed = compose_plan(&published.plan);
+    let runs = RunRepository::open(root)
+        .and_then(|repository| repository.list(&plan_id))
+        .unwrap_or_default();
+    let generation = shot_generation(&composed, &runs);
     let mut groups: Vec<PlanGroupDto> = published
         .plan
         .groups
@@ -84,6 +88,10 @@ pub fn plan_snapshot(root: &Path, plan_id: &str) -> Result<PlanSnapshotDto, Plan
                 .iter()
                 .map(|reference| reference.asset_id.as_hex())
                 .collect(),
+            generation: generation
+                .get(&shot.shot_id)
+                .copied()
+                .unwrap_or(viewer_application::plan::ShotGeneration::Ungenerated),
         })
         .collect();
 

@@ -11,7 +11,14 @@ const snapshot: PlanSnapshot = {
   ],
   shots: [
     { shotId: 's1', groupId: 'g1', prompt: '轻薄夏装\n海边', hash: 'h1', references: [] },
-    { shotId: 's2', groupId: 'g1', prompt: '轻薄夏装\n室内', hash: 'h2', references: [] },
+    {
+      shotId: 's2',
+      groupId: 'g1',
+      prompt: '轻薄夏装\n室内',
+      hash: 'h2',
+      references: [],
+      generation: 'stale',
+    },
     { shotId: 's3', groupId: 'g2', prompt: '厚重冬装\n雪地', hash: 'h3', references: [] },
   ],
   warnings: [],
@@ -53,6 +60,12 @@ describe('buildPlanGraph', () => {
     expect(graph.nodes.find((node) => node.id === 'shot:s2')?.affected).toBe(true)
     expect(graph.nodes.find((node) => node.id === 'group:g1')?.affected).toBe(true)
     expect(graph.nodes.find((node) => node.id === 'shot:s1')?.affected).toBe(false)
+  })
+
+  it('carries the persistent generation state of each shot', () => {
+    const graph = buildPlanGraph(snapshot)
+    expect(graph.nodes.find((node) => node.id === 'shot:s2')?.generation).toBe('stale')
+    expect(graph.nodes.find((node) => node.id === 'shot:s1')?.generation).toBe('ungenerated')
   })
 
   it('places ranks left to right without overlapping', () => {

@@ -16,6 +16,7 @@ interface PlanNodeData extends Record<string, unknown> {
   kind: PlanGraphNode['kind']
   countMismatch: boolean
   affected: boolean
+  generation?: 'ungenerated' | 'current' | 'stale'
 }
 
 function PlanNodeCard({ data }: NodeProps) {
@@ -26,6 +27,7 @@ function PlanNodeCard({ data }: NodeProps) {
         node.countMismatch ? ' plan-node--mismatch' : ''
       }`}
       data-kind={node.kind}
+      data-generation={node.generation}
     >
       <span className="plan-node__label">{node.label}</span>
       <span className="plan-node__detail">{node.detail}</span>
@@ -59,6 +61,7 @@ export function PlanCanvas({ snapshot, selectedNodeId, onSelectNode }: PlanCanva
           kind: node.kind,
           countMismatch: node.countMismatch,
           affected: node.affected,
+          generation: node.generation,
         } satisfies PlanNodeData,
       })),
     [graph, selectedNodeId],

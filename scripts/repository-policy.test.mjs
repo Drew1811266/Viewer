@@ -168,7 +168,9 @@ const cargoManifests = [
 ]
 const directDependencies = [
   '@biomejs/biome',
+  '@dagrejs/dagre',
   '@vitest/coverage-v8',
+  '@xyflow/react',
   'ammonia',
   'async-trait',
   'blake3',

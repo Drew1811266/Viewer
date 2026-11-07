@@ -17,6 +17,7 @@ pub mod image_render_events;
 pub mod image_render_runtime;
 pub mod markdown;
 pub mod operation_runtime;
+mod plan_protocol;
 pub mod state;
 pub mod video_events;
 #[cfg(all(target_os = "macos", feature = "video-feasibility"))]
@@ -233,6 +234,8 @@ pub fn application_context() -> tauri::Context<tauri::Wry> {
 pub fn run() {
     let registry = Arc::new(ImageArtifactRegistry::default());
     let active_image_session = image_protocol::ActiveImageSession::default();
+    let active_plan_root = plan_protocol::ActivePlanRoot::default();
+    let runtime_active_plan_root = active_plan_root.clone();
     let image_resolver = Arc::new(image_protocol::ImageProtocolResolver::new(
         active_image_session.clone(),
         Arc::clone(&registry),
@@ -244,6 +247,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Arc::clone(&image_resolver))
         .register_asynchronous_uri_scheme_protocol(
+            "plan-ref",
+            move |_context, request, responder| {
+                plan_protocol::handle_request(&active_plan_root, &request, responder);
+            },
+        )
+        .register_asynchronous_uri_scheme_protocol(
             "viewer-image",
             move |_context, request, responder| {
                 image_protocol::handle_request(Arc::clone(&image_resolver), request, responder);
@@ -251,6 +260,10 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             health,
+            commands::plan::plan_list,
+            commands::plan::plan_snapshot,
+            commands::plan::plan_marks_read,
+            commands::plan::plan_marks_write,
             commands::project::open_project,
             commands::project::close_project,
             commands::project::project_snapshot,
@@ -376,6 +389,7 @@ pub fn run() {
                 Arc::clone(&runtime_registry),
                 runtime_active_image_session.clone(),
                 video_probe,
+                runtime_active_plan_root.clone(),
             ));
             let video_events: Arc<dyn video_runtime::VideoEventPort> = Arc::new(
                 video_events::TauriVideoEventEmitter::new(app.handle().clone()),
@@ -724,7 +738,7 @@ mod tests {
     }
 
     #[test]
-    fn csp_allows_only_the_explicit_viewer_image_origins() {
+    fn csp_allows_only_the_explicit_image_origins() {
         let configuration: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.conf.json"))
                 .expect("tauri configuration must be valid JSON");
@@ -738,7 +752,7 @@ mod tests {
             .expect("CSP must define img-src");
         assert_eq!(
             image_directive,
-            "img-src 'self' asset: data: viewer-image: http://viewer-image.localhost"
+            "img-src 'self' asset: data: plan-ref: http://plan-ref.localhost viewer-image: http://viewer-image.localhost"
         );
         assert!(!csp.contains('*'));
     }

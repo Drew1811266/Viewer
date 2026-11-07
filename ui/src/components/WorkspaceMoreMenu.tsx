@@ -12,6 +12,7 @@ export interface WorkspaceMoreMenuProps {
   access: ProjectAccess
   closing: boolean
   onOpenSettings(): void
+  onOpenPlan(): void
   onOpenPermissionSettings(): void
   onReselectProject(): void
   onCloseProject(): void
@@ -25,6 +26,7 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
       access,
       closing,
       onOpenSettings,
+      onOpenPlan,
       onOpenPermissionSettings,
       onReselectProject,
       onCloseProject,
@@ -73,6 +75,9 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
           onOpenChange={onOpenChange}
           style={{ maxWidth: popoverMaxWidth }}
         >
+          <ViewerMenuRow className="workspace-menu-item" onSelect={() => run(onOpenPlan)}>
+            生成计划
+          </ViewerMenuRow>
           <ViewerMenuRow className="workspace-menu-item" onSelect={() => run(onOpenSettings)}>
             软件设置
           </ViewerMenuRow>

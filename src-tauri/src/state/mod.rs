@@ -2,6 +2,7 @@ mod batch_image;
 mod common;
 mod markers;
 mod organization;
+pub mod plan;
 mod preview;
 mod review;
 mod review_workspace;
@@ -359,6 +360,7 @@ pub struct DesktopRuntime {
     image_factory: Arc<dyn DesktopImageFactory>,
     image_registry: Arc<ImageArtifactRegistry>,
     active_image_session: ActiveImageSession,
+    plan_root: crate::plan_protocol::ActivePlanRoot,
     text_reader: Arc<dyn TextPreviewPort>,
     text_writer: Arc<dyn TextSavePort>,
     clock: Arc<dyn ClockPort>,
@@ -420,6 +422,7 @@ impl DesktopRuntime {
             Arc::new(SystemClock),
             Arc::new(SessionMarkerProjectionFactory),
             video_probe,
+            crate::plan_protocol::ActivePlanRoot::default(),
         )
     }
 
@@ -462,6 +465,7 @@ impl DesktopRuntime {
             Arc::new(SystemClock),
             Arc::new(SessionMarkerProjectionFactory),
             Arc::new(UnavailableVideoProbe),
+            crate::plan_protocol::ActivePlanRoot::default(),
         )
     }
 
@@ -475,6 +479,7 @@ impl DesktopRuntime {
         image_registry: Arc<ImageArtifactRegistry>,
         active_image_session: ActiveImageSession,
         video_probe: Arc<dyn VideoMetadataProbe>,
+        plan_root: crate::plan_protocol::ActivePlanRoot,
     ) -> Self {
         Self::new_with_runtime_services(
             cache_base,
@@ -487,6 +492,7 @@ impl DesktopRuntime {
             Arc::new(SystemClock),
             Arc::new(SessionMarkerProjectionFactory),
             video_probe,
+            plan_root,
         )
     }
 
@@ -510,6 +516,7 @@ impl DesktopRuntime {
             Arc::new(SystemClock),
             marker_projection_factory,
             Arc::new(UnavailableVideoProbe),
+            crate::plan_protocol::ActivePlanRoot::default(),
         )
     }
 
@@ -525,6 +532,7 @@ impl DesktopRuntime {
         clock: Arc<dyn ClockPort>,
         marker_projection_factory: Arc<dyn DesktopMarkerProjectionFactory>,
         video_probe: Arc<dyn VideoMetadataProbe>,
+        plan_root: crate::plan_protocol::ActivePlanRoot,
     ) -> Self {
         let coordinator = Arc::new(TaskCoordinator::default());
         let derived_scheduler = Arc::new(DerivedWorkScheduler::default());
@@ -540,6 +548,7 @@ impl DesktopRuntime {
             image_factory,
             image_registry,
             active_image_session,
+            plan_root,
             text_reader: Arc::new(TextPreviewReader),
             text_writer: Arc::new(AtomicTextWriter),
             clock,
@@ -660,6 +669,13 @@ impl DesktopRuntime {
             Some(lifecycle) => lifecycle.close_image_renderer().await,
             None => Ok(()),
         }
+    }
+
+    /// 计划界面只能读写"当前打开的项目"，不接受前端传入的路径。
+    pub async fn plan_project_root(&self) -> Result<std::path::PathBuf, RuntimeError> {
+        let session = self.session.lock().await;
+        let session = session.as_ref().ok_or(RuntimeError::StaleSession)?;
+        Ok(session.active.root.clone())
     }
 
     pub(crate) async fn authorized_image_source(

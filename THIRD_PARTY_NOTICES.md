@@ -55,6 +55,8 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 
 | Package | Version | License | Viewer purpose | Upstream | Distributed |
 | --- | --- | --- | --- | --- | --- |
+| `@dagrejs/dagre` | 3.1.3 | MIT | Deterministic layered graph layout for the plan canvas | [dagrejs/dagre](https://github.com/dagrejs/dagre) | Yes |
+| `@xyflow/react` | 12.12.1 | MIT | Plan canvas viewport, node containers and selection | [xyflow/xyflow](https://github.com/xyflow/xyflow) | Yes |
 | `@codemirror/lang-markdown` | 6.5.2 | MIT | Markdown language support for the document editor | [codemirror/lang-markdown](https://github.com/codemirror/lang-markdown) | Yes |
 | `@codemirror/language` | 6.13.1 | MIT | CodeMirror language infrastructure for editor highlights | [codemirror/language](https://github.com/codemirror/language) | Yes |
 | `@codemirror/state` | 6.7.6 | MIT | CodeMirror editor state model | [codemirror/state](https://github.com/codemirror/state) | Yes |

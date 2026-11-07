@@ -265,6 +265,7 @@ impl DesktopRuntime {
         let marker_projection = self.marker_projection_factory.create(Arc::clone(&index));
         let mut snapshot = ProjectSnapshot::from(&active);
         let active_session_id = active.session_id;
+        let project_root = active.root.clone();
         let scan_task_id = TaskId::new();
         let write_lane = Arc::new(Mutex::new(()));
         let undo_stack = Arc::new(StdMutex::new(UndoStack::new(active_session_id)));
@@ -430,6 +431,7 @@ impl DesktopRuntime {
             review_changes,
         });
         self.active_image_session.set(Some(active_session_id));
+        self.plan_root.set(Some(project_root));
         Ok(snapshot)
     }
 
@@ -445,6 +447,7 @@ impl DesktopRuntime {
         // guarded by this token must not start after close has taken ownership.
         self.coordinator.cancel_session(session.active.session_id);
         self.active_image_session.set(None);
+        self.plan_root.set(None);
         session.review_workspace.revoke();
         session.review_workspace.close().await;
         session.review.shutdown().await;

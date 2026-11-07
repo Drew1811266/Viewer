@@ -41,7 +41,7 @@ const currentProductDocuments = [
 
 test('current product documentation is complete, versioned, locally linked, and archived', async () => {
   const tauri = JSON.parse(await read('src-tauri/tauri.conf.json'))
-  assert.equal(tauri.version, '0.3.0')
+  assert.equal(tauri.version, '0.3.1')
   assert.equal(JSON.parse(await read('ui/package.json')).version, tauri.version)
 
   const documents = await Promise.all(
@@ -168,7 +168,9 @@ const cargoManifests = [
 ]
 const directDependencies = [
   '@biomejs/biome',
+  '@dagrejs/dagre',
   '@vitest/coverage-v8',
+  '@xyflow/react',
   'ammonia',
   'async-trait',
   'blake3',
@@ -1588,4 +1590,15 @@ test('quality reports are continuous trends and not a release gate', async () =>
     packageJson.scripts.verify,
     /coverage|quality:report|architecture:trends|release|M4/,
   )
+})
+
+test('plan MCP server is a stdio binary and never a listening service', async () => {
+  const [binary, transport] = await Promise.all([
+    read('crates/viewer-infrastructure/src/bin/viewer-plan-mcp.rs'),
+    read('crates/viewer-infrastructure/src/plan/mcp/mod.rs'),
+  ])
+  for (const source of [binary, transport]) {
+    assert.doesNotMatch(source, /TcpListener|UdpSocket|\.bind\(|axum|hyper/, 'MCP must stay a stdio child process')
+  }
+  assert.match(binary, /serve\(/)
 })
